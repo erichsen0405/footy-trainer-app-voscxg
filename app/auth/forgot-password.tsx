@@ -20,7 +20,7 @@ export default function ForgotPasswordScreen() {
   const handleSendResetEmail = async () => {
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) {
-      setError('Indtast din e-mail.');
+      setError('Enter your email.');
       setMessage(null);
       return;
     }
@@ -40,7 +40,7 @@ export default function ForgotPasswordScreen() {
 
       setMessage(`Vi har sendt et nulstillingslink til ${trimmedEmail}.`);
     } catch (resetError: any) {
-      setError(resetError?.message ?? 'Kunne ikke sende nulstillingsmail.');
+      setError(resetError?.message ?? 'Failed to send reset email.');
     } finally {
       setLoading(false);
     }
@@ -56,7 +56,7 @@ export default function ForgotPasswordScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Glemt adgangskode</Text>
-      <Text style={styles.text}>Indtast din e-mail, så sender vi et link til at nulstille adgangskoden.</Text>
+      <Text style={styles.text}>Enter your email and we'll send you a password reset link.</Text>
 
       <TextInput
         value={email}

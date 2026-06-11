@@ -140,12 +140,12 @@ describe('Tasks redesigned template screen', () => {
     mockUseFootball.mockReturnValue(baseFootball());
   });
 
-  it('shows the Opgaver header and Ny opgave CTA', () => {
+  it('shows the Tasks header and New task CTA', () => {
     const { getByTestId, getByText } = render(<TasksScreen />);
 
-    expect(getByTestId('tasks.header.title')).toHaveTextContent('Opgaver');
+    expect(getByTestId('tasks.header.title')).toHaveTextContent('Tasks');
     expect(getByTestId('tasks.header.newTaskButton')).toBeTruthy();
-    expect(getByText('Ny opgave')).toBeTruthy();
+    expect(getByText('New task')).toBeTruthy();
   });
 
   it('groups trainer self-mode templates into personal and inspiration folders', () => {
@@ -160,7 +160,7 @@ describe('Tasks redesigned template screen', () => {
 
     expect(getByTestId('tasks.folder.personal')).toBeTruthy();
     expect(getByTestId('tasks.folder.inspiration')).toBeTruthy();
-    expect(getByText('Personlige opgaver')).toBeTruthy();
+    expect(getByText('Personal tasks')).toBeTruthy();
     expect(getByText('FootballCoach Inspiration')).toBeTruthy();
   });
 
@@ -173,7 +173,7 @@ describe('Tasks redesigned template screen', () => {
           title: 'Fra coach',
           userId: 'trainer-1',
           trainerName: 'Coach Mads',
-          source_folder: 'Fra træner: Coach Mads',
+          source_folder: 'From coach: Coach Mads',
         }),
       ],
     }));
@@ -181,7 +181,7 @@ describe('Tasks redesigned template screen', () => {
     const { getByTestId, getByText } = render(<TasksScreen />);
 
     expect(getByTestId('tasks.folder.trainer.trainer-1')).toBeTruthy();
-    expect(getByText('Fra træner: Coach Mads')).toBeTruthy();
+    expect(getByText('From coach: Coach Mads')).toBeTruthy();
   });
 
   it('shows selected admin context templates under personal tasks', () => {
@@ -249,13 +249,13 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.header.newTaskButton'));
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
-    expect(getByText('Titel er påkrævet.')).toBeTruthy();
+    expect(getByText('Title is required.')).toBeTruthy();
 
     fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Video opgave');
     fireEvent.changeText(getByTestId('tasks.modal.videoUrlInput'), 'https://example.com/video');
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
 
-    expect(getByText('Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.')).toBeTruthy();
+    expect(getByText('Invalid media. Use a video, image, or PDF link.')).toBeTruthy();
   });
 
   it('adds, removes and saves subtasks in order', async () => {
@@ -263,11 +263,11 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.header.newTaskButton'));
     fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med delopgaver');
-    fireEvent.changeText(getAllByPlaceholderText('Delopgave')[0], 'Første');
+    fireEvent.changeText(getAllByPlaceholderText('Subtask')[0], 'Første');
     fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
-    fireEvent.changeText(getAllByPlaceholderText('Delopgave')[1], 'Anden');
+    fireEvent.changeText(getAllByPlaceholderText('Subtask')[1], 'Anden');
     fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
-    fireEvent.changeText(getAllByPlaceholderText('Delopgave')[2], 'Tredje');
+    fireEvent.changeText(getAllByPlaceholderText('Subtask')[2], 'Tredje');
     fireEvent.press(getAllByText('minus.circle.fill')[0]);
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
 
@@ -307,9 +307,9 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
-    expect(getByText('Videoer')).toBeTruthy();
-    expect(getByText('Vælg video fra telefon')).toBeTruthy();
-    expect(getByText('Video 1')).toBeTruthy();
+    expect(getByText('Media')).toBeTruthy();
+    expect(getByText('Choose image, video, or PDF')).toBeTruthy();
+    expect(getByText('Media 1')).toBeTruthy();
     expect(getAllByText('YouTube').length).toBeGreaterThan(0);
     expect(queryByDisplayValue('https://youtu.be/abc123')).toBeNull();
     fireEvent.press(getByTestId('tasks.modal.categoryOption.1'));
@@ -345,7 +345,7 @@ describe('Tasks redesigned template screen', () => {
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-ig-1'));
 
-    expect(getByText('Video 1')).toBeTruthy();
+    expect(getByText('Media 1')).toBeTruthy();
     expect(getAllByText('Instagram').length).toBeGreaterThan(0);
     expect(queryByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeNull();
   });

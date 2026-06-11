@@ -19,9 +19,9 @@ import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { exerciseAssignmentsService } from '@/services/exerciseAssignments';
 import { taskService } from '@/services/taskService';
 
-const DELETE_TEMPLATE_CONFIRM_TEXT = 'SLET';
+const DELETE_TEMPLATE_CONFIRM_TEXT = 'DELETE';
 const DELETE_TEMPLATE_WARNING_TEXT =
-  'Hvis du sletter denne opgaveskabelon, slettes alle tidligere og fremtidige opgaver på relaterede aktiviteter. Hvis du vil beholde historik, vælg Arkiver i stedet.';
+  'Deleting this task template will delete all previous and future tasks on related activities. If you want to keep history, select Archive instead.';
 
 export type AssignExerciseModalProps = {
   visible: boolean;
@@ -144,7 +144,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
     if (!visible) return;
     if (!exercise?.id || !trainerId) {
       setLoadingState('error');
-      setErrorMessage('Mangler brugeroplysninger. Log ind igen og prøv senere.');
+      setErrorMessage('Missing user information. Log in again and try later.');
       return;
     }
 
@@ -158,7 +158,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
         setLoadingState('idle');
       } catch (err: any) {
         console.error('[AssignExerciseModal] load failed', err);
-        setErrorMessage(err?.message || 'Kunne ikke hente data.');
+        setErrorMessage(err?.message || 'Failed to retrieve data.');
         setLoadingState('error');
       }
     })();
@@ -252,7 +252,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
   const handleAssign = useCallback(async () => {
     if (!exercise?.id || !trainerId) return;
     if (!selectionCount) {
-      Alert.alert('Vælg modtagere', 'Vælg mindst én spiller eller ét hold.');
+      Alert.alert('Select recipients', 'Select at least one player or one team.');
       return;
     }
 
@@ -270,13 +270,13 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
       onSuccess?.({ createdCount: result.createdCount });
 
       const message = result.createdCount
-        ? `Tildelte øvelsen til ${result.createdCount} modtager${result.createdCount === 1 ? '' : 'e'}.`
-        : 'Alle valgte modtagere havde allerede fået denne øvelse.';
-      Alert.alert('Øvelse tildelt', message);
+        ? `Assigned the exercise to ${result.createdCount} recipient${result.createdCount === 1 ? '' : 's'}.`
+        : 'All selected recipients had already been given this exercise.';
+      Alert.alert('Exercise assigned', message);
       onClose();
     } catch (err: any) {
       console.error('[AssignExerciseModal] assign failed', err);
-      Alert.alert('Kunne ikke tildele', err?.message || 'Prøv igen senere.');
+      Alert.alert('Could not assign', err?.message || 'Please try again later.');
     } finally {
       setAssigning(false);
     }
@@ -376,7 +376,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
             keys.push(legacyTeamKey);
           }
           if (!keys.length) {
-            Alert.alert('Kunne ikke arkivere', 'Ingen aktive opgaveskabeloner fundet for dette hold.');
+            Alert.alert('Failed to archive', 'No active assignment templates found for this team.');
             return;
           }
           const allArchived = keys.every(keyValue => assignmentTemplateStates[keyValue]?.archived);
@@ -392,7 +392,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
         } else {
           const templateState = assignmentTemplateStates[mode === 'player' ? `player:${item.id}` : `team:${item.id}`];
           if (!templateState?.taskTemplateId) {
-            Alert.alert('Kunne ikke arkivere', 'Opgaveskabelon blev ikke fundet for denne modtager.');
+            Alert.alert('Failed to archive', 'Task template was not found for this recipient.');
             return;
           }
           await taskService.setTaskTemplateArchived(
@@ -404,7 +404,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
         await loadAssignments();
       } catch (err: any) {
         console.error('[AssignExerciseModal] archive toggle failed', err);
-        Alert.alert('Kunne ikke opdatere arkivstatus', err?.message || 'Prøv igen senere.');
+        Alert.alert('Failed to update archive status', err?.message || 'Please try again later.');
       } finally {
         setArchivingRecipientKey(null);
       }
@@ -437,7 +437,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
       closeDeleteDialog();
     } catch (err: any) {
       console.error('[AssignExerciseModal] remove failed', err);
-      Alert.alert('Kunne ikke fjerne', err?.message || 'Prøv igen senere.');
+      Alert.alert('Could not remove', err?.message || 'Please try again later.');
       setIsDeleteConfirming(false);
     }
   }, [deleteCandidate, deleteConfirmationText, removeRecipient, closeDeleteDialog]);
@@ -594,7 +594,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
                 {item.title}
               </Text>
               <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                {members.length} spillere
+                {members.length} players
               </Text>
               {isAlreadyAssigned ? (
                 <View style={styles.rowMetaBadges}>
@@ -785,14 +785,14 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
           <TouchableOpacity onPress={onClose} style={[styles.headerButton, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
             <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="close" size={24} color={theme.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Tildel øvelse</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Assign exercise</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <View style={[styles.exerciseCard, { backgroundColor: theme.card, borderColor: theme.highlight }]}> 
-          <Text style={[styles.exerciseLabel, { color: theme.textSecondary }]}>Øvelse</Text>
+          <Text style={[styles.exerciseLabel, { color: theme.textSecondary }]}>Exercise</Text>
           <Text style={[styles.exerciseTitle, { color: theme.text }]} numberOfLines={2}>
-            {exercise?.title || 'Ukendt øvelse'}
+            {exercise?.title || 'Unknown exercise'}
           </Text>
         </View>
 
@@ -808,7 +808,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
               },
             ]}
           >
-            <Text style={[styles.tabText, { color: activeTab === 'players' ? '#fff' : theme.text }]}>Spillere ({players.length})</Text>
+            <Text style={[styles.tabText, { color: activeTab === 'players' ? '#fff' : theme.text }]}>Players ({players.length})</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab('teams')}
@@ -821,20 +821,20 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
               },
             ]}
           >
-            <Text style={[styles.tabText, { color: activeTab === 'teams' ? '#fff' : theme.text }]}>Hold ({teams.length})</Text>
+            <Text style={[styles.tabText, { color: activeTab === 'teams' ? '#fff' : theme.text }]}>Keep ({teams.length})</Text>
           </TouchableOpacity>
         </View>
 
         {loadingState === 'loading' ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="small" color={theme.text} />
-            <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Henter data...</Text>
+            <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Loading data...</Text>
           </View>
         ) : null}
 
         {loadingState === 'error' ? (
           <View style={[styles.errorCard, { backgroundColor: theme.card, borderColor: theme.error }]}> 
-            <Text style={[styles.errorTitle, { color: theme.error }]}>Kunne ikke hente data</Text>
+            <Text style={[styles.errorTitle, { color: theme.error }]}>Could not load data</Text>
             <Text style={[styles.errorMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
           </View>
         ) : null}
@@ -852,8 +852,8 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={
               <View style={[styles.emptyState, { borderColor: theme.highlight }]}> 
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>Ingen {activeTab === 'players' ? 'spillere' : 'hold'}</Text>
-                <Text style={[styles.emptyMessage, { color: theme.textSecondary }]}>Tilføj {activeTab === 'players' ? 'spillere' : 'hold'} i trænerområdet for at kunne tildele øvelser.</Text>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>No {activeTab === 'players' ? 'players' : 'teams'}</Text>
+                <Text style={[styles.emptyMessage, { color: theme.textSecondary }]}>Add {activeTab === 'players' ? 'players' : 'teams'} in the trainer area to be able to assign exercises.</Text>
               </View>
             }
             initialNumToRender={14}
@@ -891,12 +891,12 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
       <Modal visible={!!deleteCandidate} animationType="fade" transparent onRequestClose={closeDeleteDialog}>
         <View style={styles.deleteConfirmOverlay}>
           <View style={[styles.deleteConfirmCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.deleteConfirmTitle, { color: theme.text }]}>Slet opgaveskabelon</Text>
+            <Text style={[styles.deleteConfirmTitle, { color: theme.text }]}>Delete task template</Text>
             <Text style={[styles.deleteConfirmWarning, { color: theme.text }]}>
               {DELETE_TEMPLATE_WARNING_TEXT}
             </Text>
             <Text style={[styles.deleteConfirmHelper, { color: theme.textSecondary }]}>
-              Skriv {DELETE_TEMPLATE_CONFIRM_TEXT} for at aktivere sletning.
+              Write {DELETE_TEMPLATE_CONFIRM_TEXT} for at aktivere sletning.
             </Text>
             <TextInput
               style={[styles.deleteConfirmInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.highlight }]}
@@ -914,7 +914,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
                 style={[styles.deleteModalButton, styles.deleteModalCancelButton, { backgroundColor: theme.background }]}
                 onPress={closeDeleteDialog}
               >
-                <Text style={[styles.deleteModalButtonText, { color: theme.text }]}>Annuller</Text>
+                <Text style={[styles.deleteModalButtonText, { color: theme.text }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -933,7 +933,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
                 testID="assign.deleteModal.confirmButton"
               >
                 <Text style={[styles.deleteModalButtonText, { color: '#fff' }]}>
-                  {isDeleteConfirming ? 'Sletter...' : 'Slet'}
+                  {isDeleteConfirming ? 'Deleting...' : 'Delete'}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -269,7 +269,7 @@ function RootLayoutContent() {
       return;
     }
 
-    const timer = setTimeout(() => {
+    const hours = setTimeout(() => {
       console.warn('[RootLayout] Startup loader still waiting for home ready');
       void trackStartupTelemetry(supabase, {
         eventName: 'startup_loader_waiting',
@@ -282,7 +282,7 @@ function RootLayoutContent() {
       });
     }, STARTUP_LOADER_STALL_LOG_MS);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(hours);
   }, [homeScreenReady, pathname, shouldWaitForHomeReady, showStartupLoader, startupPrerequisitesReady]);
 
   useEffect(() => {

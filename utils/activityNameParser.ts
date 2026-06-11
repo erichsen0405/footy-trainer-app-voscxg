@@ -34,7 +34,7 @@ export function suggestCategoryFromActivityName(activityName: string): {
   }
 
   return {
-    name: activityName.split(' ')[0] || 'Aktivitet',
+    name: activityName.split(' ')[0] || 'Activity',
     emoji: '📌',
     color: '#4CAF50',
   };
@@ -43,12 +43,12 @@ export function suggestCategoryFromActivityName(activityName: string): {
 function getCategoryEmoji(categoryName: string): string {
   const emojiMap: { [key: string]: string } = {
     'kamp': '🏆',
-    'træning': '⚽',
-    'fysisk træning': '💪',
+    'training': '⚽',
+    'physical exercise': '💪',
     'taktik': '📋',
-    'møde': '📅',
+    'meeting': '📅',
     'holdsamling': '🤝',
-    'lægebesøg': '🏥',
+    'doctor\'s visit': '🏥',
     'rejse': '✈️',
   };
 
@@ -58,15 +58,14 @@ function getCategoryEmoji(categoryName: string): string {
 function getCategoryColor(categoryName: string): string {
   const colorMap: { [key: string]: string } = {
     'kamp': '#FFD700',
-    'træning': '#4CAF50',
-    'fysisk træning': '#FF5722',
+    'training': '#4CAF50',
+    'physical exercise': '#FF5722',
     'taktik': '#2196F3',
-    'møde': '#9C27B0',
+    'meeting': '#9C27B0',
     'holdsamling': '#FF9800',
-    'lægebesøg': '#F44336',
+    'doctor\'s visit': '#F44336',
     'rejse': '#00BCD4',
   };
 
   return colorMap[categoryName.toLowerCase()] || '#4CAF50';
 }
-

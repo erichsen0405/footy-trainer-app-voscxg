@@ -46,7 +46,7 @@ export function parseICalendarData(icalData: string): ParsedICalEvent[] {
       
       return {
         uid: event.uid || `event-${Date.now()}-${Math.random()}`,
-        summary: event.summary || 'Ingen titel',
+        summary: event.summary || 'No title',
         description: event.description || '',
         location: event.location || '',
         startDate: event.startDate ? event.startDate.toJSDate() : new Date(),

@@ -137,13 +137,13 @@ describe('task-feedback-note screen', () => {
     mockParams = {
       activityId: '2ac31159-22f6-42a2-a067-4fb3ab6dd2ab',
       templateId: 'template-1',
-      title: 'Feedback på Afleveringer',
+      title: 'Feedback on Afleveringer',
       taskInstanceId: 'task-1',
     };
 
     jest.spyOn(Alert, 'alert').mockImplementation((title: any, _message?: any, buttons?: any) => {
-      if (title === 'forlad uden at gemme?' && Array.isArray(buttons)) {
-        const leave = buttons.find((candidate: any) => candidate?.text === 'Forlad');
+      if (title === 'leave without saving?' && Array.isArray(buttons)) {
+        const leave = buttons.find((candidate: any) => candidate?.text === 'Leave');
         leave?.onPress?.();
       }
     });
@@ -187,11 +187,11 @@ describe('task-feedback-note screen', () => {
     fireEvent.press(screen.getByTestId('feedback.scoreInput'));
 
     expect(screen.getAllByTestId(/feedback\.scoreOption\./)).toHaveLength(5);
-    expect(screen.getByText('Meget svært i dag')).toBeTruthy();
-    expect(screen.getByText('Lidt svært i dag')).toBeTruthy();
-    expect(screen.getByText('Okay i dag')).toBeTruthy();
-    expect(screen.getByText('Godt i dag')).toBeTruthy();
-    expect(screen.getByText('Rigtig godt i dag')).toBeTruthy();
+    expect(screen.getByText('Very difficult today')).toBeTruthy();
+    expect(screen.getByText('A little difficult today')).toBeTruthy();
+    expect(screen.getByText('Okay today')).toBeTruthy();
+    expect(screen.getByText('Good today')).toBeTruthy();
+    expect(screen.getByText('Very good today')).toBeTruthy();
   });
 
   it('hydrates persisted score+note when task completion flag is stale but feedback exists', async () => {
@@ -231,7 +231,7 @@ describe('task-feedback-note screen', () => {
 
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt feedback note'));
     expect(screen.getByTestId('feedback.selectedScore.3')).toBeTruthy();
-    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Okay i dag');
+    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Okay today');
   });
 
   it('hydrates persisted feedback for non-UUID task id using template fallback instance id', async () => {
@@ -261,7 +261,7 @@ describe('task-feedback-note screen', () => {
       expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt via template fallback'),
     );
     expect(screen.getByTestId('feedback.selectedScore.2')).toBeTruthy();
-    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Lidt svært i dag');
+    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('A little difficult today');
   });
 
   it('hydrates persisted feedback for non-UUID task id stored as raw instance id', async () => {
@@ -291,7 +291,7 @@ describe('task-feedback-note screen', () => {
       expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt via raw non-uuid instance'),
     );
     expect(screen.getByTestId('feedback.selectedScore.5')).toBeTruthy();
-    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Rigtig godt i dag');
+    expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Very good today');
   });
 
   it('shows feedback-score info modal when pressing info button', async () => {
@@ -300,9 +300,9 @@ describe('task-feedback-note screen', () => {
     await waitFor(() => expect(screen.getByTestId('feedback.infoButton')).toBeTruthy());
     fireEvent.press(screen.getByTestId('feedback.infoButton'));
 
-    expect(screen.getByText('Sådan giver du din Feedback-score')).toBeTruthy();
+    expect(screen.getByText('How to give your feedback score')).toBeTruthy();
     expect(
-      screen.getByText('Vælg et fokuspunkt i biblioteket, som du gerne vil blive bedre til.'),
+      screen.getByText('Choose a focal point in the library that you would like to improve.'),
     ).toBeTruthy();
   });
 });

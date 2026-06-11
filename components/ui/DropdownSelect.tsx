@@ -38,7 +38,7 @@ export function DropdownSelect({ options, selectedValue, onSelect, label, flex =
   const palette = useMemo(() => CommonStyles.getColors(colorScheme), [colorScheme]);
 
   const selectedLabel = useMemo(
-    () => options.find(opt => opt.value === selectedValue)?.label || options[0]?.label || 'Vælg',
+    () => options.find(opt => opt.value === selectedValue)?.label || options[0]?.label || 'Choose',
     [options, selectedValue]
   );
 
@@ -72,7 +72,7 @@ export function DropdownSelect({ options, selectedValue, onSelect, label, flex =
       >
         <SafeAreaView style={styles.modalBackdrop} onTouchEnd={() => setModalVisible(false)}>
           <View style={[styles.modalContent, { backgroundColor: palette.backgroundAlt }]} onTouchEnd={e => e.stopPropagation()}>
-            <Text style={[styles.modalTitle, { color: palette.text }]}>{label || 'Vælg en mulighed'}</Text>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>{label || 'Select an option'}</Text>
             <FlatList
               data={options}
               keyExtractor={item => String(item.value)}
@@ -96,7 +96,7 @@ export function DropdownSelect({ options, selectedValue, onSelect, label, flex =
               onPress={() => setModalVisible(false)}
               testID={`${prefix}.closeButton`}
             >
-              <Text style={[styles.closeButtonText, { color: palette.text }]}>Annuller</Text>
+              <Text style={[styles.closeButtonText, { color: palette.text }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>

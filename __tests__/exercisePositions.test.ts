@@ -4,7 +4,7 @@ describe('exercise position options', () => {
   it('builds nullable options list with labels and values', () => {
     const options = buildExercisePositionOptions();
 
-    expect(options[0]).toEqual({ label: 'Ingen', value: null });
+    expect(options[0]).toEqual({ label: 'None', value: null });
     expect(options).toHaveLength(HOLDTRAINING_POSITIONS.length + 1);
 
     const nonNullOptions = options.slice(1);

@@ -76,7 +76,7 @@ const normalizeFeedbackTitle = (value?: string | null): string => {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 };
 
-const isFeedbackTitle = (value?: string | null): boolean => normalizeFeedbackTitle(value).startsWith('feedback pa');
+const isFeedbackTitle = (value?: string | null): boolean => (normalizeFeedbackTitle(value).startsWith('feedback pa') || normalizeFeedbackTitle(value).startsWith('feedback on'));
 
 const feedbackAnswered = (row: any): boolean =>
   typeof row?.rating === 'number' || (typeof row?.note === 'string' && row.note.trim().length > 0);

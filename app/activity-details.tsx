@@ -237,13 +237,13 @@ type FeedbackTask = Task & {
 };
 
 const DAYS_OF_WEEK = [
-  { label: 'Søn', value: 0 },
+  { label: 'Son', value: 0 },
   { label: 'Man', value: 1 },
   { label: 'Tir', value: 2 },
   { label: 'Ons', value: 3 },
   { label: 'Tor', value: 4 },
   { label: 'Fre', value: 5 },
-  { label: 'Lør', value: 6 },
+  { label: 'Sat', value: 6 },
 ];
 
 const RECURRENCE_OPTIONS: {
@@ -254,7 +254,7 @@ const RECURRENCE_OPTIONS: {
   { label: 'Hver uge', value: 'weekly' },
   { label: 'Hver anden uge', value: 'biweekly' },
   { label: 'Hver tredje uge', value: 'triweekly' },
-  { label: 'Månedligt', value: 'monthly' },
+  { label: 'Monthly', value: 'monthly' },
 ];
 const FEEDBACK_PARENT_MARKER = '[[feedback_parent_task_id:';
 
@@ -278,7 +278,7 @@ const timeToMinutes = (value?: string | null): number | null => {
 };
 
 function formatDate(date: Date): string {
-  return new Date(date).toLocaleDateString('da-DK', {
+  return new Date(date).toLocaleDateString('en-US', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -289,7 +289,7 @@ function formatDate(date: Date): string {
 function formatShortDate(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '';
-  return date.toLocaleDateString('da-DK', {
+  return date.toLocaleDateString('en-US', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -309,12 +309,12 @@ function sortTrainerFeedbackByUpdatedAtDesc(entries: TrainerActivityFeedback[]):
 
 function formatDateTime(date: Date, time: string): string {
   const timeDisplay = time.substring(0, 5);
-  return `${formatDate(date)} kl. ${timeDisplay}`;
+  return `${formatDate(date)} at ${timeDisplay}`;
 }
 
 function formatTimeDisplay(time?: string | null): string {
   if (!time || typeof time !== 'string') {
-    return 'Tilføj tid';
+    return 'Add time';
   }
   return time.substring(0, 5);
 }
@@ -848,7 +848,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       const internalActivityAny = internalActivity as any;
       const category: ActivityCategory = {
         id: internalActivityAny.activity_categories?.id || internalActivityAny.category_id || '',
-        name: internalActivityAny.activity_categories?.name || 'Ukendt kategori',
+        name: internalActivityAny.activity_categories?.name || 'Unknown category',
         color: internalActivityAny.activity_categories?.color || '#999999',
         emoji: internalActivityAny.activity_categories?.emoji || '⚽️',
       };
@@ -1478,6 +1478,22 @@ function normalizeTitle(value?: string | null): string {
     .toLowerCase();
 }
 
+const LEGACY_DANISH_DISPLAY_TEXT: Record<string, string> = {
+  hjemme: 'Home',
+  ude: 'Away',
+  kamp: 'Match',
+  kampanalyse: 'Match Analysis',
+  'analyse af kamp': 'Match analysis',
+  traening: 'Training',
+  træning: 'Training',
+};
+
+function translateLegacyDisplayText(value?: string | null): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return raw;
+  return LEGACY_DANISH_DISPLAY_TEXT[raw.toLowerCase()] ?? LEGACY_DANISH_DISPLAY_TEXT[normalizeTitle(raw)] ?? raw;
+}
+
 function normalizeFeedbackTitle(value?: string | null): string {
   return normalizeTitle(value);
 }
@@ -1485,14 +1501,14 @@ function normalizeFeedbackTitle(value?: string | null): string {
 function stripLeadingFeedbackPrefix(title: string): string {
   if (typeof title !== 'string') return title;
   const trimmed = title.trim();
-  const stripped = trimmed.replace(/^feedback\s+p[\u00e5a]\s*/i, '');
+  const stripped = trimmed.replace(/^feedback\s+(?:on|p[\u00e5a])\s*[:\s-]*/i, '');
   return stripped.length ? stripped : title;
 }
 
 function isFeedbackTitle(title?: string | null): boolean {
   if (typeof title !== 'string') return false;
   const normalized = normalizeFeedbackTitle(title);
-  return normalized.startsWith('feedback pa');
+  return normalized.startsWith('feedback pa') || normalized.startsWith('feedback on');
 }
 
 function getMarkerTemplateId(task: { description?: string | null; title?: string | null }): string | null {
@@ -1727,7 +1743,7 @@ function buildFeedbackSummary(
   const parts: string[] = [];
 
   if (config?.enableScore !== false) {
-    parts.push(typeof feedback.rating === 'number' ? `Score ${formatScoreOutOfFive(feedback.rating)}` : 'Score mangler');
+    parts.push(typeof feedback.rating === 'number' ? `Score ${formatScoreOutOfFive(feedback.rating)}` : 'Score missing');
   }
 
   return parts.length ? parts.join(' – ') : null;
@@ -1943,7 +1959,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           t.id === selectedNormalTask.id ? { ...t, completed: previousCompleted } : t
         ),
       );
-      Alert.alert('Fejl', 'Kunne ikke ændre opgaven. Prøv igen.');
+      Alert.alert('Error', 'Could not change the task. Try again.');
     } finally {
       setIsNormalTaskCompleting(false);
     }
@@ -2086,7 +2102,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         params: {
           activityId: String(routeActivityId),
           templateId: String(templateId),
-          title: String(task.title ?? 'opgave'),
+              title: String(task.title ?? 'task'),
           taskInstanceId: taskInstanceId ?? undefined,
         },
       });
@@ -2197,7 +2213,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const items: { templateId: string; name: string }[] = [];
     const resolveTemplateName = (templateId: string) => {
       const task = tasksState.find((t) => resolveFeedbackTemplateId(t) === templateId);
-      const rawTitle = task?.title ?? 'Feedback opgave';
+      const rawTitle = task?.title ?? 'Feedback task';
       const stripped = stripLeadingFeedbackPrefix(rawTitle);
       return stripped.length ? stripped : rawTitle;
     };
@@ -2231,8 +2247,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const names = focusChangeRecommendations.map((item) => item.name).join(', ');
     const message =
       focusChangeRecommendations.length === 1
-        ? `Du har scoret 5/5 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på "${names}". Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`
-        : `Du har scoret 5/5 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} gange i træk på: ${names}. Vi anbefaler, at du skifter fokuspunkt for at udvikle andre skills.`;
+        ? `You have scored 5/5 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} times in a row on "${names}". We recommend switching focus area to develop other skills.`
+        : `You have scored 5/5 ${FOCUS_CHANGE_PERFECT_SCORE_STREAK} times in a row on: ${names}. We recommend switching focus area to develop other skills.`;
 
     Alert.alert('Overvej at skifte fokus', message);
   }, [activityId, focusChangeRecommendations]);
@@ -2330,7 +2346,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             id: String(row.id),
             taskTemplateId: String(row.taskTemplateId ?? ''),
             focusPointTitle: stripLeadingFeedbackPrefix(
-              String((row as any).focusPointTitle ?? '').trim() || 'Ukendt fokuspunkt',
+              String((row as any).focusPointTitle ?? '').trim() || 'Unknown focal point',
             ),
             createdAt: String(row.createdAt ?? ''),
             rating: row.rating ?? null,
@@ -2546,7 +2562,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     setPendingOpenIntensity(false);
 
     if (!showIntensityTaskRow) {
-      Alert.alert('Intensitet ikke tilgængelig', 'Intensitet er ikke aktiveret for denne aktivitet.');
+      Alert.alert('Intensity unavailable', 'Intensity is not enabled for this activity.');
       return;
     }
 
@@ -2699,15 +2715,15 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const handleEditClick = useCallback(() => {
     if (!canManageAssignedActivity) {
-      Alert.alert('Låst aktivitet', 'Denne aktivitet er tildelt af en træner og kan ikke redigeres.');
+      Alert.alert('Locked activity', 'This activity is assigned by a trainer and cannot be edited.');
       return;
     }
 
     if (activity?.seriesId) {
-      Alert.alert('Rediger serie', 'Vil du redigere kun denne aktivitet eller hele serien?', [
-        { text: 'Annuller', style: 'cancel' },
-        { text: 'Kun denne', onPress: handleEditSingle },
-        { text: 'Hele serien', onPress: handleEditAll },
+      Alert.alert('Edit series', 'Do you want to edit only this activity or the whole series?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Only this one', onPress: handleEditSingle },
+        { text: 'Whole series', onPress: handleEditAll },
       ]);
       return;
     }
@@ -2719,23 +2735,23 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const handleDuplicate = useCallback(() => {
     if (!activity) return;
     if (!canManageAssignedActivity) {
-      Alert.alert('Låst aktivitet', 'Denne aktivitet er tildelt af en træner og kan ikke redigeres.');
+      Alert.alert('Locked activity', 'This activity is assigned by a trainer and cannot be edited.');
       return;
     }
 
     if (activity.isExternal) {
       Alert.alert(
         'Kan ikke duplikere',
-        'Denne aktivitet er fra en ekstern kalender og kan ikke duplikeres. Kun manuelle aktiviteter kan duplikeres.',
+        'This activity is from an external calendar and cannot be duplicated. Only manual activities can be duplicated.',
       );
       return;
     }
 
     Alert.alert(
       'Duplikér aktivitet',
-      `Er du sikker på at du vil duplikere "${activity.title}"? En kopi vil blive oprettet med samme dato, tid, lokation og opgaver.`,
+      `Are you sure you want to duplicate "${activity.title}"? A copy will be created with the same date, time, location, and tasks.`,
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         { text: 'Duplikér', onPress: () => setPendingAction({ type: 'duplicate' }) },
       ],
     );
@@ -2832,7 +2848,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               onPress={onClose}
               activeOpacity={0.8}
             >
-              <Text style={[styles.pickerDoneText, { color: primaryColor }]}>Færdig</Text>
+              <Text style={[styles.pickerDoneText, { color: primaryColor }]}>Done</Text>
             </TouchableOpacity>
           </View>
         );
@@ -2870,24 +2886,24 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     if (isInternalActivity) {
       if (!trimmedTime) {
-        Alert.alert('Fejl', 'Starttidspunkt er påkrævet.');
+        Alert.alert('Error', 'Start time is required.');
         return;
       }
 
       const startMinutes = timeToMinutes(trimmedTime);
       if (startMinutes === null) {
-        Alert.alert('Fejl', 'Ugyldigt starttidspunkt. Benyt formatet HH:MM.');
+        Alert.alert('Error', 'Invalid start time. Use the format HH:MM.');
         return;
       }
 
       if (endTimePayload) {
         const endMinutes = timeToMinutes(endTimePayload);
         if (endMinutes === null) {
-          Alert.alert('Fejl', 'Ugyldigt sluttidspunkt. Benyt formatet HH:MM.');
+          Alert.alert('Error', 'Invalid end time. Use the format HH:MM.');
           return;
         }
         if (endMinutes <= startMinutes) {
-          Alert.alert('Fejl', 'Sluttidspunkt skal være efter starttidspunkt.');
+          Alert.alert('Error', 'End time must be after start time.');
           return;
         }
       }
@@ -2905,7 +2921,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'triweekly') &&
           selectedDays.length === 0
         ) {
-          Alert.alert('Fejl', 'Vælg venligst mindst én dag for gentagelse');
+          Alert.alert('Error', 'Please select at least one day for repetition');
           return;
         }
 
@@ -2930,7 +2946,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         await deleteActivitySingle(activity.id);
         await refreshData();
 
-        Alert.alert('Succes', 'Aktiviteten er blevet konverteret til en gentagende serie');
+        Alert.alert('Success', 'The activity has been converted to a repeating series');
         setIsEditing(false);
         setEditScope('single');
         safeDismiss();
@@ -2959,7 +2975,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         await refreshData();
 
-        Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
+        Alert.alert('Saved', 'The activity has been updated');
         setIsEditing(false);
         setEditScope('single');
         setExternalIntensityApplyScope('single');
@@ -2994,7 +3010,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           intensity: intensityPayload,
         });
 
-        Alert.alert('Gemt', 'Hele serien er blevet opdateret');
+        Alert.alert('Saved', 'The entire series has been updated');
         setIsEditing(false);
         setEditScope('single');
         setExternalIntensityApplyScope('single');
@@ -3031,14 +3047,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         intensity: intensityPayload,
       });
 
-      Alert.alert('Gemt', 'Aktiviteten er blevet opdateret');
+      Alert.alert('Saved', 'The activity has been updated');
       setIsEditing(false);
       setEditScope('single');
       setExternalIntensityApplyScope('single');
       await refreshData();
     } catch (error) {
       console.error('Error saving activity:', error);
-      Alert.alert('Fejl', 'Der opstod en fejl ved gemning');
+      Alert.alert('Error', 'An error occurred while saving.');
     } finally {
       setIsSaving(false);
     }
@@ -3176,11 +3192,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       if (!activity) return;
 
       Alert.alert(
-        'Slet opgave',
-        'Er du sikker på at du vil slette denne opgave? Dette sletter kun opgaven fra denne aktivitet, ikke opgaveskabelonen.',
+        'Delete task',
+        'Are you sure you want to delete this task? This only deletes the task from this activity, not the task template.',
         [
-          { text: 'Annuller', style: 'cancel' },
-          { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-task', taskId }) },
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-task', taskId }) },
         ],
       );
     },
@@ -3189,12 +3205,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const handleEditTask = useCallback((task: FeedbackTask) => {
     Alert.alert(
-      'Redigering af opgave',
-      'Denne opgave kan redigeres lokalt på aktiviteten uden at ændre opgaveskabelonen.',
+      'Editing assignment',
+      'This task can be edited locally on the activity without changing the task template.',
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Fortsæt',
+          text: 'Continue',
           onPress: () => {
             setEditingActivityTask(task);
             setShowCreateTaskModal(true);
@@ -3266,17 +3282,17 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [activity.id, pendingFeedbackTaskId, pendingNormalTaskId, refreshData, tasksState]);
 
   const handleAddTask = useCallback(() => {
-    Alert.alert('Tilføj opgave', 'Vælg hvordan du vil oprette opgaven.', [
-      { text: 'Annuller', style: 'cancel' },
+    Alert.alert('Add task', 'Choose how you want to create the task.', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Opret manuelt',
+        text: 'Create manually',
         onPress: () => {
           setEditingActivityTask(null);
           setShowCreateTaskModal(true);
         },
       },
       {
-        text: 'Opret fra skabelon',
+        text: 'Create from template',
         onPress: () => {
           setTemplateTaskSearch('');
           setShowTemplateTaskModal(true);
@@ -3331,7 +3347,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       return true;
     });
     const sortedTemplates = [...activeTemplates].sort((a, b) =>
-      String(a?.title ?? '').localeCompare(String(b?.title ?? ''), 'da-DK', { sensitivity: 'base' })
+      String(a?.title ?? '').localeCompare(String(b?.title ?? ''), 'en-US', { sensitivity: 'base' })
     );
 
     if (!query.length) return sortedTemplates;
@@ -3353,7 +3369,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     async (template: Task) => {
       if (isTemplateTaskSaving) return;
       if (!currentUserId) {
-        Alert.alert('Fejl', 'Bruger ikke autentificeret.');
+        Alert.alert('Error', 'User not authenticated.');
         return;
       }
 
@@ -3378,7 +3394,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         const localTemplatePayload = {
           user_id: currentUserId,
-          title: String(template.title ?? '').trim() || 'Opgave',
+          title: String(template.title ?? '').trim() || 'Task',
           description: String(template.description ?? ''),
           reminder_minutes: reminderValue,
           video_url: videoPayload.video_url,
@@ -3408,11 +3424,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           .single();
 
         if (localTemplateError || !localTemplateData?.id) {
-          throw new Error(localTemplateError?.message || 'Kunne ikke oprette lokal skabelon.');
+          throw new Error(localTemplateError?.message || 'Failed to create local template.');
         }
 
         const basePayload = {
-          title: String(template.title ?? '').trim() || 'Opgave',
+          title: String(template.title ?? '').trim() || 'Task',
           description: String(template.description ?? ''),
           completed: false,
           reminder_minutes: reminderValue,
@@ -3461,7 +3477,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
         if (error) {
           if (error.code === '23505') {
-            Alert.alert('Findes allerede', 'Denne opgave er allerede tilføjet til aktiviteten.');
+            Alert.alert('Findes allerede', 'This task has already been added to the activity.');
             return;
           }
           throw error;
@@ -3471,7 +3487,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         setTemplateTaskSearch('');
         await refreshActivityTasks();
       } catch (error: any) {
-        Alert.alert('Fejl', error?.message || 'Kunne ikke oprette opgave fra skabelon.');
+        Alert.alert('Error', error?.message || 'Could not create task from template.');
       } finally {
         setIsTemplateTaskSaving(false);
       }
@@ -3482,7 +3498,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const formatTemplateTaskMeta = useCallback((template: Task): string => {
     const parts: string[] = [];
     if (typeof template?.reminder === 'number' && Number.isFinite(template.reminder)) {
-      parts.push(`Påmindelse: ${Math.max(0, Math.round(template.reminder))} min`);
+      parts.push(`Reminder: ${Math.max(0, Math.round(template.reminder))} min`);
     }
 
     if (template?.afterTrainingEnabled === true) {
@@ -3493,7 +3509,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       template?.taskDurationEnabled === true || template?.task_duration_enabled === true;
     const rawDuration = template?.taskDurationMinutes ?? template?.task_duration_minutes;
     if (durationEnabled && typeof rawDuration === 'number' && Number.isFinite(rawDuration)) {
-      parts.push(`Varighed: ${Math.max(0, Math.round(rawDuration))} min`);
+      parts.push(`Duration: ${Math.max(0, Math.round(rawDuration))} min`);
     }
 
     return parts.join(' · ');
@@ -3523,9 +3539,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const activityAssignmentSummaryText = useMemo(() => {
     if (!activityAssignmentSummary) return null;
-    const playerLabel = activityAssignmentSummary.playerCount === 1 ? 'spiller' : 'spillere';
-    const teamLabel = activityAssignmentSummary.teamCount === 1 ? 'hold' : 'hold';
-    return `Tilknyttet: ${activityAssignmentSummary.playerCount} ${playerLabel} · ${activityAssignmentSummary.teamCount} ${teamLabel}`;
+    const playerLabel = activityAssignmentSummary.playerCount === 1 ? 'player' : 'players';
+    const teamLabel = activityAssignmentSummary.teamCount === 1 ? 'team' : 'teams';
+    return `Assigned: ${activityAssignmentSummary.playerCount} ${playerLabel} · ${activityAssignmentSummary.teamCount} ${teamLabel}`;
   }, [activityAssignmentSummary]);
 
   const trainerFeedbackPlayerOptions = useMemo<TrainerFeedbackPlayerOption[]>(() => {
@@ -3539,10 +3555,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           name:
             typeof profile?.full_name === 'string' && profile.full_name.trim()
               ? profile.full_name.trim()
-              : 'Spiller',
+              : 'Player',
         };
       })
-      .sort((left, right) => left.name.localeCompare(right.name, 'da-DK', { sensitivity: 'base' }));
+      .sort((left, right) => left.name.localeCompare(right.name, 'en-US', { sensitivity: 'base' }));
   }, [activityAssignmentPlayerIds, players]);
 
   const trainerFeedbackPlayerNamesById = useMemo(() => {
@@ -3554,7 +3570,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const fullName =
         typeof (player as any)?.full_name === 'string' && (player as any).full_name.trim()
           ? (player as any).full_name.trim()
-          : 'Spiller';
+          : 'Player';
       nameMap[playerId] = fullName;
     }
 
@@ -3573,8 +3589,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   );
 
   const selectedTrainerActivityFeedbackPlayerName = useMemo(() => {
-    if (!selectedTrainerActivityFeedback) return 'Spiller';
-    return trainerFeedbackPlayerNamesById[selectedTrainerActivityFeedback.playerId] || 'Spiller';
+    if (!selectedTrainerActivityFeedback) return 'Player';
+    return trainerFeedbackPlayerNamesById[selectedTrainerActivityFeedback.playerId] || 'Player';
   }, [selectedTrainerActivityFeedback, trainerFeedbackPlayerNamesById]);
 
   const latestPlayerTrainerFeedback = useMemo(
@@ -3589,7 +3605,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const handleOpenTrainerFeedbackModal = useCallback(() => {
     if (!trainerFeedbackPlayerOptions.length) {
-      Alert.alert('Ingen spillere', 'Aktiviteten har ingen tilknyttede spillere endnu.');
+      Alert.alert('No players', 'The activity has no associated players yet.');
       return;
     }
 
@@ -3634,12 +3650,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const feedbackText = trainerFeedbackInput.trim();
 
     if (!playerId) {
-      Alert.alert('Vælg spiller', 'Vælg en spiller, før du sender feedback.');
+      Alert.alert('Select player', 'Please select a player before sending feedback.');
       return;
     }
 
     if (!feedbackText) {
-      Alert.alert('Skriv feedback', 'Skriv feedback, før du sender.');
+      Alert.alert('Write feedback', 'Please write feedback before submitting.');
       return;
     }
 
@@ -3666,12 +3682,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       } else {
         Alert.alert(
           'Feedback gemt',
-          'Feedbacken blev gemt, men mindst én notifikation kunne ikke bekræftes sendt.',
+          'The feedback was saved, but at least one notification could not be confirmed sent.',
         );
       }
     } catch (error: any) {
       console.error('[ActivityDetails] trainer feedback send failed', error);
-      Alert.alert('Kunne ikke sende', error?.message || 'Prøv igen senere.');
+      Alert.alert('Could not send', error?.message || 'Please try again later.');
     } finally {
       setIsTrainerFeedbackSending(false);
     }
@@ -3717,7 +3733,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (!isEditing) {
       return (
         <View style={styles.fieldContainer}>
-          <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Kategori</Text>
+          <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Category</Text>
           <View
             style={[
               styles.categoryChip,
@@ -3729,7 +3745,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             ]}
           >
             {selected?.emoji ? <Text style={styles.categoryEmoji}>{selected.emoji}</Text> : null}
-            <Text style={[styles.categoryName, { color: textColor }]}>{selected?.name ?? 'Ukendt'}</Text>
+            <Text style={[styles.categoryName, { color: textColor }]}>{selected?.name ?? 'Unknown'}</Text>
             <View style={{ flex: 1 }} />
             <View
               style={[
@@ -3747,7 +3763,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     return (
       <View style={styles.fieldContainer}>
-        <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Kategori</Text>
+        <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Category</Text>
         {data.length ? (
           <FlatList
             horizontal
@@ -3781,7 +3797,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             }}
           />
         ) : (
-          <Text style={{ color: textSecondaryColor, marginTop: 8 }}>Ingen kategorier</Text>
+          <Text style={{ color: textSecondaryColor, marginTop: 8 }}>No categories</Text>
         )}
       </View>
     );
@@ -3802,7 +3818,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     return (
       <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-        <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Intensitet</Text>
+        <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Intensity</Text>
 
         <View style={[styles.intensityToggleRow, { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 }]}>
           <View style={styles.intensityToggleLabel}>
@@ -3863,7 +3879,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
             <View style={styles.taskBody}>
               <View style={styles.taskTitleRow}>
-                <Text style={[styles.taskTitle, { color: textColor }]}>Intensitet</Text>
+                <Text style={[styles.taskTitle, { color: textColor }]}>Intensity</Text>
                 {intensityTaskCompleted && (
                   <Text style={[styles.intensityTaskValue, { color: textSecondaryColor }]}>
                     {formatScoreOutOfFive(currentActivityIntensity)}
@@ -3871,7 +3887,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 )}
               </View>
               {!intensityTaskCompleted && (
-                <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>Tryk for at angive intensitet</Text>
+                <Text style={[styles.intensityTaskHelper, { color: textSecondaryColor }]}>Tap to set intensity</Text>
               )}
             </View>
 
@@ -3911,18 +3927,18 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
       const summary = isFeedbackTaskLocal ? buildFeedbackSummary(feedback, config) : null;
 
-      let helperText = 'Tryk for at åbne';
+      let helperText = 'Press to open';
       if (isFeedbackTaskLocal) {
         if (isFeedbackCompleted) {
           const parts = [summary].filter(Boolean) as string[];
-          helperText = parts.length ? parts.join(' – ') : 'Feedback udfyldt';
+          helperText = parts.length ? parts.join(' – ') : 'Feedback completed';
         } else {
           if (config.enableScore !== false) {
-            helperText = 'Tryk for at give feedback';
+            helperText = 'Tap to give feedback';
           } else if (config.enableNote !== false) {
-            helperText = 'Tryk for at skrive note';
+            helperText = 'Tap to write a note';
           } else {
-            helperText = 'Tryk for at give feedback';
+            helperText = 'Tap to give feedback';
           }
         }
       }
@@ -3969,7 +3985,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 task.completed && !isFeedbackTaskLocal && styles.taskCompleted,
               ]}
             >
-              {task.title}
+              {translateLegacyDisplayText(task.title)}
             </Text>
 
             {isFeedbackTaskLocal && (
@@ -4057,7 +4073,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           >
             <Text style={{ color: infoTextColor, fontWeight: '700' }}>Ekstern aktivitet</Text>
             <Text style={{ color: textSecondaryColor, marginTop: 6 }}>
-              Du kan ændre kategori og intensitet for eksterne aktiviteter.
+              You can change the category and intensity of external activities.
             </Text>
           </View>
         )}
@@ -4068,7 +4084,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           {isInternalActivity && (
             <>
               <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Titel</Text>
+                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Title</Text>
                 <TextInput
                   value={editTitle}
                   onChangeText={setEditTitle}
@@ -4088,11 +4104,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               </View>
 
               <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Lokation</Text>
+                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Location</Text>
                 <TextInput
                   value={editLocation}
                   onChangeText={setEditLocation}
-                  placeholder="Angiv lokation"
+                  placeholder="Add location"
                   placeholderTextColor={textSecondaryColor}
                   style={[
                     styles.input,
@@ -4115,10 +4131,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {isInternalActivity && (
           <>
             <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-              <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Dato & tid</Text>
+              <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Date & tid</Text>
 
               <View style={styles.fieldContainer}>
-                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Dato</Text>
+                <Text style={[styles.fieldLabel, { color: textSecondaryColor }]}>Date</Text>
                 <TouchableOpacity
                   style={[
                     styles.dateTimeButton,
@@ -4184,7 +4200,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     onPress={() => setShowEndTimePicker(true)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.dateTimeText, { color: textColor }]}>{editEndTime ? formatTimeDisplay(editEndTime) : 'Tilføj sluttid'}</Text>
+                    <Text style={[styles.dateTimeText, { color: textColor }]}>{editEndTime ? formatTimeDisplay(editEndTime) : 'Add end time'}</Text>
                     <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={18} color={textSecondaryColor} />
                   </TouchableOpacity>
                   {renderPicker({
@@ -4327,11 +4343,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     const detailsContent = (
       <View>
-        <Text style={styles.v2SectionTitle}>Detaljer</Text>
+        <Text style={styles.v2SectionTitle}>Details</Text>
 
         <View style={styles.v2CardWrap}>
           <DetailsCard
-            label="Dato & Tidspunkt"
+            label="Date & Time"
             value={`${formatDateTime(activity.date, activity.time)}${activity.endTime ? ` - ${activity.endTime.substring(0, 5)}` : ''}`}
             backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
             textColor={textColor}
@@ -4346,8 +4362,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={styles.v2DetailBleedLeft}>
             <DetailsCard
               flex={1}
-              label="Lokation"
-              value={activity.location?.trim() ? activity.location : 'Ikke angivet'}
+              label="Location"
+              value={activity.location?.trim() ? translateLegacyDisplayText(activity.location) : 'Not specified'}
               backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
               textColor={textColor}
               secondaryTextColor={textSecondaryColor}
@@ -4361,8 +4377,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={styles.v2DetailBleedRight}>
             <DetailsCard
               flex={1}
-              label="Kategori"
-              value={activity.category?.name ?? 'Ukendt'}
+              label="Category"
+              value={translateLegacyDisplayText(activity.category?.name) || 'Unknown'}
               backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
               textColor={textColor}
               secondaryTextColor={textSecondaryColor}
@@ -4374,8 +4390,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {!isEditing && shouldShowActivityIntensityField ? (
           <View style={[styles.v2CardWrap, { marginTop: 12 }]}>
             <DetailsCard
-              label="Intensitet"
-              value={currentActivityIntensity !== null ? formatScoreOutOfFive(currentActivityIntensity) : 'Ikke angivet'}
+              label="Intensity"
+              value={currentActivityIntensity !== null ? formatScoreOutOfFive(currentActivityIntensity) : 'Not specified'}
               backgroundColor={isDark ? '#ffffff0f' : '#ffffff'}
               textColor={textColor}
               secondaryTextColor={textSecondaryColor}
@@ -4435,7 +4451,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   style={[styles.latestFeedbackEmpty, { color: textSecondaryColor }]}
                   testID="activity.details.latestFeedback.empty"
                 >
-                  Ingen feedback endnu i denne kategori.
+                  No feedback yet in this category.
                 </Text>
               ) : (
                 <FlatList
@@ -4491,9 +4507,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {!isEditing && isTrainerProfile ? (
           <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="activity.assign.section">
             <View style={[styles.activityAssignCard, { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' }]}>
-              <Text style={[styles.activityAssignTitle, { color: textColor }]}>Spillere & hold</Text>
+              <Text style={[styles.activityAssignTitle, { color: textColor }]}>Players &amp; teams</Text>
               <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
-                Tilknyt denne aktivitet til spillere eller hold.
+                Assign this activity to players or teams.
               </Text>
               {activityAssignmentSummaryText ? (
                 <Text
@@ -4509,7 +4525,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 onPress={handleOpenAssignActivityModal}
                 testID="activity.assign.openModalButton"
               >
-                <Text style={styles.activityAssignButtonText}>Tilføj spillere eller hold</Text>
+                <Text style={styles.activityAssignButtonText}>Add players or teams</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -4518,7 +4534,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="trainer-feedback-section">
             <View style={[styles.activityAssignCard, { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' }]}>
               <View style={styles.trainerFeedbackHeaderRow}>
-                <Text style={[styles.activityAssignTitle, { color: textColor }]}>Spiller feedback</Text>
+                <Text style={[styles.activityAssignTitle, { color: textColor }]}>Player feedback</Text>
                 <TouchableOpacity
                   style={[
                     styles.trainerFeedbackAddButton,
@@ -4535,21 +4551,21 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 </TouchableOpacity>
               </View>
               <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
-                Send individuel feedback til en spiller på denne aktivitet.
+                Send individual feedback to a player on this activity.
               </Text>
               <Text style={[styles.activityAssignSummary, { color: textSecondaryColor }]}>
                 {trainerFeedbackPlayerOptions.length
-                  ? `${trainerFeedbackPlayerOptions.length} ${trainerFeedbackPlayerOptions.length === 1 ? 'spiller er' : 'spillere er'} tilknyttet`
-                  : 'Ingen spillere tilknyttet endnu'}
+                  ? `${trainerFeedbackPlayerOptions.length} ${trainerFeedbackPlayerOptions.length === 1 ? 'player is' : 'players are'} linked`
+                  : 'No players assigned yet'}
               </Text>
               {isTrainerActivityFeedbackLoading ? (
                 <Text style={[styles.activityAssignSummary, { color: textSecondaryColor }]}>
-                  Henter sendt feedback...
+                  Loading sent feedback...
                 </Text>
               ) : trainerActivityFeedback.length ? (
                 <View style={styles.trainerFeedbackList}>
                   {trainerActivityFeedback.map((feedback, index) => {
-                    const playerName = trainerFeedbackPlayerNamesById[feedback.playerId] || 'Spiller';
+                    const playerName = trainerFeedbackPlayerNamesById[feedback.playerId] || 'Player';
                     const feedbackMeta = feedback.updatedAt
                       ? `Opdateret ${formatShortDate(feedback.updatedAt)}`
                       : 'Sendt feedback';
@@ -4597,13 +4613,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {shouldShowPlayerTrainerFeedbackSection ? (
           <View style={[styles.v2CardWrap, { marginTop: 12 }]} testID="player-trainer-feedback-section">
             <View style={[styles.activityAssignCard, { backgroundColor: isDark ? '#ffffff0f' : '#ffffff' }]}>
-              <Text style={[styles.activityAssignTitle, { color: textColor }]}>Feedback fra træner</Text>
+              <Text style={[styles.activityAssignTitle, { color: textColor }]}>Feedback from coach</Text>
               {playerTrainerFeedback.length === 1 && latestPlayerTrainerFeedback ? (
                 <>
                   <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
                     {latestPlayerTrainerFeedback.updatedAt
                       ? `Opdateret ${formatShortDate(latestPlayerTrainerFeedback.updatedAt)}`
-                      : 'Du har modtaget feedback på denne aktivitet.'}
+                      : 'You have received feedback on this activity.'}
                   </Text>
                   <Text style={[styles.trainerFeedbackPreviewText, { color: textColor }]} numberOfLines={3}>
                     {latestPlayerTrainerFeedback.feedbackText}
@@ -4614,13 +4630,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     onPress={() => handleOpenPlayerTrainerFeedbackModal(latestPlayerTrainerFeedback)}
                     testID="player-trainer-feedback-open-modal"
                   >
-                    <Text style={styles.activityAssignButtonText}>Læs feedback</Text>
+                    <Text style={styles.activityAssignButtonText}>Read feedback</Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
                   <Text style={[styles.activityAssignMessage, { color: textSecondaryColor }]}>
-                    {`${playerTrainerFeedback.length} feedbackbeskeder på denne aktivitet.`}
+                    {`${playerTrainerFeedback.length} feedback messages on this activity.`}
                   </Text>
                   <View style={styles.trainerFeedbackList}>
                     {playerTrainerFeedback.map((feedback, index) => {
@@ -4681,7 +4697,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {isEditing ? editingContent : detailsContent}
 
         <View style={styles.v2TasksHeaderRow}>
-          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Opgaver</Text>
+          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Tasks</Text>
             {!isEditing && (
               <TouchableOpacity
                 style={[styles.addTaskHeaderButton, { backgroundColor: primaryColor }]}
@@ -4690,7 +4706,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 testID="activity.addTaskButton"
               >
               <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
-              <Text style={styles.addTaskHeaderButtonText}>Tilføj opgave</Text>
+              <Text style={styles.addTaskHeaderButtonText}>Add task</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -4760,34 +4776,34 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const handleDeleteClick = useCallback(() => {
     if (!canManageAssignedActivity) {
-      Alert.alert('Låst aktivitet', 'Denne aktivitet er tildelt af en træner og kan ikke redigeres.');
+      Alert.alert('Locked activity', 'This activity is assigned by a trainer and cannot be edited.');
       return;
     }
 
     if (activity?.isExternal) {
       Alert.alert(
-        'Slet ekstern aktivitet',
-        `Er du sikker på at du vil slette "${activity.title}"?\n\nDenne aktivitet er fra en ekstern kalender. Hvis du sletter den her, vil den blive importeret igen ved næste synkronisering, medmindre du sletter den i den eksterne kalender eller fjerner kalenderen fra din profil.`,
+        'Delete external activity',
+        `Are you sure you want to delete "${activity.title}"?\n\nThis activity is from an external calendar. If you delete it here, it will be imported again on the next sync unless you delete it in the external calendar or remove the calendar from your profile.`,
         [
-          { text: 'Annuller', style: 'cancel' },
-          { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-external' }) },
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-external' }) },
         ],
       );
       return;
     }
 
     if (activity?.seriesId) {
-      Alert.alert('Slet aktivitet', 'Vil du slette kun denne aktivitet eller hele serien?', [
-        { text: 'Annuller', style: 'cancel' },
-        { text: 'Slet kun denne', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
-        { text: 'Slet hele serien', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-series' }) },
+      Alert.alert('Delete activity', 'Do you want to delete just this activity or the entire series?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete only this one', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
+        { text: 'Delete the whole series', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-series' }) },
       ]);
       return;
     }
 
-    Alert.alert('Slet aktivitet', `Er du sikker på at du vil slette "${activity?.title ?? ''}"?`, [
-      { text: 'Annuller', style: 'cancel' },
-      { text: 'Slet', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
+    Alert.alert('Delete activity', `Are you sure you want to delete "${activity?.title ?? ''}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => setPendingAction({ type: 'delete-single' }) },
     ]);
   }, [activity, canManageAssignedActivity]);
 
@@ -4812,13 +4828,13 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             try {
               await duplicateActivity(currentActivity.id);
               if (!cancelled) {
-                Alert.alert('Succes', 'Aktiviteten er blevet duplikeret');
+                Alert.alert('Success', 'The activity has been duplicated');
                 safeDismiss();
               }
             } catch (error: any) {
               console.error('Error duplicating activity:', error);
               if (!cancelled) {
-                Alert.alert('Fejl', error?.message || 'Kunne ikke duplikere aktiviteten');
+                Alert.alert('Error', error?.message || 'Could not duplicate the activity');
               }
             } finally {
               if (!cancelled) setIsDuplicating(false);
@@ -4893,12 +4909,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 const removedIds = new Set([String(action.taskId), ...feedbackTaskIds]);
                 setTasksState((prev) => prev.filter((task) => !removedIds.has(String(task.id))));
                 refreshData();
-                Alert.alert('Slettet', 'Opgaven er blevet slettet fra denne aktivitet');
+                Alert.alert('Deleted', 'The task has been deleted from this activity');
               }
             } catch (error: any) {
               console.error('Error deleting task:', error);
               if (!cancelled) {
-                Alert.alert('Fejl', `Kunne ikke slette opgaven: ${error?.message || 'Ukendt fejl'}`);
+                Alert.alert('Error', `Could not delete the task: ${error?.message || 'Unknown error'}`);
               }
             } finally {
               if (!cancelled) setDeletingTaskId(null);
@@ -4920,7 +4936,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             if (!cancelled) {
               safeDismiss();
               setTimeout(() => {
-                Alert.alert('Slettet', 'Den eksterne aktivitet er fjernet fra din app. Sletningen fortsætter i baggrunden.');
+                Alert.alert('Deleted', 'The external activity has been removed from your app. The deletion continues in the background.');
               }, 120);
             }
 
@@ -4928,7 +4944,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               try {
                 const result = await deleteSingleExternalActivity(currentActivity.id);
                 if (!result.success) {
-                  throw new Error(result.error || 'Kunne ikke slette aktiviteten');
+                  throw new Error(result.error || 'Could not delete the activity');
                 }
                 Promise.resolve(refreshData()).catch(() => {});
               } catch (error: any) {
@@ -4936,7 +4952,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 emitActivityDeleteRestored({ ...optimisticEvent, reason: 'activity_external_delete_failed' });
                 Promise.resolve(refreshData()).catch(() => {});
                 setTimeout(() => {
-                  Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+                  Alert.alert('Error', `Could not delete the activity: ${error?.message || 'Unknown error'}`);
                 }, 300);
               }
             })();
@@ -4948,14 +4964,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             if (!cancelled) {
               safeDismiss();
               setTimeout(() => {
-                Alert.alert('Slettet', 'Aktiviteten er fjernet. Sletningen fortsætter i baggrunden.');
+                Alert.alert('Deleted', 'The activity has been removed. The deletion continues in the background.');
               }, 120);
             }
 
             void deletionPromise.catch((error: any) => {
               console.error('Error deleting activity:', error);
               setTimeout(() => {
-                Alert.alert('Fejl', `Kunne ikke slette aktiviteten: ${error?.message || 'Ukendt fejl'}`);
+                Alert.alert('Error', `Could not delete the activity: ${error?.message || 'Unknown error'}`);
               }, 300);
             });
             break;
@@ -4967,14 +4983,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             if (!cancelled) {
               safeDismiss();
               setTimeout(() => {
-                Alert.alert('Slettet', 'Hele serien er fjernet. Sletningen fortsætter i baggrunden.');
+                Alert.alert('Deleted', 'The entire series has been removed. The deletion continues in the background.');
               }, 120);
             }
 
             void deletionPromise.catch((error: any) => {
               console.error('Error deleting series:', error);
               setTimeout(() => {
-                Alert.alert('Fejl', `Kunne ikke slette serien: ${error?.message || 'Ukendt fejl'}`);
+                Alert.alert('Error', `Could not delete the series: ${error?.message || 'Unknown error'}`);
               }, 300);
             });
             break;
@@ -5004,8 +5020,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
   const handleBackPress = useCallback(() => {
     if (isEditing) {
-      Alert.alert('Afslut redigering', 'Du er i gang med at redigere. Vil du afslutte uden at gemme?', [
-        { text: 'Annuller', style: 'cancel' },
+      Alert.alert('Afslut redigering', 'You are currently editing. Do you want to exit without saving?', [
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Afslut',
           style: 'destructive',
@@ -5031,9 +5047,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     return (
       <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ color: textColor, marginTop: 12, fontSize: 16, fontWeight: '600' }}>Henter opgave...</Text>
+        <Text style={{ color: textColor, marginTop: 12, fontSize: 16, fontWeight: '600' }}>Loading task...</Text>
         <Text style={{ color: textSecondaryColor, marginTop: 6, textAlign: 'center' }}>
-          Vi opdaterer aktiviteten for at åbne den valgte opgave.
+          We update the activity to open the selected task.
         </Text>
         <View testID="activity.details.taskLookup.loading" />
       </View>
@@ -5043,9 +5059,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   if (isDeepLinkTaskLookupError) {
     return (
       <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-        <Text style={{ color: textColor, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Kunne ikke åbne opgaven</Text>
+        <Text style={{ color: textColor, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Could not open task</Text>
         <Text style={{ color: textSecondaryColor, textAlign: 'center', marginBottom: 14 }}>
-          Opgaven blev ikke fundet. Prøv igen fra Hjem eller notifikationen.
+          The assignment was not found. Try again from Home or the notification.
         </Text>
         <TouchableOpacity
           style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10 }}
@@ -5074,7 +5090,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             onPress={handleBackPress}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="Luk aktivitet"
+            accessibilityLabel="Close activity"
           >
             <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={28} color="#fff" />
           </TouchableOpacity>
@@ -5083,12 +5099,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         <View style={styles.headerContent}>
           <Text style={styles.headerEmoji}>{activity.category.emoji}</Text>
           <Text style={styles.headerTitle} numberOfLines={2}>
-            {activity.title}
+            {translateLegacyDisplayText(activity.title)}
           </Text>
           {isTrainerAssignedActivityForPlayer ? (
             <View style={styles.trainerAssignedBadge} testID="activity.details.trainerAssignedBadge">
               <IconSymbol ios_icon_name="person.crop.circle.badge.checkmark" android_material_icon_name="verified" size={14} color="#fff" />
-              <Text style={styles.trainerAssignedBadgeText}>Tildelt af træner</Text>
+              <Text style={styles.trainerAssignedBadgeText}>Assigned by coach</Text>
             </View>
           ) : null}
           {activity.seriesId && (
@@ -5177,7 +5193,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       {selectedNormalTask && (
         <TaskDetailsModal
           visible={isNormalTaskModalVisible}
-          title={String(selectedNormalTask.title ?? 'Opgave')}
+          title={String(selectedNormalTask.title ?? 'Task')}
           categoryColor={activity.category?.color ?? colors.primary}
           isDark={isDark}
           description={selectedNormalTask.description}
@@ -5204,8 +5220,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           >
             <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>
               {externalIntensityModal.nextEnabled
-                ? 'Vil du tilføje intensitet til alle aktiviteter med samme kategori?'
-                : 'Vil du fjerne intensitet fra alle aktiviteter med samme kategori?'}
+                ? 'Want to add intensity to all activities with the same category?'
+                : 'Do you want to remove intensity from all activities with the same category?'}
             </Text>
 
             <TouchableOpacity
@@ -5215,7 +5231,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               testID="activity.details.intensityScopeModal.all"
             >
               <Text style={styles.intensityScopeModalPrimaryText}>
-                {externalIntensityModal.nextEnabled ? 'Ja, tilføj til alle' : 'Ja, fjern fra alle'}
+                {externalIntensityModal.nextEnabled ? 'Yes, add to all' : 'Yes, remove from all'}
               </Text>
             </TouchableOpacity>
 
@@ -5234,7 +5250,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               activeOpacity={0.85}
               testID="activity.details.intensityScopeModal.cancel"
             >
-              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Annuller</Text>
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5248,9 +5264,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       >
         <View style={styles.intensityScopeModalBackdrop}>
           <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Vælg opgaveskabelon</Text>
+            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Select assignment template</Text>
             <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
-              Opretter én opgave på denne aktivitet.
+              Creates one task on this activity.
             </Text>
 
             <TextInput
@@ -5260,14 +5276,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               ]}
               value={templateTaskSearch}
               onChangeText={setTemplateTaskSearch}
-              placeholder="Søg i opgaver..."
+              placeholder="Search tasks..."
               placeholderTextColor={textSecondaryColor}
               editable={!isTemplateTaskSaving}
             />
 
             {filteredTemplateTasks.length === 0 ? (
               <Text style={[styles.templateTaskEmptyText, { color: textSecondaryColor }]}>
-                Ingen opgaver fundet.
+                No tasks found.
               </Text>
             ) : (
               <FlatList
@@ -5305,7 +5321,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               disabled={isTemplateTaskSaving}
             >
               <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>
-                {isTemplateTaskSaving ? 'Opretter...' : 'Luk'}
+                {isTemplateTaskSaving ? 'Creating...' : 'Close'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -5320,9 +5336,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       >
         <View style={styles.intensityScopeModalBackdrop}>
           <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Spiller feedback</Text>
+            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Player feedback</Text>
             <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
-              Vælg en spiller og skriv din feedback.
+              Choose a player and write your feedback.
             </Text>
 
             <View
@@ -5376,8 +5392,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               multiline
               placeholder={
                 selectedTrainerFeedbackPlayer
-                  ? `Skriv feedback til ${selectedTrainerFeedbackPlayer.name}`
-                  : 'Skriv feedback'
+                  ? `Write feedback to ${selectedTrainerFeedbackPlayer.name}`
+                  : 'Write feedback'
               }
               placeholderTextColor={textSecondaryColor}
               testID="trainer-feedback-input"
@@ -5413,7 +5429,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               activeOpacity={0.85}
               disabled={isTrainerFeedbackSending}
             >
-              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Luk</Text>
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5427,7 +5443,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       >
         <View style={styles.intensityScopeModalBackdrop}>
           <View style={[styles.intensityScopeModalCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>Feedback fra træner</Text>
+            <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>Feedback from coach</Text>
             {selectedPlayerTrainerFeedback?.updatedAt ? (
               <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor, marginBottom: 12 }]}>
                 {`Opdateret ${formatShortDate(selectedPlayerTrainerFeedback.updatedAt)}`}
@@ -5441,7 +5457,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               onPress={handleClosePlayerTrainerFeedbackModal}
               activeOpacity={0.85}
             >
-              <Text style={styles.activityAssignButtonText}>Luk</Text>
+              <Text style={styles.activityAssignButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5471,7 +5487,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               onPress={handleCloseTrainerActivityFeedbackModal}
               activeOpacity={0.85}
             >
-              <Text style={styles.activityAssignButtonText}>Luk</Text>
+              <Text style={styles.activityAssignButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -5612,7 +5628,7 @@ export default function ActivityDetailsScreen() {
             !result.category?.id ||
             !result.category?.name ||
             currentCategoryName === 'unknown' ||
-            currentCategoryName === 'ukendt kategori';
+            currentCategoryName === 'unknown category';
 
           if (isUnknownCategory && fallbackCategoryName) {
             setActivity({
@@ -5675,7 +5691,7 @@ export default function ActivityDetailsScreen() {
 
   const renderErrorView = (normalizedId: string | null) => (
     <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Kunne ikke åbne aktiviteten</Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Could not open the activity</Text>
       {__DEV__ && (
         <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
           id: {JSON.stringify(normalizedId)}

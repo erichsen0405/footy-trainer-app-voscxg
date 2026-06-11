@@ -208,59 +208,51 @@ Deno.serve(async (req) => {
       },
     });
 
-    const { data: existingRelationship } = await supabaseAdmin
-      .from('admin_player_relationships')
-      .select('id')
-      .eq('admin_id', requestRow.admin_id)
-      .eq('player_id', requestRow.player_id)
-      .maybeSingle();
+    const { data: acceptedRows, error: acceptError } = await supabaseAdmin.rpc(
+      'accept_admin_player_link_request',
+      {
+        p_request_id: requestId,
+        p_player_id: user.id,
+      },
+    );
 
-    if (!existingRelationship) {
-      const { error: relationshipError } = await supabaseAdmin.rpc('create_admin_player_relationship', {
-        p_admin_id: requestRow.admin_id,
-        p_player_id: requestRow.player_id,
-      });
-
-      if (relationshipError) {
-        return jsonResponse(500, {
+    if (acceptError) {
+      const errorMessage = String(acceptError.message ?? '');
+      if (errorMessage.includes('REQUEST_NOT_FOUND')) {
+        return jsonResponse(404, {
           success: false,
-          error: `Failed to activate trainer link: ${relationshipError.message}`,
+          error: 'Request not found',
         });
       }
-    }
-
-    const nowIso = new Date().toISOString();
-    const { error: updateRequestError } = await supabaseAdmin
-      .from('admin_player_link_requests')
-      .update({
-        status: 'accepted',
-        accepted_at: nowIso,
-        accepted_by: user.id,
-        updated_at: nowIso,
-      })
-      .eq('id', requestId)
-      .eq('status', 'pending');
-
-    if (updateRequestError) {
+      if (errorMessage.includes('REQUEST_NOT_PENDING')) {
+        return jsonResponse(400, {
+          success: false,
+          error: 'Request is no longer pending',
+        });
+      }
       return jsonResponse(500, {
         success: false,
-        error: `Failed to update request status: ${updateRequestError.message}`,
+        error: `Failed to accept trainer request: ${acceptError.message}`,
       });
     }
+
+    const acceptedRow = Array.isArray(acceptedRows) ? acceptedRows[0] : null;
+    const acceptedAdminId = String(acceptedRow?.admin_id ?? requestRow.admin_id);
+    const acceptedPlayerId = String(acceptedRow?.player_id ?? requestRow.player_id);
 
     const playerName = await getDisplayName(
       supabaseAdmin,
       user.id,
-      user.email?.split('@')[0] ?? 'Din spiller',
+      user.email?.split('@')[0] ?? 'Your player',
     );
 
-    await sendPushToUser(supabaseAdmin, requestRow.admin_id, {
-      title: 'Spiller har accepteret',
-      body: `${playerName} har accepteret din anmodning.`,
+    await sendPushToUser(supabaseAdmin, acceptedAdminId, {
+      title: 'Player accepted',
+      body: `${playerName} accepted your request.`,
       data: {
         target: 'profile_team_players',
         openTeamPlayers: '1',
-        playerId: requestRow.player_id,
+        playerId: acceptedPlayerId,
         requestId,
       },
     });
@@ -269,7 +261,7 @@ Deno.serve(async (req) => {
       success: true,
       status: 'accepted',
       requestId,
-      message: 'Anmodning accepteret',
+      message: 'Request accepted',
     });
   } catch (error: any) {
     console.error('=== Error in player-link-requests function ===', error);

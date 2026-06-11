@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   LayoutChangeEvent,
+  Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,8 +13,9 @@ import {
   View,
 } from 'react-native';
 
+import { IconSymbol } from '@/components/IconSymbol';
 import SmartVideoPlayer from '@/components/SmartVideoPlayer';
-import { normalizeTaskVideoUrls } from '@/utils/taskVideos';
+import { getTaskMediaType, normalizeTaskVideoUrls } from '@/utils/taskVideos';
 
 type SwipeVideoPlayerProps = {
   urls: unknown;
@@ -28,18 +32,22 @@ export default function SwipeVideoPlayer({
   showHint = true,
   testID,
 }: SwipeVideoPlayerProps) {
-  const videoUrls = useMemo(() => normalizeTaskVideoUrls(urls), [urls]);
-  const [activeIndex, setActiveIndex] = useState(() => clampIndex(initialIndex, videoUrls.length));
+  const mediaUrls = useMemo(() => normalizeTaskVideoUrls(urls), [urls]);
+  const [activeIndex, setActiveIndex] = useState(() => clampIndex(initialIndex, mediaUrls.length));
   const [containerWidth, setContainerWidth] = useState(0);
   const { width } = useWindowDimensions();
   const slideWidth = Math.max(1, containerWidth || Math.min(width, 720));
-  const hasMultipleVideos = videoUrls.length > 1;
+  const hasMultipleMedia = mediaUrls.length > 1;
 
-  if (!videoUrls.length) return null;
+  useEffect(() => {
+    setActiveIndex((current) => clampIndex(current, mediaUrls.length));
+  }, [mediaUrls.length]);
+
+  if (!mediaUrls.length) return null;
 
   const handleMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const nextIndex = Math.round(event.nativeEvent.contentOffset.x / slideWidth);
-    setActiveIndex(clampIndex(nextIndex, videoUrls.length));
+    setActiveIndex(clampIndex(nextIndex, mediaUrls.length));
   };
 
   const handleLayout = (event: LayoutChangeEvent) => {
@@ -56,27 +64,27 @@ export default function SwipeVideoPlayer({
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleMomentumScrollEnd}
-        contentOffset={{ x: clampIndex(initialIndex, videoUrls.length) * slideWidth, y: 0 }}
-        scrollEnabled={hasMultipleVideos}
+        contentOffset={{ x: clampIndex(initialIndex, mediaUrls.length) * slideWidth, y: 0 }}
+        scrollEnabled={hasMultipleMedia}
         testID={testID ? `${testID}.scroll` : undefined}
       >
-        {videoUrls.map((url, index) => (
+        {mediaUrls.map((url, index) => (
           <View key={`${url}-${index}`} style={[styles.slide, { width: slideWidth, minHeight }]}>
-            <SmartVideoPlayer url={url} />
+            <TaskMediaSlide url={url} />
           </View>
         ))}
       </ScrollView>
 
-      {hasMultipleVideos && showHint ? (
+      {hasMultipleMedia && showHint ? (
         <View style={styles.hintPill} pointerEvents="none">
-          <Text style={styles.hintText}>Swipe for næste video</Text>
-          <Text style={styles.counterText}>{activeIndex + 1}/{videoUrls.length}</Text>
+          <Text style={styles.hintText}>Swipe for next file</Text>
+          <Text style={styles.counterText}>{activeIndex + 1}/{mediaUrls.length}</Text>
         </View>
       ) : null}
 
-      {hasMultipleVideos ? (
+      {hasMultipleMedia ? (
         <View style={styles.dots} pointerEvents="none">
-          {videoUrls.map((url, index) => (
+          {mediaUrls.map((url, index) => (
             <View
               key={`dot-${url}-${index}`}
               style={[styles.dot, index === activeIndex && styles.dotActive]}
@@ -86,6 +94,33 @@ export default function SwipeVideoPlayer({
       ) : null}
     </View>
   );
+}
+
+function TaskMediaSlide({ url }: { url: string }) {
+  const mediaType = getTaskMediaType(url);
+
+  if (mediaType === 'image') {
+    return <Image source={{ uri: url }} style={styles.image} resizeMode="contain" />;
+  }
+
+  if (mediaType === 'pdf') {
+    return (
+      <Pressable
+        style={styles.pdfSlide}
+        onPress={() => Linking.openURL(url)}
+        accessibilityRole="button"
+        accessibilityLabel="Open PDF"
+      >
+        <View style={styles.pdfIconWrap}>
+          <IconSymbol ios_icon_name="doc.fill" android_material_icon_name="picture_as_pdf" size={34} color="#fff" />
+        </View>
+        <Text style={styles.pdfTitle}>PDF</Text>
+        <Text style={styles.pdfSubtitle}>Open PDF</Text>
+      </Pressable>
+    );
+  }
+
+  return <SmartVideoPlayer url={url} />;
 }
 
 function clampIndex(index: number, length: number): number {
@@ -104,6 +139,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#000',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+    minHeight: 220,
+    backgroundColor: '#000',
+  },
+  pdfSlide: {
+    width: '100%',
+    minHeight: 220,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#111827',
+  },
+  pdfIconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 18,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pdfTitle: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  pdfSubtitle: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 14,
+    fontWeight: '700',
   },
   hintPill: {
     position: 'absolute',

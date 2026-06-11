@@ -26,7 +26,7 @@ export default function CheckEmailScreen() {
       const trimmedEmail = email.trim();
       if (!trimmedEmail) {
         if (active) {
-          setError('Indtast en e-mail for at sende bekræftelsesmail igen.');
+          setError('Enter an email to resend confirmation email.');
           setMessage(null);
           setResendRequestedAt(null);
         }
@@ -51,11 +51,11 @@ export default function CheckEmailScreen() {
         }
 
         if (active) {
-          setMessage(`Vi har sendt en ny bekræftelsesmail til ${trimmedEmail}.`);
+          setMessage(`We have sent a new confirmation email to ${trimmedEmail}.`);
         }
       } catch (resendError: any) {
         if (active) {
-          setError(resendError?.message ?? 'Kunne ikke sende bekræftelsesmail igen.');
+          setError(resendError?.message ?? 'Failed to resend confirmation email.');
         }
       } finally {
         if (active) {
@@ -112,7 +112,7 @@ export default function CheckEmailScreen() {
         {resendLoading ? (
           <ActivityIndicator size="small" color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Send bekræftelsesmail igen</Text>
+          <Text style={styles.buttonText}>Resend confirmation email</Text>
         )}
       </Pressable>
 
@@ -121,13 +121,13 @@ export default function CheckEmailScreen() {
       </Pressable>
 
       <Pressable style={styles.buttonSecondary} onPress={goToLogin}>
-        <Text style={styles.buttonSecondaryText}>Jeg har bekræftet (log ind)</Text>
+        <Text style={styles.buttonSecondaryText}>I have confirmed (log in)</Text>
       </Pressable>
 
       <View style={styles.noticeBox}>
         <Text style={styles.noticeTitle}>OBS</Text>
         <Text style={styles.noticeText}>
-          Hvis du ikke modtager e-mailen, så tjek din spam- eller uønsket mail-mappe.
+          If you do not receive the email, please check your spam or junk mail folder.
         </Text>
       </View>
     </View>

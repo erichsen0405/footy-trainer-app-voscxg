@@ -33,9 +33,15 @@ export default function FloatingTabBar({ tabs }: FloatingTabBarProps) {
   const iosInactiveColor = colorScheme === 'dark' ? '#FFFFFF' : '#1C1C1E';
   const iosActiveBackground = colorScheme === 'dark' ? '#2C2C2E' : '#EDEDED';
 
+  const normalizeRouteForMatch = (value: string) => {
+    const withoutGroups = value.replace(/\/\([^/]+?\)/g, '');
+    const normalized = withoutGroups.replace(/\/+$/, '');
+    return normalized.length ? normalized : '/';
+  };
+
   const isActive = (route: string) => {
-    const normalizedPath = pathname.replace(/\/+$/, '');
-    const normalizedRoute = route.replace(/\/+$/, '');
+    const normalizedPath = normalizeRouteForMatch(pathname);
+    const normalizedRoute = normalizeRouteForMatch(route);
     return normalizedPath === normalizedRoute || normalizedPath.startsWith(`${normalizedRoute}/`);
   };
 
@@ -190,8 +196,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   iosLabel: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
     marginTop: 2,
   },
   iosActiveLabel: {

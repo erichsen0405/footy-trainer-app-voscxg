@@ -1,6 +1,6 @@
 import { resolveActivityDateTime } from '@/utils/performanceHistory';
 
-const MOTIVATION_LINE = 'Små skridt hver dag giver stor fremgang.';
+const MOTIVATION_LINE = 'Small steps every day create big progress.';
 
 export type OverdueReminderTask = {
   id: string;
@@ -15,7 +15,7 @@ function normalizeTaskTitle(task: any): string {
   const description = typeof task?.description === 'string' ? task.description.trim() : '';
   if (description.length > 0) return description;
 
-  return 'Opgave uden titel';
+  return 'Untitled task';
 }
 
 export function selectOverdueTasks(activities: any[] | null | undefined, now: Date = new Date()): OverdueReminderTask[] {
@@ -44,16 +44,16 @@ export function selectOverdueTasks(activities: any[] | null | undefined, now: Da
     const dueDiff = a.dueAt.getTime() - b.dueAt.getTime();
     if (dueDiff !== 0) return dueDiff;
 
-    const titleDiff = a.title.localeCompare(b.title, 'da');
+    const titleDiff = a.title.localeCompare(b.title, 'en-US');
     if (titleDiff !== 0) return titleDiff;
 
-    return a.id.localeCompare(b.id, 'da');
+    return a.id.localeCompare(b.id, 'en-US');
   });
 }
 
 export function buildNotificationBody(overdueTasks: OverdueReminderTask[]): string {
   if (!overdueTasks.length) {
-    return `${MOTIVATION_LINE}\n• Ingen forfaldne opgaver lige nu`;
+    return `${MOTIVATION_LINE}\n• No overdue tasks right now`;
   }
 
   const maxItems = 5;
@@ -62,12 +62,12 @@ export function buildNotificationBody(overdueTasks: OverdueReminderTask[]): stri
 
   const lines = visible.map(task => `• ${task.title}`);
   if (remaining > 0) {
-    lines.push(`• +${remaining} flere`);
+    lines.push(`• +${remaining} more`);
   }
 
   return `${MOTIVATION_LINE}\n${lines.join('\n')}`;
 }
 
 export function getOverdueNotificationTitle(): string {
-  return 'Forfaldne opgaver';
+  return 'Overdue tasks';
 }

@@ -14,17 +14,17 @@ export default function UpdatePasswordScreen() {
   const handleUpdatePassword = async () => {
     // Validation
     if (!password || !confirmPassword) {
-      Alert.alert('Fejl', 'Udfyld venligst begge felter');
+      Alert.alert('Error', 'Udfyld venligst begge felter');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Fejl', 'Password skal være mindst 6 tegn');
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Fejl', 'Passwords matcher ikke');
+      Alert.alert('Error', 'Passwords matcher ikke');
       return;
     }
 
@@ -39,7 +39,7 @@ export default function UpdatePasswordScreen() {
 
       if (error) {
         console.error('❌ Password update error:', error);
-        Alert.alert('Fejl', error.message || 'Kunne ikke opdatere password');
+        Alert.alert('Error', error.message || 'Could not update password');
         setLoading(false);
         return;
       }
@@ -60,7 +60,7 @@ export default function UpdatePasswordScreen() {
       );
     } catch (error) {
       console.error('❌ Unexpected error:', error);
-      Alert.alert('Fejl', 'Der opstod en uventet fejl');
+      Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,7 @@ export default function UpdatePasswordScreen() {
         <View style={styles.content}>
           <Text style={styles.title}>Opdater Password</Text>
           <Text style={styles.subtitle}>
-            Vælg et nyt password til din konto
+            Choose a new password for your account
           </Text>
 
           <View style={styles.form}>
@@ -98,7 +98,7 @@ export default function UpdatePasswordScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Bekræft Password</Text>
+              <Text style={styles.label}>Confirm Password</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Gentag password"

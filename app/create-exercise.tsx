@@ -66,7 +66,7 @@ export default function CreateExerciseScreen() {
     return trimmed.length ? trimmed : null;
   }, [params]);
   const isEditMode = useMemo(() => Boolean(exerciseId && (!modeParam || modeParam === 'edit')), [exerciseId, modeParam]);
-  const screenTitle = isEditMode ? 'Rediger øvelse' : 'Opret øvelse';
+  const screenTitle = isEditMode ? 'Edit exercise' : 'Create exercise';
 
   const [userId, setUserId] = useState<string | null>(null);
   const [fetchingUser, setFetchingUser] = useState(true);
@@ -95,7 +95,7 @@ export default function CreateExerciseScreen() {
         setUserId(data?.user?.id ?? null);
       } catch (err: any) {
         if (!cancelled) {
-          setErrorMessage(err?.message ?? 'Kunne ikke hente bruger.');
+          setErrorMessage(err?.message ?? 'Could not retrieve user.');
         }
       } finally {
         if (!cancelled) {
@@ -128,15 +128,15 @@ export default function CreateExerciseScreen() {
           .maybeSingle();
         if (cancelled) return;
         if (error) throw error;
-        if (!data) throw new Error('Øvelsen blev ikke fundet.');
+        if (!data) throw new Error('The exercise was not found.');
 
         const trainerId = (data as any)?.trainer_id ? String((data as any).trainer_id) : null;
         const isSystem = Boolean((data as any)?.is_system);
 
         if (isSystem || trainerId !== userId) {
-          Alert.alert('Ingen adgang', 'Du kan ikke redigere denne øvelse.');
-          setEditLockMessage('Du kan ikke redigere denne øvelse.');
-          setErrorMessage('Du kan ikke redigere denne øvelse.');
+          Alert.alert('No access', 'You cannot edit this exercise.');
+          setEditLockMessage('You cannot edit this exercise.');
+          setErrorMessage('You cannot edit this exercise.');
           return;
         }
 
@@ -150,7 +150,7 @@ export default function CreateExerciseScreen() {
         setDifficulty(clampDifficulty(normalizedDifficulty));
       } catch (err: any) {
         if (!cancelled) {
-          const message = err?.message ?? 'Kunne ikke hente øvelsen.';
+          const message = err?.message ?? 'Failed to download the exercise.';
           setErrorMessage(message);
           setEditLockMessage(message);
         }
@@ -178,20 +178,20 @@ export default function CreateExerciseScreen() {
 
   const handleSave = useCallback(async () => {
     if (!canCreate) {
-      Alert.alert('Kun for trænere', 'Opret øvelse kræver et træner-abonnement.');
+      Alert.alert('For trainers only', 'Create exercise requires a trainer subscription.');
       return;
     }
     if (!userId) {
-      Alert.alert('Ingen bruger', 'Du skal være logget ind for at oprette eller redigere en øvelse.');
+      Alert.alert('No user', 'You must be logged in to create or edit an exercise.');
       return;
     }
     if (loadingExercise) return;
     if (editLockMessage) {
-      Alert.alert('Kan ikke gemme', editLockMessage);
+      Alert.alert('Cannot save', editLockMessage);
       return;
     }
     if (!trimmedTitle) {
-      setErrorMessage('Tilføj en titel til øvelsen.');
+      setErrorMessage('Add a title to the exercise.');
       return;
     }
 
@@ -231,7 +231,7 @@ export default function CreateExerciseScreen() {
         }
       }
     } catch (err: any) {
-      const fallbackMessage = isEditMode ? 'Kunne ikke opdatere øvelsen.' : 'Kunne ikke oprette øvelse.';
+      const fallbackMessage = isEditMode ? 'Failed to update exercise.' : 'Failed to create exercise.';
       setErrorMessage(err?.message || fallbackMessage);
     } finally {
       setSaving(false);
@@ -257,7 +257,7 @@ export default function CreateExerciseScreen() {
     const fromOptions = positionOptions.find((option) => option.value === position)?.label;
     if (fromOptions) return fromOptions;
     if (position && position.trim().length) return position;
-    return 'Ingen';
+    return 'No';
   }, [position, positionOptions]);
 
   const renderStars = useMemo(
@@ -280,11 +280,11 @@ export default function CreateExerciseScreen() {
   const renderForm = () => (
     <ScrollView contentContainerStyle={styles.contentPad} showsVerticalScrollIndicator={false}>
       <View style={styles.fieldGroup}>
-        <Text style={[styles.label, { color: theme.text }]}>Titel *</Text>
+        <Text style={[styles.label, { color: theme.text }]}>Title *</Text>
         <TextInput
           value={title}
           onChangeText={setTitle}
-          placeholder="Eks. Aflevering på førsteberøring"
+          placeholder="Ex. Delivery at first touch"
           placeholderTextColor={theme.textSecondary}
           style={[styles.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.highlight }]}
           autoCapitalize="sentences"
@@ -293,11 +293,11 @@ export default function CreateExerciseScreen() {
       </View>
 
       <View style={styles.fieldGroup}>
-        <Text style={[styles.label, { color: theme.text }]}>Beskrivelse</Text>
+        <Text style={[styles.label, { color: theme.text }]}>Description</Text>
         <TextInput
           value={description}
           onChangeText={setDescription}
-          placeholder="Tilføj noter, fokuspunkter og coaching cues"
+          placeholder="Add notes, focus points and coaching cues"
           placeholderTextColor={theme.textSecondary}
           style={[styles.multilineInput, { backgroundColor: theme.card, color: theme.text, borderColor: theme.highlight }]}
           autoCapitalize="sentences"
@@ -335,7 +335,7 @@ export default function CreateExerciseScreen() {
       </View>
 
       <View style={styles.fieldGroup}>
-        <Text style={[styles.label, { color: theme.text }]}>Sværhedsgrad</Text>
+        <Text style={[styles.label, { color: theme.text }]}>Difficulty</Text>
         <View style={[styles.difficultyCard, { backgroundColor: theme.card }]}> 
           <View style={styles.difficultyHeader}>
             <Text style={[styles.difficultyValue, { color: theme.text }]}>{difficulty}</Text>
@@ -375,8 +375,8 @@ export default function CreateExerciseScreen() {
             <View style={[styles.modalHandle, { backgroundColor: theme.highlight }]} />
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderTextWrap}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Vælg position</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Bruges til at kategorisere øvelsen i biblioteket.</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Select position</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Used to categorize the exercise in the library.</Text>
               </View>
               <TouchableOpacity
                 onPress={() => setPositionModalVisible(false)}
@@ -435,7 +435,7 @@ export default function CreateExerciseScreen() {
         {screenHeader}
         <View style={[styles.lockedContainer, { backgroundColor: theme.background }]}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.lockedSubtitle, { marginTop: 12 }]}>Indlæser...</Text>
+          <Text style={[styles.lockedSubtitle, { marginTop: 12 }]}>Loading...</Text>
         </View>
       </>
     );
@@ -447,10 +447,10 @@ export default function CreateExerciseScreen() {
         {screenHeader}
         <View style={[styles.lockedContainer, { backgroundColor: theme.background }]}>
           <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={48} color={colors.textSecondary} />
-          <Text style={styles.lockedTitle}>Ingen adgang</Text>
-          <Text style={styles.lockedSubtitle}>Opret øvelse kræver et træner-abonnement. Gå til din profil for at opgradere.</Text>
+          <Text style={styles.lockedTitle}>No access</Text>
+          <Text style={styles.lockedSubtitle}>Create exercise requires a trainer subscription. Go to your profile to upgrade.</Text>
           <TouchableOpacity style={styles.lockedButton} onPress={() => router.push('/(tabs)/profile')}>
-            <Text style={styles.lockedButtonText}>Gå til profil</Text>
+            <Text style={styles.lockedButtonText}>Go to profile</Text>
           </TouchableOpacity>
         </View>
       </>
@@ -472,7 +472,7 @@ export default function CreateExerciseScreen() {
             disabled={!canSave}
             style={[styles.saveButton, { backgroundColor: theme.primary }, !canSave ? { opacity: 0.5 } : null]}
           >
-            <Text style={styles.saveButtonText}>{saving ? 'Gemmer...' : 'Gem'}</Text>
+            <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -483,7 +483,7 @@ export default function CreateExerciseScreen() {
         {isEditMode && loadingExercise ? (
           <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
             <ActivityIndicator color={theme.primary} />
-            <Text style={[styles.stateMessage, { color: theme.textSecondary, marginTop: 10 }]}>Henter øvelse...</Text>
+            <Text style={[styles.stateMessage, { color: theme.textSecondary, marginTop: 10 }]}>Downloading practice...</Text>
           </View>
         ) : null}
 

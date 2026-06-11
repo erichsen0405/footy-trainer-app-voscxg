@@ -622,7 +622,7 @@ describe('getTaskDurationMinutes', () => {
   it('returns 0 for feedback tasks even when duration is enabled', () => {
     expect(
       getTaskDurationMinutes({
-        title: 'Feedback på: Pasning',
+        title: 'Feedback on: Pasning',
         task_duration_enabled: true,
         task_duration_minutes: 30,
       })
@@ -682,7 +682,7 @@ describe('getActivityEffectiveDurationMinutes', () => {
       tasks: [
         { title: 'Normal opgave', task_duration_enabled: true, task_duration_minutes: 30 },
         {
-          title: 'Feedback på: Normal opgave',
+          title: 'Feedback on: Normal opgave',
           task_duration_enabled: true,
           task_duration_minutes: 30,
           feedback_template_id: 'fb-1',
@@ -700,7 +700,7 @@ describe('getActivityEffectiveDurationMinutes', () => {
       activity_end_time: '12:00:00',
       tasks: [
         {
-          title: 'Feedback på: Teknik',
+          title: 'Feedback on: Teknik',
           task_duration_enabled: true,
           task_duration_minutes: 30,
           feedback_template_id: 'fb-2',
@@ -714,12 +714,12 @@ describe('getActivityEffectiveDurationMinutes', () => {
 
 describe('formatHoursDa', () => {
   it('formats with max one decimal and da-DK decimal separator', () => {
-    expect(formatHoursDa(150)).toBe('2,5 t');
-    expect(formatHoursDa(120)).toBe('2 t');
+    expect(formatHoursDa(150)).toBe('2.5 h');
+    expect(formatHoursDa(120)).toBe('2 h');
   });
 
-  it('formats zero and invalid values as 0 t', () => {
-    expect(formatHoursDa(0)).toBe('0 t');
-    expect(formatHoursDa(-10)).toBe('0 t');
+  it('formats zero and invalid values as 0 h', () => {
+    expect(formatHoursDa(0)).toBe('0 h');
+    expect(formatHoursDa(-10)).toBe('0 h');
   });
 });

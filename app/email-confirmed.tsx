@@ -8,7 +8,7 @@ import { colors } from '@/styles/commonStyles';
 export default function EmailConfirmedScreen() {
   const router = useRouter();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [message, setMessage] = useState('Bekræfter din email...');
+  const [message, setMessage] = useState('Confirming your email...');
 
   const handleEmailConfirmation = useCallback(async () => {
     try {
@@ -20,7 +20,7 @@ export default function EmailConfirmedScreen() {
       if (sessionError) {
         console.error('❌ Session error:', sessionError);
         setStatus('error');
-        setMessage('Der opstod en fejl ved bekræftelse af din email.');
+        setMessage('There was an error verifying your email.');
         
         // Redirect to login after 3 seconds
         setTimeout(() => {
@@ -32,7 +32,7 @@ export default function EmailConfirmedScreen() {
       if (session) {
         console.log('✅ Email confirmed successfully');
         setStatus('success');
-        setMessage('Din email er bekræftet! Omdirigerer...');
+        setMessage('Your email has been confirmed! Redirecting...');
         
         // Redirect to home after 2 seconds
         setTimeout(() => {
@@ -41,7 +41,7 @@ export default function EmailConfirmedScreen() {
       } else {
         console.log('⚠️ No session found');
         setStatus('error');
-        setMessage('Kunne ikke bekræfte email. Prøv venligst igen.');
+        setMessage('Could not verify email. Please try again.');
         
         // Redirect to login after 3 seconds
         setTimeout(() => {
@@ -51,7 +51,7 @@ export default function EmailConfirmedScreen() {
     } catch (error) {
       console.error('❌ Error in email confirmation:', error);
       setStatus('error');
-      setMessage('Der opstod en uventet fejl.');
+      setMessage('An unexpected error occurred.');
       
       // Redirect to login after 3 seconds
       setTimeout(() => {

@@ -8,7 +8,7 @@ const ChoosePlanScreen = () => (
     <OnboardingGate renderInlinePaywall>
       <View style={styles.loader}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loaderText}>Åbner FootballCoach...</Text>
+        <Text style={styles.loaderText}>Opening FootballCoach...</Text>
       </View>
     </OnboardingGate>
   </View>

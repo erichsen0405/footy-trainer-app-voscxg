@@ -38,12 +38,12 @@ export default function AppleSubscriptionManager({
         color={colors.warning}
       />
       <Text style={[styles.notAvailableTitle, { color: textColor }]}>
-        Ikke tilgængelig på web
+        Unavailable on web
       </Text>
       <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>
-        Apple In-App Purchases er kun tilgængelige i iOS appen.
+        Apple In-App Purchases are only available in the iOS app.
         {'\n\n'}
-        Download appen fra App Store for at købe et abonnement.
+        To purchase a subscription, download the app from the App Store.
       </Text>
     </View>
   );

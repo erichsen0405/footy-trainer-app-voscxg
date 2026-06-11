@@ -77,7 +77,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
   );
 
   const focusOptions = useMemo(
-    () => [{ value: null, label: 'Alle feedback opgaver' }, ...focusTemplates.map(t => ({ value: t.id, label: t.name }))],
+    () => [{ value: null, label: 'All feedback tasks' }, ...focusTemplates.map(t => ({ value: t.id, label: t.name }))],
     [focusTemplates]
   );
 
@@ -86,14 +86,15 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
     const mapped = categories
       .filter(cat => availableIds.size === 0 || availableIds.has(String((cat as any).id)))
       .map(cat => ({ value: String((cat as any).id), label: cat.name }));
-    return [{ value: null, label: 'Alle kategorier' }, ...mapped];
+    return [{ value: null, label: 'All categories' }, ...mapped];
   }, [categories, intensityCategoriesWithData]);
 
   const periodOptions = useMemo(
     () => [
-      { label: '7 dage', value: 7 },
-      { label: '30 dage', value: 30 },
-      { label: '90 dage', value: 90 },
+      { label: '7 days', value: 7 },
+      { label: '14 days', value: 14 },
+      { label: '30 days', value: 30 },
+      { label: '90 days', value: 90 },
     ],
     []
   );
@@ -101,7 +102,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
   const metricOptions: { label: string; value: ProgressionMetric }[] = useMemo(
     () => [
       { label: 'Feedback-score', value: 'rating' },
-      { label: 'Intensitet', value: 'intensity' },
+      { label: 'Intensity', value: 'intensity' },
     ],
     []
   );
@@ -291,7 +292,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
       if (typeof entry.rating !== 'number') return;
       const templateId = entry.focusCategoryId ?? entry.taskTemplateId;
       if (!templateId) return;
-      const name = entry.focusName || entry.taskTemplateName || 'Feedback opgaver';
+      const name = entry.focusName || entry.taskTemplateName || 'Feedback tasks';
       const createdAt = entry.createdAt || entry.dateKey;
       const record = byTemplate.get(templateId) ?? {
         name,
@@ -330,7 +331,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
       const latestScore = lastFiveScores[0];
       const taskItem: TierTaskItem = {
         templateId,
-        name: value.name || 'Feedback opgaver',
+        name: value.name || 'Feedback tasks',
         lastScores: lastFiveScores,
         history: sorted,
         description: value.description ?? null,
@@ -365,13 +366,13 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
   const handleTierInfo = useCallback(
     (tier: 'elite' | 'oevet' | 'begynder') => {
       const messages: Record<typeof tier, string> = {
-        elite: 'Elite kræver, at dine sidste 5 scores er 5/5 (min. fem gange i træk).',
+        elite: 'Elite requires your last 5 scores to be 5/5 (min. five times in a row).',
         oevet:
-          'Øvet viser opgaver hvor din seneste score er 3–4/5, eller 5/5 endnu ikke fem gange i træk.',
+          'The exercise shows tasks where your latest score is 3–4/5, or 5/5 not yet five times in a row.',
         begynder:
-          'Begynder viser opgaver hvor din seneste score er mellem 1–2/5.',
+          'Beginner shows tasks where your latest score is between 1–2/5.',
       };
-      Alert.alert('Krav for niveau', messages[tier]);
+      Alert.alert('Level requirements', messages[tier]);
     },
     [],
   );
@@ -388,9 +389,9 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
   if (requiresLogin) {
     return (
       <View style={[styles.emptyState, { backgroundColor: palette.backgroundAlt }]}>
-        <Text style={[styles.emptyTitle, { color: palette.text }]}>Log ind for at se progression</Text>
+          <Text style={[styles.emptyTitle, { color: palette.text }]}>Log in to view progression</Text>
         <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
-          Log ind for at gemme og se din progression.
+          Log in to save and view your progression.
         </Text>
       </View>
     );
@@ -403,7 +404,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
           options={periodOptions}
           selectedValue={periodDays}
           onSelect={setPeriodDays}
-          label="Periode"
+          label="Period"
           testIDPrefix="progression.period"
         />
         <DropdownSelect
@@ -420,7 +421,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
           options={focusOptions}
           selectedValue={selectedFocusId}
           onSelect={setSelectedFocusId}
-          label="Feedback opgaver"
+          label="Feedback tasks"
           testIDPrefix="progression.feedbackTasks"
         />
       ) : (
@@ -428,7 +429,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
           options={intensityOptions}
           selectedValue={selectedCategoryId}
           onSelect={setSelectedCategoryId}
-          label="Kategori"
+          label="Category"
           testIDPrefix="progression.category"
         />
       )}
@@ -436,7 +437,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
       {isLoading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={palette.primary} />
-          <Text style={[styles.loadingText, { color: palette.textSecondary }]}>Henter progression...</Text>
+          <Text style={[styles.loadingText, { color: palette.textSecondary }]}>Loading progression...</Text>
         </View>
       ) : null}
 
@@ -444,9 +445,9 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
 
       {!allPointsSorted.length && !isLoading ? (
         <View style={[styles.emptyState, { backgroundColor: palette.backgroundAlt }]}>
-          <Text style={[styles.emptyTitle, { color: palette.text }]}>Ingen data endnu</Text>
+          <Text style={[styles.emptyTitle, { color: palette.text }]}>No data yet</Text>
           <Text style={[styles.emptyText, { color: palette.textSecondary }]}>
-            Log træningsfeedback for at se din progression.
+            Log training feedback to see your progression.
           </Text>
         </View>
       ) : null}
@@ -459,9 +460,9 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
         >
           <View style={styles.chartHeader}>
             <Text style={[styles.chartTitle, { color: palette.text }]}>
-              Score ({metric === 'rating' ? 'Feedback' : 'Intensitet'})
+              Score ({metric === 'rating' ? 'Feedback' : 'Intensity'})
             </Text>
-            <Text style={[styles.chartSubtitle, { color: palette.textSecondary }]}>{allPointsSorted.length} træninger</Text>
+            <Text style={[styles.chartSubtitle, { color: palette.textSecondary }]}>{allPointsSorted.length} trainings</Text>
           </View>
 
           {chartWidth > 0 && (
@@ -550,7 +551,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                   });
                 })}
               </Svg>
-              <Text style={[styles.chartHint, { color: palette.textSecondary }]}>Tryk på en søjle for detaljer</Text>
+              <Text style={[styles.chartHint, { color: palette.textSecondary }]}>Click on a column for details</Text>
             </View>
           )}
           {isMultiSeries && (
@@ -570,8 +571,8 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
         <View style={styles.tierSection}>
                 {[
                   { key: 'elite', label: 'Elite', color: palette.gold },
-                  { key: 'oevet', label: 'Øvet', color: palette.silver },
-                  { key: 'begynder', label: 'Begynder', color: palette.bronze },
+                  { key: 'oevet', label: 'Practiced', color: palette.silver },
+                  { key: 'begynder', label: 'Beginner', color: palette.bronze },
                 ].map(tier => {
             const items = focusTierBuckets[tier.key as keyof typeof focusTierBuckets];
             return (
@@ -586,7 +587,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                       }))
                     }
                     accessibilityRole="button"
-                    accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Skjul' : 'Vis'} ${tier.label}`}
+                    accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Hide' : 'Show'} ${tier.label}`}
                   >
                     <Text style={styles.tierTitle}>{tier.label}</Text>
                   </TouchableOpacity>
@@ -602,7 +603,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                       style={styles.tierToggleButton}
                       testID={`progression.tier.${tier.key}.toggleButton`}
                       accessibilityRole="button"
-                      accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Skjul' : 'Vis'} ${tier.label}`}
+                      accessibilityLabel={`${expandedTiers[tier.key as keyof typeof expandedTiers] ? 'Hide' : 'Show'} ${tier.label}`}
                     >
                       <IconSymbol
                         ios_icon_name={
@@ -619,7 +620,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                       onPress={() => handleTierInfo(tier.key as 'elite' | 'oevet' | 'begynder')}
                       style={styles.tierInfoButton}
                       accessibilityRole="button"
-                      accessibilityLabel={`Info om ${tier.label}`}
+                      accessibilityLabel={`Info in ${tier.label}`}
                     >
                       <IconSymbol
                         ios_icon_name="info.circle"
@@ -648,7 +649,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                       </TouchableOpacity>
                     ))
                   ) : (
-                    <Text style={styles.tierEmptyText}>Ingen opgaver endnu</Text>
+                    <Text style={styles.tierEmptyText}>No tasks yet</Text>
                   )
                 ) : null}
               </View>
@@ -672,7 +673,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
               </Text>
             ) : selectedTask?.scoreExplanation ? null : (
               <Text style={[styles.taskDescription, { color: palette.textSecondary }]}>
-                Ingen beskrivelse tilgængelig for denne opgave.
+                No description available for this task.
               </Text>
             )}
 
@@ -709,7 +710,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                       ) : null}
                       {entry.activityTitle ? (
                         <Text style={[styles.historyActivity, { color: palette.textSecondary }]}>
-                          {`Aktivitet: ${entry.activityTitle}`}
+                          {`Activity: ${entry.activityTitle}`}
                         </Text>
                       ) : null}
                     </View>
@@ -726,7 +727,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
               </ScrollView>
             ) : (
               <Text style={[styles.historyEmptyText, { color: palette.textSecondary }]}>
-                Ingen scores endnu
+                No scores yet
               </Text>
             )}
 
@@ -736,7 +737,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
               testID="progression.taskDetail.closeButton"
               accessibilityRole="button"
             >
-              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
+              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -745,17 +746,17 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
       <Modal visible={!!selectedPoint} transparent animationType="fade" onRequestClose={() => setSelectedPoint(null)}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
-            <Text style={[styles.modalTitle, { color: palette.text }]}>Detaljer</Text>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Details</Text>
             {selectedDetails ? (
               <>
-                <Text style={[styles.modalText, { color: palette.textSecondary }]}>Dato: {selectedPoint?.dateLabel}</Text>
+                <Text style={[styles.modalText, { color: palette.textSecondary }]}>Date: {selectedPoint?.dateLabel}</Text>
                 {metric === 'rating' ? (
                   <>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                      Feedback opgaver: {selectedDetails.focusName}
+                      Feedback tasks: {selectedDetails.focusName}
                     </Text>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                      Aktivitet: {selectedDetails.activityTitle || 'Aktivitet'}
+                      Activity: {selectedDetails.activityTitle || 'Activity'}
                     </Text>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
                       Score: {selectedDetails.rating ?? '—'}
@@ -764,18 +765,18 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
                 ) : (
                   <>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                      Kategori: {selectedDetails.focusName}
+                      Category: {selectedDetails.focusName}
                     </Text>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                      Aktivitet: {selectedDetails.activityTitle || 'Aktivitet'}
+                      Activity: {selectedDetails.activityTitle || 'Activity'}
                     </Text>
                     <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                      Intensitet: {selectedDetails.intensity ?? '—'}
+                      Intensity: {selectedDetails.intensity ?? '—'}
                     </Text>
                   </>
                 )}
                 <Text style={[styles.modalText, { color: palette.textSecondary }]}>
-                  Note: {selectedDetails.note || 'Ingen note'}
+                  Note: {selectedDetails.note || 'No note'}
                 </Text>
               </>
             ) : null}
@@ -785,7 +786,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
               testID="progression.pointDetail.closeButton"
               accessibilityRole="button"
             >
-              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Luk</Text>
+              <Text style={[styles.closeButtonText, { color: '#fff' }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>

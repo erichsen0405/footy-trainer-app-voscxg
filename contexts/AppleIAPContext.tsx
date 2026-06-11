@@ -160,8 +160,8 @@ const subscriptionTierFromSku = (sku: string | null): SubscriptionTier | null =>
 const hermesRuntimeEnabled = typeof (globalThis as any).HermesInternal === 'object';
 
 const IAP_UNAVAILABLE_IOS_MESSAGE =
-  'In-app purchases kræver en development build eller TestFlight – virker ikke i Expo Go.';
-const IAP_UNAVAILABLE_NOT_IOS_MESSAGE = 'Apple In-App Purchases er kun tilgængelige på iOS.';
+  'In-app purchases require a development build or TestFlight - does not work in Expo Go.';
+const IAP_UNAVAILABLE_NOT_IOS_MESSAGE = 'Apple In-App Purchases are only available on iOS.';
 const getIapUnavailableMessage = () =>
   Platform.OS === 'ios' ? IAP_UNAVAILABLE_IOS_MESSAGE : IAP_UNAVAILABLE_NOT_IOS_MESSAGE;
 const PURCHASE_MATCH_WINDOW_MS = 2 * 60 * 1000;
@@ -1223,11 +1223,11 @@ export function AppleIAPProvider({
     if (backgroundWarmupStartedRef.current) return;
 
     backgroundWarmupStartedRef.current = true;
-    const timer = setTimeout(() => {
+    const hours = setTimeout(() => {
       void startBackgroundWarmup();
     }, 1200);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(hours);
   }, [authReady, startBackgroundWarmup, startupReady, user?.id]);
 
   const purchaseErrorListenerCleanupRef = useRef<(() => void) | null>(null);
@@ -1387,7 +1387,7 @@ export function AppleIAPProvider({
       const shouldAlert = isUserInitiatedEvent && shouldShowPurchaseAlerts(purchasedSku);
       if (shouldAlert) {
         const alertKey = flowMatch && activeFlow ? activeFlow.key : purchaseEventKey;
-        const alertTitle = receiptOrToken ? 'Køb gennemført! 🎉' : 'Køb registreret';
+        const alertTitle = receiptOrToken ? 'Purchase completed! 🎉' : 'Purchase registered';
         const alertMessage = receiptOrToken
           ? 'Dit abonnement er nu aktivt. Du kan nu bruge alle funktioner.'
           : 'Vi kunne ikke verificere kvitteringen endnu. Tjek dit abonnement lidt senere.';
@@ -1431,7 +1431,7 @@ export function AppleIAPProvider({
       if (error?.code === 'E_USER_CANCELLED') {
         return;
       }
-      Alert.alert('Fejl ved køb', 'Der opstod en fejl ved køb af abonnement. Prøv venligst igen.', [{ text: 'OK' }]);
+      Alert.alert('Error on purchase', 'An error occurred when purchasing a subscription. Please try again.', [{ text: 'OK' }]);
     });
 
     purchaseUpdateListenerCleanupRef.current = () => {

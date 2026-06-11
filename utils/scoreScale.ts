@@ -12,19 +12,19 @@ export const MID_SCORE_THRESHOLD = 3;
 export const PERFECT_SCORE = 5;
 
 export const FEEDBACK_SCORE_OPTIONS: ScoreOption[] = [
-  { value: 1, label: 'Meget svært i dag' },
-  { value: 2, label: 'Lidt svært i dag' },
-  { value: 3, label: 'Okay i dag' },
-  { value: 4, label: 'Godt i dag' },
-  { value: 5, label: 'Rigtig godt i dag' },
+  { value: 1, label: 'Very difficult today' },
+  { value: 2, label: 'A little difficult today' },
+  { value: 3, label: 'Okay today' },
+  { value: 4, label: 'Good today' },
+  { value: 5, label: 'Very good today' },
 ];
 
 export const INTENSITY_SCORE_OPTIONS: ScoreOption[] = [
-  { value: 1, label: 'Jeg kunne ikke holde tempo i dag' },
-  { value: 2, label: 'Jeg havde svært ved tempoet i dag' },
-  { value: 3, label: 'Jeg holdt et okay tempo i dag' },
-  { value: 4, label: 'Jeg holdt et højt tempo i dag' },
-  { value: 5, label: 'Jeg var helt i top på tempo i dag' },
+  { value: 1, label: 'I could not keep the pace today' },
+  { value: 2, label: 'I struggled with the pace today' },
+  { value: 3, label: 'I kept an okay pace today' },
+  { value: 4, label: 'I kept a high pace today' },
+  { value: 5, label: 'My pace was excellent today' },
 ];
 
 function normalizeRoundedScore(value: unknown): number | null {

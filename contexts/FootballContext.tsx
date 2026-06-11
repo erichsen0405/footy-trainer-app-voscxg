@@ -168,7 +168,7 @@ export function FootballProvider({
       const fallbackIntensityEnabled = !!activityData?.intensityEnabled;
       const payload: any = {
         title: activityData?.title ?? '',
-        location: activityData?.location ?? 'Ingen lokation',
+        location: activityData?.location ?? 'No location',
         category_id: activityData?.categoryId ?? '',
         activity_date: isoDate,
         activity_time: timeStr,

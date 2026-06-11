@@ -53,34 +53,34 @@ const getPlanTypeFromProductId = (productId: string): PlanType => {
   }
 };
 
-const trialFeature = (): PlanFeature => ({ label: '14 dages gratis prøveperiode', status: 'included' });
-const cancelFeature = (): PlanFeature => ({ label: 'Opsig når som helst via App Store', status: 'included' });
+const trialFeature = (): PlanFeature => ({ label: '14-day free trial', status: 'included' });
+const cancelFeature = (): PlanFeature => ({ label: 'Cancel at any time via the App Store', status: 'included' });
 
 const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] => {
   const planType = getPlanTypeFromProductId(productId);
   const capacityFeature: PlanFeature = {
-    label: maxPlayers <= 1 ? 'Personlig spiller konto' : `Op til ${maxPlayers} spillere`,
+    label: maxPlayers <= 1 ? 'Personal player account' : `Up to ${maxPlayers} players`,
     status: 'included',
   };
 
   const playerBasicFeatures: PlanFeature[] = [
-    { label: 'Daglige aktiviteter og mål', status: 'included' },
-    { label: 'Progression og statistik', status: 'included' },
-    { label: 'Bibliotek', status: 'locked' },
-    { label: 'Kalender-synk', status: 'locked' },
-    { label: 'Træner-tilknytning', status: 'locked' },
+    { label: 'Daily activities and goals', status: 'included' },
+    { label: 'Progression and statistics', status: 'included' },
+    { label: 'Library', status: 'locked' },
+    { label: 'Calendar sync', status: 'locked' },
+    { label: 'Coach connection', status: 'locked' },
   ];
 
   const playerPremiumFeatures: PlanFeature[] = [
-    { label: 'Bibliotek', status: 'included' },
-    { label: 'Kalender-synk', status: 'included' },
-    { label: 'Træner-tilknytning', status: 'included' },
-    { label: 'Alt fra Basis spiller', status: 'included' },
+    { label: 'Library', status: 'included' },
+    { label: 'Calendar sync', status: 'included' },
+    { label: 'Coach connection', status: 'included' },
+    { label: 'Everything from Basic player', status: 'included' },
   ];
 
   const trainerFeatures: PlanFeature[] = [
-    { label: 'Fuld adgang til FootballCoach værktøjer', status: 'included' },
-    { label: 'Planlægning, bibliotek og rapporter', status: 'included' },
+    { label: 'Full access to FootballCoach tools', status: 'included' },
+    { label: 'Planning, library and reports', status: 'included' },
   ];
 
   if (planType === 'player_basic') return [capacityFeature, ...playerBasicFeatures, trialFeature(), cancelFeature()];
@@ -93,22 +93,22 @@ const getPlanName = (product: { productId?: string | null }) => {
   const productId = product.productId ?? '';
   switch (getPlanTypeFromProductId(productId)) {
     case 'player_basic':
-      return 'Basis spiller';
+      return 'Basic player';
     case 'player_premium':
-      return 'Premium spiller';
+      return 'Premium player';
     case 'trainer_basic':
-      return 'Træner Basis';
+      return 'Coach Basic';
     case 'trainer_standard':
-      return 'Træner Standard';
+      return 'Coach Standard';
     case 'trainer_premium':
-      return 'Træner Premium';
+      return 'Coach Premium';
     default:
       return productId;
   }
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const daDateFormatter = new Intl.DateTimeFormat('da-DK', {
+const daDateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
   month: 'long',
   year: 'numeric',
@@ -282,9 +282,9 @@ export default function AppleSubscriptionManager({
   const complimentaryDisplayName = isClubAccessPlan
     ? serverSubscriptionStatus?.planName?.trim() ?? null
     : hasComplimentaryTrainerPremium
-      ? 'Træner Premium'
+      ? 'Coach Premium'
       : hasComplimentaryPlayerPremium
-        ? 'Premium spiller'
+        ? 'Premium player'
         : null;
   const showComplimentaryPlayerBanner =
     hasComplimentaryPlayerPremium && !hasApplePlayerPremium && !isClubAccessPlan;
@@ -379,13 +379,13 @@ export default function AppleSubscriptionManager({
   const handleSelectPlan = useCallback(
     async (productId: string) => {
       if (purchasing) {
-        Alert.alert('Vent lidt', 'Der behandles allerede et køb.');
+        Alert.alert('Vent lidt', 'A purchase is already being processed.');
         return;
       }
       if (!iapReady) {
         const ready = await ensureIapReady();
         if (!ready) {
-          const reason = iapUnavailableReason ?? 'Forbinder til App Store – prøv igen om et øjeblik.';
+          const reason = iapUnavailableReason ?? 'Connecting to the App Store - please try again in a moment.';
           Alert.alert('App Store ikke klar', reason);
           return;
         }
@@ -416,10 +416,10 @@ export default function AppleSubscriptionManager({
             trainerUpgradeTargetRef.current = null;
             Alert.alert(
               'Skift abonnement',
-              'Hvis App Store ikke viste en bekræftelse, kan du åbne Abonnementer og skifte derfra.',
+              'If the App Store didn\'t show a confirmation, you can open Subscriptions and switch from there.',
               [
                 {
-                  text: 'Åbn App Store',
+                  text: 'Open the App Store',
                   onPress: async () => {
                     try {
                       const url = 'itms-apps://apps.apple.com/account/subscriptions';
@@ -427,7 +427,7 @@ export default function AppleSubscriptionManager({
                       if (!supported) throw new Error('unsupported');
                       await Linking.openURL(url);
                     } catch {
-                      Alert.alert('Kunne ikke åbne App Store', 'Prøv igen senere.');
+                      Alert.alert('Could not open App Store', 'Please try again later.');
                     }
                   },
                 },
@@ -455,16 +455,16 @@ export default function AppleSubscriptionManager({
               success = true;
               await safeInvoke(onPlanSelected, productId);
               Alert.alert(
-                'Abonnement allerede aktivt',
+                'Subscription already active',
                 restoredCount > 0
-                  ? 'Vi har gendannet dit køb.'
-                  : 'Dit abonnement er allerede aktivt. Du kan fortsætte.'
+                  ? 'We have restored your purchase.'
+                  : 'Your subscription is already active. You can continue.'
               );
               return;
             }
             Alert.alert(
-              'Abonnement allerede aktivt',
-              'Vi kunne ikke gendanne et aktivt køb. Prøv at gendanne igen eller tjek dit Apple-abonnement.'
+              'Subscription already active',
+              'We could not restore an active purchase. Try restoring again or check your Apple subscription.'
             );
             return;
           } catch (restoreError) {
@@ -472,7 +472,7 @@ export default function AppleSubscriptionManager({
           }
         }
         const details = buildIapErrorDetails(error);
-        Alert.alert('Køb fejlede', `${details.message}\n(Kode: ${details.code})`);
+        Alert.alert('Purchase failed', `${details.message}\n(Kode: ${details.code})`);
       } finally {
         await safeInvoke(onPurchaseFinished, success);
       }
@@ -497,7 +497,7 @@ export default function AppleSubscriptionManager({
     if (blockInteractions) {
       Alert.alert(
         'Vent lidt',
-        purchasing ? 'Der behandles allerede et køb.' : 'Forbinder til App Store – prøv igen om et øjeblik.',
+        purchasing ? 'A purchase is already being processed.' : 'Connecting to the App Store - please try again in a moment.',
       );
       return;
     }
@@ -505,18 +505,18 @@ export default function AppleSubscriptionManager({
     await safeInvoke(onPurchaseStarted);
     try {
       const { restoredCount } = await restorePurchases();
-      const title = restoredCount > 0 ? 'Køb gendannet! ✅' : 'Ingen køb fundet';
+      const title = restoredCount > 0 ? 'Purchase restored! ✅' : 'No purchases found';
       const message =
         restoredCount > 0
-          ? 'Dine tidligere køb er blevet gendannet.'
-          : 'Der blev ikke fundet nogen tidligere køb at gendanne.';
+          ? 'Your previous purchases have been restored.'
+          : 'No previous purchases were found to restore.';
       Alert.alert(title, message);
       resetCheckoutUi();
       success = restoredCount > 0;
     } catch (error) {
       console.warn('[AppleSubscriptionManager] Restore failed', error);
       const details = buildIapErrorDetails(error);
-      Alert.alert('Gendan køb fejlede', `${details.message}\n(Kode: ${details.code})`);
+      Alert.alert('Restore purchase failed', `${details.message}\n(Kode: ${details.code})`);
     } finally {
       await safeInvoke(onPurchaseFinished, success);
     }
@@ -547,7 +547,7 @@ export default function AppleSubscriptionManager({
       if (!supported) throw new Error('unsupported');
       await Linking.openURL(url);
     } catch {
-      Alert.alert('Kunne ikke åbne link', 'Prøv igen senere.');
+      Alert.alert('Could not open link', 'Please try again later.');
     }
   }, []);
 
@@ -672,7 +672,7 @@ export default function AppleSubscriptionManager({
     if (!pendingProductId || !pendingEffectiveDate) return null;
     return (
       <Text style={styles.pendingDowngradeText}>
-        Skifter til {getPlanName({ productId: pendingProductId })} ved næste fornyelse (
+        Skifter til {getPlanName({ productId: pendingProductId })} at next renewal (
         {formatDateDa(pendingEffectiveDate)})
       </Text>
     );
@@ -717,7 +717,7 @@ export default function AppleSubscriptionManager({
           disabled={blockInteractions || isCurrentActive || disabledByComplimentary}
           activeOpacity={0.7}
           testID={`paywall.planCard.${item.productId}`}
-          accessibilityLabel={`Abonnement ${getPlanName(item)}`}
+          accessibilityLabel={`Subscription ${getPlanName(item)}`}
         >
           {isComplimentaryForProduct(item.productId) && (
             <View style={[styles.partnerBadge, { backgroundColor: colors.secondary }]}>
@@ -726,7 +726,7 @@ export default function AppleSubscriptionManager({
           )}
           {isPopular && !isCurrentActive && (
             <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.popularBadgeText}>Mest populær</Text>
+              <Text style={styles.popularBadgeText}>Most popular</Text>
             </View>
           )}
           {isCurrentActive && (
@@ -762,7 +762,7 @@ export default function AppleSubscriptionManager({
             >
               {priceLabel}
             </Text>
-            <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
+            <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ month</Text>
           </View>
           <View style={styles.featuresContainer}>
             {features.map((feature, featureIndex) => {
@@ -806,7 +806,7 @@ export default function AppleSubscriptionManager({
               onPress={() => handleSelectPlan(item.productId)}
               disabled={blockInteractions || disabledByComplimentary}
               testID="paywall.primaryCtaButton"
-              accessibilityLabel={isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+              accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
             >
               {purchasing ? (
                 <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -817,7 +817,7 @@ export default function AppleSubscriptionManager({
                     { color: isPopular ? '#fff' : colors.primary },
                   ]}
                 >
-                  {isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+                  {isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -863,7 +863,7 @@ export default function AppleSubscriptionManager({
             size={20}
             color="#fff"
           />
-          <Text style={styles.partnerBannerText}>Partner-adgang: Premium spiller</Text>
+          <Text style={styles.partnerBannerText}>Partner access: Premium player</Text>
         </View>
       )}
       {showComplimentaryTrainerBanner && (
@@ -874,14 +874,14 @@ export default function AppleSubscriptionManager({
             size={20}
             color="#fff"
           />
-          <Text style={styles.partnerBannerText}>Partner-adgang: Træner Premium</Text>
+          <Text style={styles.partnerBannerText}>Partner access: Trainer Premium</Text>
         </View>
       )}
       {!isSignupFlow && !hasAnyActivePlan && (
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Vælg dit abonnement</Text>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Choose your subscription</Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            Alle abonnementer inkluderer 14 dages gratis prøveperiode
+            All subscriptions include a 14-day free trial
           </Text>
         </View>
       )}
@@ -905,12 +905,12 @@ export default function AppleSubscriptionManager({
                 {complimentaryDisplayName ?? getPlanName({ productId: activePlanProductIdSafe })}
               </Text>
               <Text style={styles.currentPlanDateSecondary}>
-                {isClubAccessPlan ? 'Klub-adgang' : 'Uendeligt (partner-adgang)'}
+                {isClubAccessPlan ? 'Klub-adgang' : 'Unlimited (partner-adgang)'}
               </Text>
             </View>
             <View style={styles.currentPlanBadge}>
               <Text style={styles.currentPlanBadgeText}>
-                {isClubAccessPlan ? 'Klub-adgang' : 'Uendeligt'}
+                {isClubAccessPlan ? 'Klub-adgang' : 'Unlimited'}
               </Text>
             </View>
           </View>
@@ -956,7 +956,7 @@ export default function AppleSubscriptionManager({
                       color="#fff"
                     />
                     <Text style={styles.orangeBoxDetailLabel}>
-                      {appleRenewalSummary.isTrial ? 'Gratis prøveperiode til' : 'Fornyes'}
+                      {appleRenewalSummary.isTrial ? 'Free trial period for' : 'Renews'}
                     </Text>
                   </View>
                   <View style={styles.currentPlanDateMeta}>
@@ -966,8 +966,8 @@ export default function AppleSubscriptionManager({
                     {appleRenewalSummary.daysRemaining !== null && (
                       <Text style={styles.currentPlanDateSecondary}>
                         {appleRenewalSummary.isTrial
-                          ? `${appleRenewalSummary.daysRemaining} dage tilbage af prøveperioden`
-                          : `${appleRenewalSummary.daysRemaining} dage tilbage`}
+                          ? `${appleRenewalSummary.daysRemaining} days left in the trial`
+                          : `${appleRenewalSummary.daysRemaining} days left`}
                       </Text>
                     )}
                   </View>
@@ -1012,7 +1012,7 @@ export default function AppleSubscriptionManager({
         activeOpacity={0.7}
         disabled={blockInteractions}
         testID="paywall.restoreButton"
-        accessibilityLabel="Gendan køb"
+        accessibilityLabel="Restore purchase"
       >
         <IconSymbol
           ios_icon_name="arrow.clockwise"
@@ -1020,7 +1020,7 @@ export default function AppleSubscriptionManager({
           size={20}
           color={colors.primary}
         />
-        <Text style={[styles.restoreButtonText, { color: colors.primary }]}>Gendan køb</Text>
+        <Text style={[styles.restoreButtonText, { color: colors.primary }]}>Restore purchase</Text>
       </TouchableOpacity>
       <View style={styles.legalLinksRow}>
         <TouchableOpacity
@@ -1036,7 +1036,7 @@ export default function AppleSubscriptionManager({
           activeOpacity={0.6}
           onPress={() => openLegalLink(APPLE_STANDARD_EULA_URL)}
         >
-          <Text style={styles.legalLinkText}>Vilkår (EULA)</Text>
+          <Text style={styles.legalLinkText}>Terms (EULA)</Text>
         </TouchableOpacity>
       </View>
       {!isSignupFlow && (
@@ -1053,7 +1053,7 @@ export default function AppleSubscriptionManager({
               color={colors.primary}
             />
             <Text style={[styles.expandButtonText, { color: textColor }]}>
-              {showPlans ? 'Skjul abonnementer' : 'Se tilgængelige abonnementer'}
+              {showPlans ? 'Hide subscriptions' : 'See available subscriptions'}
             </Text>
           </View>
           <IconSymbol
@@ -1100,8 +1100,7 @@ export default function AppleSubscriptionManager({
           color={colors.secondary}
         />
         <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-          Abonnementer håndteres via App Store. Du kan opsige når som helst i dine App Store
-          indstillinger.{'\n\n'}Alle abonnementer inkluderer 14 dages gratis prøveperiode.
+          Subscriptions are handled via the App Store. You can cancel at any time in your App Store settings.{'\n\n'}All subscriptions include a 14-day free trial.
         </Text>
       </View>
     </View>
@@ -1123,9 +1122,9 @@ export default function AppleSubscriptionManager({
           size={48}
           color={colors.warning}
         />
-        <Text style={[styles.notAvailableTitle, { color: textColor }]}>Ikke tilgængelig</Text>
+        <Text style={[styles.notAvailableTitle, { color: textColor }]}>Unavailable</Text>
         <Text style={[styles.notAvailableText, { color: textSecondaryColor }]}>
-          Apple In-App Purchases er kun tilgængelige på iOS enheder.
+          Apple In-App Purchases are only available on iOS devices.
         </Text>
       </View>
     );
@@ -1162,7 +1161,7 @@ export default function AppleSubscriptionManager({
             size={32}
             color={colors.error}
           />
-          <Text style={styles.stateTitle}>Kunne ikke hente abonnementer</Text>
+          <Text style={styles.stateTitle}>Could not load subscriptions</Text>
           <Text style={styles.stateText}>{fetchErrorMessage}</Text>
           <TouchableOpacity
             style={[
@@ -1176,7 +1175,7 @@ export default function AppleSubscriptionManager({
             {refreshing ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.stateButtonText}>Prøv igen</Text>
+              <Text style={styles.stateButtonText}>Try again</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -1190,8 +1189,8 @@ export default function AppleSubscriptionManager({
             size={32}
             color={colors.textSecondary}
           />
-          <Text style={styles.stateTitle}>Ingen abonnementer fundet</Text>
-          <Text style={styles.stateText}>Træk ned for at opdatere eller tryk “Prøv igen”.</Text>
+          <Text style={styles.stateTitle}>No subscriptions found</Text>
+          <Text style={styles.stateText}>Pull down to refresh or press “Try again”.</Text>
           <TouchableOpacity
             style={[
               styles.stateButton,
@@ -1204,7 +1203,7 @@ export default function AppleSubscriptionManager({
             {refreshing ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.stateButtonText}>Prøv igen</Text>
+              <Text style={styles.stateButtonText}>Try again</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -1272,7 +1271,7 @@ const buildIapErrorDetails = (error: unknown) => {
   }
   return {
     code,
-    message: serialized && serialized !== '{}' ? serialized : 'Prøv igen om lidt.',
+    message: serialized && serialized !== '{}' ? serialized : 'Try again in a little while.',
   };
 };
 

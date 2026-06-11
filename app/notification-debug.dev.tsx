@@ -60,7 +60,7 @@ export default function NotificationDebugScreen() {
       console.log('Stored identifiers:', Object.keys(identifiers).length);
     } catch (error) {
       console.error('Error loading debug data:', error);
-      Alert.alert('Fejl', 'Kunne ikke indlæse debug data');
+      Alert.alert('Error', 'Failed to load debug data');
     }
   };
 
@@ -73,19 +73,19 @@ export default function NotificationDebugScreen() {
   const handleTestNotification = async () => {
     try {
       await testNotification();
-      Alert.alert('Test notifikation', 'En test notifikation vil vises om 2 sekunder');
+      Alert.alert('Test notification', 'A test notification will appear in 2 seconds');
     } catch (error) {
       console.error('Error testing notification:', error);
-      Alert.alert('Fejl', 'Kunne ikke sende test notifikation');
+      Alert.alert('Error', 'Could not send test notification');
     }
   };
 
   const handleCancelAll = () => {
     Alert.alert(
-      'Annuller alle notifikationer',
-      'Er du sikker på, at du vil annullere alle planlagte notifikationer?',
+      'Cancel all notifications',
+      'Are you sure you want to cancel all scheduled notifications?',
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Ja, annuller alle',
           style: 'destructive',
@@ -93,10 +93,10 @@ export default function NotificationDebugScreen() {
             try {
               await cancelAllNotifications();
               await loadData();
-              Alert.alert('Succes', 'Alle notifikationer er blevet annulleret');
+              Alert.alert('Success', 'All notifications have been cancelled');
             } catch (error) {
               console.error('Error cancelling notifications:', error);
-              Alert.alert('Fejl', 'Kunne ikke annullere notifikationer');
+              Alert.alert('Error', 'Could not cancel notifications');
             }
           },
         },
@@ -105,7 +105,7 @@ export default function NotificationDebugScreen() {
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleString('da-DK', {
+    return date.toLocaleString('en-US', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -124,15 +124,15 @@ export default function NotificationDebugScreen() {
     const days = Math.floor(hours / 24);
 
     if (diff < 0) {
-      return `${Math.abs(minutes)} minutter siden`;
+      return `${Math.abs(minutes)} minutes ago`;
     } else if (days > 0) {
-      return `om ${days} dage, ${hours % 24} timer`;
+      return `in ${days} days, ${hours % 24} hours`;
     } else if (hours > 0) {
-      return `om ${hours} timer, ${minutes % 60} minutter`;
+      return `in ${hours} hours, ${minutes % 60} minutes`;
     } else if (minutes > 0) {
-      return `om ${minutes} minutter`;
+      return `in ${minutes} minutes`;
     } else {
-      return `om ${seconds} sekunder`;
+      return `in ${seconds} sekunder`;
     }
   };
 
@@ -151,7 +151,7 @@ export default function NotificationDebugScreen() {
             color={colors.text}
           />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifikation Debug (DEV)</Text>
+        <Text style={styles.headerTitle}>Notification Debug (DEV)</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -164,7 +164,7 @@ export default function NotificationDebugScreen() {
       >
         {/* Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Handlinger</Text>
+          <Text style={styles.sectionTitle}>Actions</Text>
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.success }]}
@@ -176,7 +176,7 @@ export default function NotificationDebugScreen() {
                 size={20}
                 color="#fff"
               />
-              <Text style={styles.actionButtonText}>Test Notifikation</Text>
+              <Text style={styles.actionButtonText}>Test Notification</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.error }]}
@@ -188,14 +188,14 @@ export default function NotificationDebugScreen() {
                 size={20}
                 color="#fff"
               />
-              <Text style={styles.actionButtonText}>Annuller Alle</Text>
+              <Text style={styles.actionButtonText}>Cancel All</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Permissions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Tilladelser</Text>
+          <Text style={styles.sectionTitle}>Permissions</Text>
           {permissions && (
             <View style={styles.card}>
               <View style={styles.infoRow}>
@@ -245,19 +245,19 @@ export default function NotificationDebugScreen() {
             <Text style={styles.sectionTitle}>Statistik</Text>
             <View style={styles.card}>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Planlagt:</Text>
+                <Text style={styles.infoLabel}>Scheduled:</Text>
                 <Text style={[styles.infoValue, { color: colors.primary }]}>
                   {stats.scheduled}
                 </Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Gemt:</Text>
+                <Text style={styles.infoLabel}>Saved:</Text>
                 <Text style={[styles.infoValue, { color: colors.secondary }]}>
                   {stats.stored}
                 </Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Forældreløse:</Text>
+                <Text style={styles.infoLabel}>Orphans:</Text>
                 <Text style={[
                   styles.infoValue,
                   { color: stats.orphaned > 0 ? colors.error : colors.success }
@@ -272,11 +272,11 @@ export default function NotificationDebugScreen() {
         {/* Scheduled Notifications */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Planlagte Notifikationer ({scheduledNotifications.length})
+            Scheduled Notifications ({scheduledNotifications.length})
           </Text>
           {scheduledNotifications.length === 0 ? (
             <View style={styles.card}>
-              <Text style={styles.emptyText}>Ingen planlagte notifikationer</Text>
+              <Text style={styles.emptyText}>No scheduled notifications</Text>
             </View>
           ) : (
             scheduledNotifications.map((notification, index) => {
@@ -343,11 +343,11 @@ export default function NotificationDebugScreen() {
         {/* Stored Identifiers */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Gemte Identifikatorer ({Object.keys(storedIdentifiers).length})
+            Saved Identifiers ({Object.keys(storedIdentifiers).length})
           </Text>
           {Object.keys(storedIdentifiers).length === 0 ? (
             <View style={styles.card}>
-              <Text style={styles.emptyText}>Ingen gemte identifikatorer</Text>
+              <Text style={styles.emptyText}>No saved identifiers</Text>
             </View>
           ) : (
             Object.entries(storedIdentifiers).map(([taskId, data]: [string, any]) => (
@@ -360,7 +360,7 @@ export default function NotificationDebugScreen() {
                   Activity ID: {data.activityId}
                 </Text>
                 <Text style={styles.identifierText}>
-                  Scheduled For: {new Date(data.scheduledFor).toLocaleString('da-DK')}
+                  Scheduled For: {new Date(data.scheduledFor).toLocaleString('en-US')}
                 </Text>
               </View>
             ))

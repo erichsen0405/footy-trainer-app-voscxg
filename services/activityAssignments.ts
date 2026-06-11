@@ -46,12 +46,12 @@ const isMissingActivityAssignmentTeamExclusionsRpcError = (error: any): boolean 
 
 const toMissingMigrationError = (): Error =>
   new Error(
-    'Aktivitetstildeling kræver en manglende database-migration. Kør migrationen for source_activity_id og prøv igen.',
+    'Activity assignment requires a missing database migration. Run the migration for source_activity_id and try again.',
   );
 
 const toMissingTeamExclusionsMigrationError = (): Error =>
   new Error(
-    'Hold-fravalg kræver en manglende database-migration. Kør migrationen for activity_assignment_team_exclusions og prøv igen.',
+    'Team opt-out requires a missing database migration. Run the activity_assignment_team_exclusions migration and try again.',
   );
 
 const toAssignmentRows = (rows: any[]): ActivityAssignmentRow[] =>
@@ -289,7 +289,7 @@ const syncAssignmentExclusions = async (args: {
     });
 
     if (!externalEventRowId) {
-      throw new Error('Kunne ikke finde ekstern aktivitet til hold-fravalg.');
+      throw new Error('Could not find external activity for team opt-out.');
     }
 
     const { error: rpcError } = await (supabase as any).rpc(
@@ -469,7 +469,7 @@ export const activityAssignmentsService = {
     const trainerId = normalizeId(payload.trainerId);
 
     if (!activityId || !trainerId) {
-      throw new Error('Mangler aktivitet eller træner. Prøv igen.');
+      throw new Error('Lacks activity or exercise. Try again.');
     }
 
     const assignmentInput = {
@@ -483,19 +483,18 @@ export const activityAssignmentsService = {
       playerIds: existingState.playerIds,
       teamIds: existingState.teamIds,
     };
-    const requestedPlayerIds = normalizeIds(payload.playerIds);
+    const requestedPlayerIdsRaw = normalizeIds(payload.playerIds);
     const requestedTeamIdsRaw = normalizeIds(payload.teamIds);
-    if (!requestedPlayerIds.length && !requestedTeamIdsRaw.length && !existingState.playerIds.length) {
-      throw new Error('Vælg mindst én spiller eller ét hold.');
+    if (!requestedPlayerIdsRaw.length && !requestedTeamIdsRaw.length && !existingState.playerIds.length) {
+      throw new Error('Select at least one player or one team.');
     }
 
     const existingPlayerSet = new Set(existingState.playerIds);
     const existingDirectPlayerSet = new Set(existingState.directPlayerIds);
     const existingTeamScopeByPlayerId = existingState.teamScopeByPlayerId;
     const existingExcludedPlayerIdsByTeamId = existingState.excludedPlayerIdsByTeamId;
-    const directPlayerSet = new Set(requestedPlayerIds);
     const teamMembersByTeamId = await getTeamMembersByTeamIds(requestedTeamIdsRaw);
-    const recipientPlayerSet = new Set<string>(requestedPlayerIds);
+    const recipientPlayerSet = new Set<string>();
     const teamScopeByPlayerId: Record<string, string | null> = {};
     const requestedExcludedPlayerIdsByTeamId = normalizeExcludedPlayerIdsByTeamId(
       payload.excludedPlayerIdsByTeamId,
@@ -503,19 +502,15 @@ export const activityAssignmentsService = {
     const requestedTeamIds: string[] = [];
     const sanitizedExcludedPlayerIdsByTeamId: Record<string, string[]> = {};
 
-    requestedPlayerIds.forEach((playerId) => {
-      teamScopeByPlayerId[playerId] = null;
-    });
-
     requestedTeamIdsRaw.forEach((teamId) => {
       const members = teamMembersByTeamId[teamId] || [];
       const teamMemberIds = members.map((playerId) => playerId);
       const excludedPlayerIds = (requestedExcludedPlayerIdsByTeamId[teamId] || []).filter(
-        (playerId) => teamMemberIds.includes(playerId) && !directPlayerSet.has(playerId),
+        (playerId) => teamMemberIds.includes(playerId),
       );
       const excludedPlayerSet = new Set(excludedPlayerIds);
       const includedTeamPlayerIds = teamMemberIds.filter(
-        (playerId) => !directPlayerSet.has(playerId) && !excludedPlayerSet.has(playerId),
+        (playerId) => !excludedPlayerSet.has(playerId),
       );
 
       if (!includedTeamPlayerIds.length) {
@@ -528,20 +523,21 @@ export const activityAssignmentsService = {
       }
 
       members.forEach((playerId) => {
-        if (excludedPlayerSet.has(playerId) && !directPlayerSet.has(playerId)) {
+        if (excludedPlayerSet.has(playerId)) {
           return;
         }
         recipientPlayerSet.add(playerId);
-        if (directPlayerSet.has(playerId)) {
-          if (!(playerId in teamScopeByPlayerId)) {
-            teamScopeByPlayerId[playerId] = null;
-          }
-          return;
-        }
         if (!(playerId in teamScopeByPlayerId)) {
           teamScopeByPlayerId[playerId] = teamId;
         }
       });
+    });
+
+    const directPlayerIds = requestedPlayerIdsRaw.filter((playerId) => !(playerId in teamScopeByPlayerId));
+    const directPlayerSet = new Set(directPlayerIds);
+    directPlayerIds.forEach((playerId) => {
+      recipientPlayerSet.add(playerId);
+      teamScopeByPlayerId[playerId] = null;
     });
 
     const recipientPlayerIds = Array.from(recipientPlayerSet);
@@ -562,7 +558,7 @@ export const activityAssignmentsService = {
         createdCount: 0,
         removedCount: 0,
         updatedCount: 0,
-        skippedPlayerIds: requestedPlayerIds.filter((playerId) => existingDirectPlayerSet.has(playerId)),
+        skippedPlayerIds: directPlayerIds.filter((playerId) => existingDirectPlayerSet.has(playerId)),
         skippedTeamIds: requestedTeamIds.filter((teamId) => {
           const members = teamMembersByTeamId[teamId] || [];
           if (!members.length) return true;
@@ -588,7 +584,7 @@ export const activityAssignmentsService = {
       });
 
       if (!externalEventRowId) {
-        throw new Error('Kunne ikke finde ekstern aktivitet til tildeling.');
+        throw new Error('Could not find external activity to assign.');
       }
 
       const sourceMetaId = normalizeId(activityId);
@@ -639,7 +635,7 @@ export const activityAssignmentsService = {
       });
 
       if (!externalEventRowId) {
-        throw new Error('Kunne ikke finde ekstern aktivitet til fjernelse.');
+        throw new Error('Could not find external activity to remove.');
       }
 
       const sourceMetaId = normalizeId(activityId);
@@ -708,7 +704,7 @@ export const activityAssignmentsService = {
       createdCount: insertedPlayerIds.length,
       removedCount: removedPlayerIds.length,
       updatedCount: updatedPlayerIds.length,
-      skippedPlayerIds: requestedPlayerIds.filter(
+      skippedPlayerIds: directPlayerIds.filter(
         (playerId) =>
           existingDirectPlayerSet.has(playerId) &&
           (existingTeamScopeByPlayerId[playerId] ?? null) === (teamScopeByPlayerId[playerId] ?? null),

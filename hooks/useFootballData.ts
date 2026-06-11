@@ -1068,7 +1068,7 @@ export const useFootballData = ({
         return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
       };
       const isFeedbackTitle = (value?: string | null): boolean => {
-        return normalizeFeedbackTitle(value).startsWith('feedback pa');
+        return (normalizeFeedbackTitle(value).startsWith('feedback pa') || normalizeFeedbackTitle(value).startsWith('feedback on'));
       };
       const feedbackAnswered = (row: any): boolean => {
         const hasScore = typeof row?.rating === 'number';

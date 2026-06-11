@@ -119,13 +119,13 @@ export function buildTrainerFeedbackPushPayload(args: {
   trainerName?: string | null;
   feedbackText: string;
 }): TrainerFeedbackPushPayload {
-  const trainerName = sanitizeLabel(args.trainerName, 'Din træner');
-  const activityTitle = sanitizeLabel(args.activityTitle, 'aktiviteten');
+  const trainerName = sanitizeLabel(args.trainerName, 'Your coach');
+  const activityTitle = sanitizeLabel(args.activityTitle, 'the activity');
   const feedbackPreview = truncate(String(args.feedbackText ?? ''), 120);
 
   return {
-    title: 'Ny feedback fra træner',
-    body: `${trainerName} har sendt feedback på ${activityTitle}.`,
+    title: 'New feedback from your coach',
+    body: `${trainerName} sent feedback on ${activityTitle}.`,
     data: {
       type: 'trainer-feedback',
       activityId: String(args.activityId ?? '').trim(),
@@ -144,8 +144,8 @@ export function buildTrainerFeedbackEmailContent(
   },
   config: Pick<TrainerFeedbackEmailConfig, 'appName' | 'appScheme'>
 ): TrainerFeedbackEmailContent {
-  const trainerName = sanitizeLabel(args.trainerName, 'Din træner');
-  const activityTitle = sanitizeLabel(args.activityTitle, 'aktiviteten');
+  const trainerName = sanitizeLabel(args.trainerName, 'Your coach');
+  const activityTitle = sanitizeLabel(args.activityTitle, 'the activity');
   const appName = sanitizeLabel(config.appName, 'Footy Trainer');
   const activityUrl = buildTrainerFeedbackAppUrl(args.activityId, config.appScheme);
   const safeTrainerName = escapeHtml(trainerName);
@@ -155,12 +155,12 @@ export function buildTrainerFeedbackEmailContent(
   const safeFeedbackText = formatFeedbackHtml(String(args.feedbackText ?? '').trim());
 
   return {
-    subject: 'Ny feedback fra din træner',
+    subject: 'New feedback from your coach',
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
-        <p>Hej,</p>
-        <p>Du har modtaget ny feedback fra <strong>${safeTrainerName}</strong> i ${safeAppName}.</p>
-        <p><strong>Aktivitet:</strong> ${safeActivityTitle}</p>
+        <p>Hello,</p>
+        <p>You received new feedback from <strong>${safeTrainerName}</strong> in ${safeAppName}.</p>
+        <p><strong>Activity:</strong> ${safeActivityTitle}</p>
         <div style="margin: 16px 0; padding: 16px; border-radius: 12px; background: #f3f4f6;">
           <div style="font-weight: 700; margin-bottom: 8px;">Feedback</div>
           <div>${safeFeedbackText}</div>
@@ -170,21 +170,21 @@ export function buildTrainerFeedbackEmailContent(
             href="${safeActivityUrl}"
             style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 8px;"
           >
-            Åbn aktivitet i appen
+            Open activity in the app
           </a>
         </p>
-        <p>Hvis knappen ikke virker, kan du bruge dette link direkte:</p>
+        <p>If the button does not work, use this direct link:</p>
         <p><a href="${safeActivityUrl}">${safeActivityUrl}</a></p>
       </div>
     `.trim(),
     text: [
-      `Du har modtaget ny feedback fra ${trainerName} i ${appName}.`,
-      `Aktivitet: ${activityTitle}`,
+      `You received new feedback from ${trainerName} in ${appName}.`,
+      `Activity: ${activityTitle}`,
       '',
       'Feedback:',
       String(args.feedbackText ?? '').trim(),
       '',
-      `Åbn aktivitet i appen: ${activityUrl}`,
+      `Open activity in the app: ${activityUrl}`,
     ].join('\n'),
   };
 }

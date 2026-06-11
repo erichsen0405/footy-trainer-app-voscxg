@@ -130,7 +130,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
             request_id: relationship?.request_id ?? null,
           };
         })
-        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'da'));
+        .sort((a, b) => a.full_name.localeCompare(b.full_name, 'en-US'));
 
       console.log('Players data:', playersData);
       setPlayers(playersData);
@@ -164,7 +164,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          throw new Error('Du skal være logget ind for at annullere anmodningen');
+          throw new Error('You must be logged in to cancel the request');
         }
 
         const { error: deletePendingError } = await supabase
@@ -175,10 +175,10 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
           .eq('status', 'pending');
 
         if (deletePendingError) {
-          throw new Error(deletePendingError.message || 'Kunne ikke annullere anmodningen');
+          throw new Error(deletePendingError.message || 'Could not cancel the request');
         }
 
-        Alert.alert('Succes', 'Spilleranmodningen er fjernet.');
+        Alert.alert('Success', 'The player request has been removed.');
       } else {
         console.log('Calling delete-player Edge Function...');
 
@@ -195,7 +195,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
           console.error('Edge function error:', error);
           
           // Try to extract error message
-          let errorMessage = 'Kunne ikke fjerne spilleren';
+          let errorMessage = 'Could not remove the player';
           
           if (error.context && error.context instanceof Response) {
             try {
@@ -217,15 +217,15 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
 
         if (!data || !data.success) {
           console.error('Edge function returned error:', data);
-          const errorMessage = data?.error || 'Kunne ikke fjerne spilleren';
+          const errorMessage = data?.error || 'Could not remove the player';
           throw new Error(errorMessage);
         }
 
         console.log('Player removed successfully from trainer profile');
         
-        const message = `${playerName} er blevet fjernet fra din profil.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.\n\nDe opgaver og aktiviteter du har tildelt spilleren er blevet slettet.`;
+        const message = `${playerName} has been removed from your profile.\n\nThe player keeps their own account and self-created tasks and activities.\n\nThe tasks and activities you assigned to the player have been deleted.`;
 
-        Alert.alert('Succes', message);
+        Alert.alert('Success', message);
       }
       
       // Refresh the list
@@ -236,12 +236,12 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
       console.error('Error removing player:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
       
-      let errorMessage = 'Der opstod en fejl ved fjernelse af spilleren';
+      let errorMessage = 'An error occurred while removing the player';
       if (error.message) {
         errorMessage = error.message;
       }
       
-      Alert.alert('Fejl', errorMessage);
+      Alert.alert('Error', errorMessage);
     } finally {
       console.log('Clearing deletingPlayerId');
       setDeletingPlayerId(null);
@@ -254,20 +254,20 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     console.log('Remove button pressed for player:', playerId, playerName);
     
     Alert.alert(
-      'Fjern spiller',
+      'Remove player',
       linkStatus === 'pending'
-        ? `Vil du annullere anmodningen til ${playerName}?`
-        : `Er du sikker på at du vil fjerne ${playerName} fra din profil?\n\nSpilleren vil blive fjernet fra din liste, og alle opgaver og aktiviteter du har tildelt spilleren vil blive slettet.\n\nSpilleren beholder sin egen konto og selvoprettede opgaver og aktiviteter.`,
+        ? `Do you want to cancel the request to ${playerName}?`
+        : `Are you sure you want to remove ${playerName} from your profile?\n\nThe player will be removed from your list, and all tasks and activities you assigned to the player will be deleted.\n\nThe player keeps their own account and self-created tasks and activities.`,
       [
         { 
-          text: 'Annuller', 
+          text: 'Cancel',
           style: 'cancel',
           onPress: () => {
             console.log('Remove cancelled by user');
           }
         },
         {
-          text: 'Fjern',
+          text: 'Remove',
           style: 'destructive',
           onPress: () => {
             console.log('User confirmed removal, calling performDelete...');
@@ -285,7 +285,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Henter spillere...</Text>
+        <Text style={styles.loadingText}>Loading players...</Text>
       </View>
     );
   }
@@ -300,9 +300,9 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
             size={64}
             color={colors.textSecondary}
           />
-          <Text style={styles.emptyTitle}>Ingen spillere endnu</Text>
+          <Text style={styles.emptyTitle}>No players yet</Text>
           <Text style={styles.emptyText}>
-            Tryk på &quot;Tilføj Spiller&quot; for at oprette din første spillerprofil
+            Press "Add Player" to create your first player profile
           </Text>
         </View>
       ) : (
@@ -328,7 +328,7 @@ export default function PlayersList({ onCreatePlayer, refreshTrigger }: PlayersL
                     testID={`players.card.statusBadge.${player.id}`}
                   >
                     <Text style={styles.statusBadgeText}>
-                      {player.link_status === 'pending' ? 'Afventer accept' : 'Accepteret'}
+                      {player.link_status === 'pending' ? 'Awaiting acceptance' : 'Accepted'}
                     </Text>
                   </View>
                   {player.phone_number && (

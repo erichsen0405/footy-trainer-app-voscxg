@@ -45,15 +45,15 @@ export default function DeleteActivityDialog({
               color={colors.error}
             />
             <Text style={[styles.dialogTitle, { color: textColor }]}>
-              Slet aktivitet
+              Delete activity
             </Text>
             {isSeries ? (
               <Text style={[styles.dialogMessage, { color: textSecondaryColor }]}>
-                Denne aktivitet er en del af en serie. Vil du slette kun denne aktivitet eller hele serien?
+                This activity is part of a series. Do you want to delete only this activity or the whole series?
               </Text>
             ) : (
               <Text style={[styles.dialogMessage, { color: textSecondaryColor }]}>
-                Er du sikker på at du vil slette denne aktivitet? Denne handling kan ikke fortrydes.
+                Are you sure you want to delete this activity? This action cannot be undone.
               </Text>
             )}
           </View>
@@ -75,7 +75,7 @@ export default function DeleteActivityDialog({
                     size={24}
                     color="#fff"
                   />
-                  <Text style={styles.dialogButtonText}>Kun denne aktivitet</Text>
+                  <Text style={styles.dialogButtonText}>Only this activity</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -92,7 +92,7 @@ export default function DeleteActivityDialog({
                     size={24}
                     color="#fff"
                   />
-                  <Text style={styles.dialogButtonText}>Hele serien</Text>
+                  <Text style={styles.dialogButtonText}>Whole series</Text>
                 </TouchableOpacity>
               </React.Fragment>
             ) : (
@@ -110,7 +110,7 @@ export default function DeleteActivityDialog({
                   size={24}
                   color="#fff"
                 />
-                <Text style={styles.dialogButtonText}>Slet aktivitet</Text>
+                <Text style={styles.dialogButtonText}>Delete activity</Text>
               </TouchableOpacity>
             )}
 
@@ -123,7 +123,7 @@ export default function DeleteActivityDialog({
               onPress={onClose}
               activeOpacity={0.7}
             >
-              <Text style={[styles.cancelButtonText, { color: textColor }]}>Annuller</Text>
+              <Text style={[styles.cancelButtonText, { color: textColor }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>

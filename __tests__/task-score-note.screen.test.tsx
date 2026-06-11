@@ -89,8 +89,8 @@ describe('task-score-note screen', () => {
     };
 
     jest.spyOn(Alert, 'alert').mockImplementation((title: any, _message?: any, buttons?: any) => {
-      if (title === 'forlad uden at gemme?' && Array.isArray(buttons)) {
-        const leave = buttons.find((candidate: any) => candidate?.text === 'Forlad');
+      if (title === 'leave without saving?' && Array.isArray(buttons)) {
+        const leave = buttons.find((candidate: any) => candidate?.text === 'Leave');
         leave?.onPress?.();
       }
     });
@@ -134,11 +134,11 @@ describe('task-score-note screen', () => {
     fireEvent.press(screen.getByTestId('feedback.scoreInput'));
 
     expect(screen.getAllByTestId(/feedback\.scoreOption\./)).toHaveLength(5);
-    expect(screen.getByText('Jeg kunne ikke holde tempo i dag')).toBeTruthy();
-    expect(screen.getByText('Jeg havde svært ved tempoet i dag')).toBeTruthy();
-    expect(screen.getByText('Jeg holdt et okay tempo i dag')).toBeTruthy();
-    expect(screen.getByText('Jeg holdt et højt tempo i dag')).toBeTruthy();
-    expect(screen.getByText('Jeg var helt i top på tempo i dag')).toBeTruthy();
+    expect(screen.getByText('I could not keep the pace today')).toBeTruthy();
+    expect(screen.getByText('I struggled with the pace today')).toBeTruthy();
+    expect(screen.getByText('I kept an okay pace today')).toBeTruthy();
+    expect(screen.getByText('I kept a high pace today')).toBeTruthy();
+    expect(screen.getByText('My pace was excellent today')).toBeTruthy();
   });
 
   it('hydrates persisted intensity note+score when task is completed', async () => {
@@ -155,7 +155,7 @@ describe('task-score-note screen', () => {
     await waitFor(() => expect(screen.getByTestId('feedback.noteInput').props.value).toBe('Gemt intensitet note'));
     await waitFor(() => expect(screen.getByTestId('feedback.selectedScore.5')).toBeTruthy());
     await waitFor(() =>
-      expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('Jeg var helt i top på tempo i dag'),
+      expect(screen.getByTestId('feedback.scoreInput.value').props.children).toBe('My pace was excellent today'),
     );
   });
 
@@ -165,9 +165,9 @@ describe('task-score-note screen', () => {
     await waitFor(() => expect(screen.getByTestId('feedback.infoButton')).toBeTruthy());
     fireEvent.press(screen.getByTestId('feedback.infoButton'));
 
-    expect(screen.getByText('Sådan bruger du Intensitet')).toBeTruthy();
+    expect(screen.getByText('How to use intensity')).toBeTruthy();
     expect(
-      screen.getByText('Intensitet handler om det tempo og den synlige intensitet du faktisk kunne holde udefra set.'),
+      screen.getByText('Intensity is about the pace and the visible intensity you could actually maintain from the outside.'),
     ).toBeTruthy();
   });
 });

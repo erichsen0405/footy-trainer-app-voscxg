@@ -116,15 +116,15 @@ const buildEntitlementSignature = (s: SubscriptionStatus | null): string => {
 const derivePlanMetaFromSku = (sku: string | null) => {
   switch (sku) {
     case PRODUCT_IDS.PLAYER_PREMIUM:
-      return { name: 'Premium spiller', maxPlayers: 1 };
+      return { name: 'Premium player', maxPlayers: 1 };
     case PRODUCT_IDS.PLAYER_BASIC:
-      return { name: 'Basis spiller', maxPlayers: 1 };
+      return { name: 'Basic player', maxPlayers: 1 };
     case PRODUCT_IDS.TRAINER_BASIC:
-      return { name: 'Træner Basis', maxPlayers: 5 };
+      return { name: 'Coach Basic', maxPlayers: 5 };
     case PRODUCT_IDS.TRAINER_STANDARD:
-      return { name: 'Træner Standard', maxPlayers: 15 };
+      return { name: 'Coach Standard', maxPlayers: 15 };
     case PRODUCT_IDS.TRAINER_PREMIUM:
-      return { name: 'Træner Premium', maxPlayers: 50 };
+      return { name: 'Coach Premium', maxPlayers: 50 };
     default:
       return null;
   }
@@ -133,15 +133,15 @@ const derivePlanMetaFromSku = (sku: string | null) => {
 const derivePlanMetaFromTier = (tier: SubscriptionTier | null) => {
   switch (tier) {
     case 'player_premium':
-      return { name: 'Premium spiller', maxPlayers: 1 };
+      return { name: 'Premium player', maxPlayers: 1 };
     case 'player_basic':
-      return { name: 'Basis spiller', maxPlayers: 1 };
+      return { name: 'Basic player', maxPlayers: 1 };
     case 'trainer_basic':
-      return { name: 'Træner Basis', maxPlayers: 5 };
+      return { name: 'Coach Basic', maxPlayers: 5 };
     case 'trainer_standard':
-      return { name: 'Træner Standard', maxPlayers: 15 };
+      return { name: 'Coach Standard', maxPlayers: 15 };
     case 'trainer_premium':
-      return { name: 'Træner Premium', maxPlayers: 50 };
+      return { name: 'Coach Premium', maxPlayers: 50 };
     default:
       return null;
   }
@@ -539,7 +539,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           console.warn('[SubscriptionContext] No valid session for subscription creation');
           return {
             success: false,
-            error: 'Du skal være logget ind for at oprette et abonnement. Prøv at logge ud og ind igen.',
+            error: 'You must be logged in to create a subscription. Try logging out and logging in again.',
           };
         }
 
@@ -569,14 +569,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             forceUserRoleRefresh('subscription-exists');
             return {
               success: false,
-              error: errorMessage || 'Du har allerede et abonnement.',
+              error: errorMessage || 'You already have a subscription.',
               alreadyHasSubscription: true,
             };
           }
 
           return {
             success: false,
-            error: errorMessage || `HTTP ${response.status}: Kunne ikke oprette abonnement`,
+            error: errorMessage || `HTTP ${response.status}: Could not create subscription`,
           };
         }
 
@@ -597,10 +597,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           error?.message?.includes('fetch') ||
           error?.message?.includes('Failed to fetch')
         ) {
-          return { success: false, error: 'Netværksfejl. Tjek din internetforbindelse og prøv igen.' };
+          return { success: false, error: 'Network error. Check your internet connection and try again.' };
         }
 
-        return { success: false, error: 'Der opstod en uventet fejl. Prøv igen om et øjeblik.' };
+        return { success: false, error: 'An unexpected error occurred. Please try again in a moment.' };
       }
     },
     [applyOptimisticSubscription, fetchSubscriptionStatus, getActiveSession]
@@ -625,11 +625,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           return {
             success: false,
             error:
-              'Du skal være logget ind for at skifte abonnement. Log ud og ind igen, og prøv derefter at skifte plan.',
+              'You must be logged in to change your subscription. Log out and back in, then try switching plans.',
           };
         }
 
-        let lastError = 'Plan-skift fejlede';
+        let lastError = 'Plan change failed';
         let sawUnsupported = false;
 
         for (const path of endpointCandidates) {
@@ -657,7 +657,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             }
 
             if (!response.ok || !responseData?.success) {
-              const errorMessage = responseData?.error || `HTTP ${response.status}: Kunne ikke skifte plan`;
+              const errorMessage = responseData?.error || `HTTP ${response.status}: Could not switch plan`;
               lastError = errorMessage;
 
               if (responseData?.alreadyOnPlan) {
@@ -675,8 +675,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           } catch (error: any) {
             lastError =
               error?.message?.includes('network') || error?.message?.includes('fetch')
-                ? 'Netværksfejl. Tjek forbindelsen og prøv igen.'
-                : 'Plan-skift fejlede. Prøv igen om lidt.';
+                ? 'Network error. Check your connection and try again.'
+                : 'Plan shift failed. Try again in a little while.';
           }
         }
 
@@ -684,7 +684,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           return {
             success: false,
             unsupported: true,
-            error: 'Plan-skift er ikke aktiveret endnu. Brug "Administrer abonnement" for at ændre din plan.',
+            error: 'Plan switching has not been activated yet. Use "Manage Subscription" to change your plan.',
           };
         }
 
@@ -692,7 +692,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       } catch {
         return {
           success: false,
-          error: 'Der opstod en uventet fejl under plan-skift. Prøv igen.',
+          error: 'An unexpected error occurred during plan switching. Try again.',
         };
       }
     },

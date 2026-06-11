@@ -52,13 +52,13 @@ export default function TeamPlayerSelector() {
       if (profile) {
         setTrainerProfile({
           id: profile.user_id,
-          name: profile.full_name || user.email?.split('@')[0] || 'Min profil',
+          name: profile.full_name || user.email?.split('@')[0] || 'My profile',
         });
       } else {
         // Fallback if no profile exists
         setTrainerProfile({
           id: user.id,
-          name: user.email?.split('@')[0] || 'Min profil',
+          name: user.email?.split('@')[0] || 'My profile',
         });
       }
     };
@@ -117,7 +117,7 @@ export default function TeamPlayerSelector() {
 
   const getDisplayText = () => {
     if (!selectedContext.type || !selectedContext.name) {
-      return trainerProfile?.name || 'Min profil';
+      return trainerProfile?.name || 'My profile';
     }
     return selectedContext.name;
   };
@@ -199,7 +199,7 @@ export default function TeamPlayerSelector() {
                 color={colors.text}
               />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Vælg profil</Text>
+            <Text style={styles.modalTitle}>Choose profile</Text>
             <View style={{ width: 24 }} />
           </View>
 
@@ -207,7 +207,7 @@ export default function TeamPlayerSelector() {
             {/* Own Profile Section */}
             {trainerProfile && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Min profil</Text>
+                <Text style={styles.sectionTitle}>My profile</Text>
                 <TouchableOpacity
                   style={[
                     styles.optionCard,
@@ -246,14 +246,14 @@ export default function TeamPlayerSelector() {
 
             {/* Players Section */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Spillere ({players.length})</Text>
+              <Text style={styles.sectionTitle}>Players ({players.length})</Text>
               {loading ? (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>Indlæser spillere...</Text>
+                  <Text style={styles.emptyText}>Loading players...</Text>
                 </View>
               ) : players.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>Ingen spillere tilgængelige</Text>
+                  <Text style={styles.emptyText}>No players available</Text>
                 </View>
               ) : (
                 players.map((player) => (
@@ -306,11 +306,11 @@ export default function TeamPlayerSelector() {
               <Text style={styles.sectionTitle}>Teams ({teams.length})</Text>
               {loading ? (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>Indlæser teams...</Text>
+                  <Text style={styles.emptyText}>Loading teams...</Text>
                 </View>
               ) : teams.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Text style={styles.emptyText}>Ingen teams tilgængelige</Text>
+                  <Text style={styles.emptyText}>No teams available</Text>
                 </View>
               ) : (
                 teams.map((team) => (

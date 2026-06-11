@@ -44,7 +44,7 @@ export default function AdminScreen() {
   useEffect(() => {
     if (!roleLoading && !isAdmin) {
       Alert.alert(
-        'Adgang nægtet',
+        'Access denied',
         'Du har ikke adgang til admin-siden',
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/(home)') }]
       );
@@ -60,8 +60,8 @@ export default function AdminScreen() {
     // Check if user has subscription and player limit
     if (!subscriptionStatus?.hasSubscription) {
       Alert.alert(
-        'Abonnement påkrævet',
-        'Du skal have et aktivt abonnement for at oprette spillere. Start din 14-dages gratis prøveperiode nu!',
+        'Subscription required',
+        'You must have an active subscription to create players. Start your 14-day free trial now!',
         [{ text: 'OK' }]
       );
       return;
@@ -69,8 +69,8 @@ export default function AdminScreen() {
 
     if (subscriptionStatus.currentPlayers >= subscriptionStatus.maxPlayers) {
       Alert.alert(
-        'Spillergrænse nået',
-        `Din ${subscriptionStatus.planName} plan tillader op til ${subscriptionStatus.maxPlayers} spiller${subscriptionStatus.maxPlayers > 1 ? 'e' : ''}. Opgrader din plan for at tilføje flere spillere.`,
+        'Player limit reached',
+        `Your ${subscriptionStatus.planName} plan allows up to ${subscriptionStatus.maxPlayers} player${subscriptionStatus.maxPlayers > 1 ? 's' : ''}. Upgrade your plan to add more players.`,
         [{ text: 'OK' }]
       );
       return;
@@ -84,7 +84,7 @@ export default function AdminScreen() {
       <View style={[styles.container, { backgroundColor: bgColor }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: textColor }]}>Indlæser...</Text>
+          <Text style={[styles.loadingText, { color: textColor }]}>Loading...</Text>
         </View>
       </View>
     );
@@ -111,7 +111,7 @@ export default function AdminScreen() {
               color="#fff"
             />
             <Text style={styles.headerTitle}>Admin Panel</Text>
-            <Text style={styles.headerSubtitle}>Administrer abonnement, teams, spillere og indstillinger</Text>
+            <Text style={styles.headerSubtitle}>Manage subscription, teams, players, and settings</Text>
           </View>
         </View>
 
@@ -129,7 +129,7 @@ export default function AdminScreen() {
             </View>
           </View>
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Vælg hvilken spiller eller hvilket team du vil administrere aktiviteter for
+            Select which player or team you want to manage activities for
           </Text>
           <TeamPlayerSelector />
         </View>
@@ -144,11 +144,11 @@ export default function AdminScreen() {
                 size={28}
                 color={colors.primary}
               />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Abonnement</Text>
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Subscription</Text>
             </View>
           </View>
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Administrer dit abonnement og spillergrænser
+            Manage your subscription and player limits
           </Text>
           <SubscriptionManager />
         </View>
@@ -167,7 +167,7 @@ export default function AdminScreen() {
             </View>
           </View>
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Opret og administrer teams, og tilknyt spillere til teams
+            Create and manage teams, and assign players to teams
           </Text>
           <TeamManagement />
         </View>
@@ -182,7 +182,7 @@ export default function AdminScreen() {
                 size={28}
                 color={colors.primary}
               />
-              <Text style={[styles.sectionTitle, { color: textColor }]}>Spillere</Text>
+              <Text style={[styles.sectionTitle, { color: textColor }]}>Players</Text>
             </View>
             <TouchableOpacity
               style={[styles.addButton, { backgroundColor: colors.primary }]}
@@ -195,7 +195,7 @@ export default function AdminScreen() {
                 size={20}
                 color="#fff"
               />
-              <Text style={styles.addButtonText}>Tilføj spiller</Text>
+              <Text style={styles.addButtonText}>Add player</Text>
             </TouchableOpacity>
           </View>
 
@@ -214,10 +214,9 @@ export default function AdminScreen() {
             color={colors.secondary}
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-            Som admin har du adgang til at administrere abonnement, teams og spillere. 
-            Husk at vælge en spiller eller et team før du administrerer aktiviteter.
+            As an admin, you have access to manage subscriptions, teams and players. Remember to select a player or team before managing activities.
             {'\n\n'}
-            For at tilføje eksterne kalendere, gå til din Profil-side.
+            To add external calendars, go to your Profile page.
           </Text>
         </View>
 

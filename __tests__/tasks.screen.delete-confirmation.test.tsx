@@ -125,7 +125,7 @@ describe('Tasks delete confirmation modal', () => {
     });
   });
 
-  it('requires case-sensitive SLET before delete confirm can be pressed', () => {
+  it('requires case-sensitive DELETE before delete confirm can be pressed', () => {
     const { getByTestId, getByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
@@ -133,7 +133,7 @@ describe('Tasks delete confirmation modal', () => {
 
     expect(
       getByText(
-        'Hvis du sletter denne opgaveskabelon, slettes alle tidligere og fremtidige opgaver på relaterede aktiviteter. Hvis du vil beholde historik, vælg Arkiver i stedet.',
+        'Deleting this task template will delete all previous and future tasks on related activities. If you want to keep history, select Archive instead.',
       ),
     ).toBeTruthy();
 
@@ -146,7 +146,7 @@ describe('Tasks delete confirmation modal', () => {
         getByTestId('tasks.template.deleteModal.confirmButton').props.disabled,
     ).toBe(true);
 
-    fireEvent.changeText(getByTestId('tasks.template.deleteModal.input'), 'SLET');
+    fireEvent.changeText(getByTestId('tasks.template.deleteModal.input'), 'DELETE');
     expect(
       getByTestId('tasks.template.deleteModal.confirmButton').props.accessibilityState?.disabled ??
         getByTestId('tasks.template.deleteModal.confirmButton').props.disabled,

@@ -470,7 +470,7 @@ describe('supabase row transforms', () => {
     );
   });
 
-  it('updates existing internal player copy with team scope when team is assigned later', async () => {
+  it('converts an existing direct player assignment to team scope when their team is assigned', async () => {
     const sourceMaybeSingleInitial = jest.fn().mockResolvedValue({
       data: { id: 'activity-source' },
       error: null,
@@ -532,7 +532,7 @@ describe('supabase row transforms', () => {
       activityId: 'activity-source',
       trainerId: 'trainer-1',
       isExternal: false,
-      playerIds: [],
+      playerIds: ['player-1'],
       teamIds: ['team-1'],
     });
 
@@ -761,8 +761,8 @@ describe('supabase row transforms', () => {
     const legacyLookupIsVideo = jest.fn().mockReturnValue({ eq: legacyLookupEqPlayer });
     const legacyLookupEqDescription = jest.fn().mockReturnValue({ is: legacyLookupIsVideo });
     const legacyLookupEqTitle = jest.fn().mockReturnValue({ eq: legacyLookupEqDescription });
-    const legacyLookupEqSource = jest.fn().mockReturnValue({ eq: legacyLookupEqTitle });
-    const legacyLookupIsLibrary = jest.fn().mockReturnValue({ eq: legacyLookupEqSource });
+    const legacyLookupInSource = jest.fn().mockReturnValue({ eq: legacyLookupEqTitle });
+    const legacyLookupIsLibrary = jest.fn().mockReturnValue({ in: legacyLookupInSource });
     const legacyLookupEqUser = jest.fn().mockReturnValue({ is: legacyLookupIsLibrary });
     const legacyLookupSelect = jest.fn().mockReturnValue({ eq: legacyLookupEqUser });
 

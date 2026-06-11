@@ -76,7 +76,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import * as CommonStyles from '@/styles/commonStyles';
 import { format, startOfWeek, endOfWeek, getWeek } from 'date-fns';
-import { da } from 'date-fns/locale';
+import { enUS } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { canTrainerManageActivity } from '@/utils/permissions';
 import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
@@ -142,7 +142,7 @@ function getWeekLabel(date: Date): string {
   try {
     const start = startOfWeek(date, { weekStartsOn: 1 });
     const end = endOfWeek(date, { weekStartsOn: 1 });
-    return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
+    return `${format(start, 'MMM d', { locale: enUS })} – ${format(end, 'MMM d', { locale: enUS })}`;
   } catch (error) {
     console.error('[Home] Error formatting week label:', error);
     return '';
@@ -152,7 +152,7 @@ function getWeekLabel(date: Date): string {
 function getUpcomingDayLabel(date: Date): string {
   if (!date || isNaN(date.getTime())) return '';
   try {
-    return format(date, 'EEE d. MMM', { locale: da });
+    return format(date, 'EEE, MMM d', { locale: enUS });
   } catch {
     return '';
   }
@@ -307,7 +307,7 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
         <View style={thisWeekPremiumCardStyles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} ellipsizeMode="tail" style={thisWeekPremiumCardStyles.headerKicker}>
-              DENNE UGE <Text style={thisWeekPremiumCardStyles.headerDot}>•</Text>{' '}
+              THIS WEEK <Text style={thisWeekPremiumCardStyles.headerDot}>•</Text>{' '}
               <Text style={thisWeekPremiumCardStyles.headerWeek}>{weekLabel}</Text>
             </Text>
             <Text style={thisWeekPremiumCardStyles.headerRange}>{dateRangeLabel}</Text>
@@ -321,7 +321,7 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
               onPress={handleCreatePress}
               style={thisWeekPremiumCardStyles.createCirclePressable}
               accessibilityRole="button"
-              accessibilityLabel="Opret aktivitet"
+              accessibilityLabel="Create activity"
               testID="home.thisWeekPremiumCard.addButton"
             >
               <LinearGradient
@@ -546,7 +546,7 @@ const ThisWeekPremiumCard = React.memo(function ThisWeekPremiumCard({
             >
               <IconSymbol ios_icon_name="sun.max" android_material_icon_name="wb_sunny" size={14} color="rgba(255,255,255,0.92)" />
               <Text numberOfLines={1} style={thisWeekPremiumCardStyles.todayText}>
-                {isTodayOnly ? 'I dag' : 'Uge'}
+                {isTodayOnly ? 'Today' : 'Week'}
               </Text>
             </Pressable>
           </View>
@@ -962,7 +962,7 @@ function normalizeFeedbackTitle(value?: string | null): string {
 function isFeedbackTitle(title?: string | null): boolean {
   if (typeof title !== 'string') return false;
   const normalized = normalizeFeedbackTitle(title);
-  return normalized.startsWith('feedback pa');
+  return normalized.startsWith('feedback pa') || normalized.startsWith('feedback on');
 }
 
 function getMarkerTemplateIdFromTask(task: any): string | null {
@@ -1765,13 +1765,13 @@ export default function HomeScreen() {
     // Generate motivation text
     let motivationText = '';
     if (percentageUpToToday >= 80) {
-      motivationText = `Fantastisk! Du er helt på toppen! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført! 🌟'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført! 🎉'} ⚽`;
+      motivationText = `Fantastic! You are right on top! ${remainingTasksToday > 0 ? `${remainingTasksToday} tasks left through today.` : 'All tasks through today are complete! 🌟'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} tasks left this week.` : 'The whole week is complete! 🎉'} ⚽`;
     } else if (percentageUpToToday >= 60) {
-      motivationText = `Rigtig godt! Du klarer dig godt! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført! 💪'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført! 🎉'} ⚽`;
+      motivationText = `Really good! You are doing well! ${remainingTasksToday > 0 ? `${remainingTasksToday} tasks left through today.` : 'All tasks through today are complete! 💪'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} tasks left this week.` : 'The whole week is complete! 🎉'} ⚽`;
     } else if (percentageUpToToday >= 40) {
-      motivationText = `Du er på vej! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} 🔥`;
+      motivationText = `You are on your way! ${remainingTasksToday > 0 ? `${remainingTasksToday} tasks left through today.` : 'All tasks through today are complete!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} tasks left this week.` : 'The whole week is complete!'} 🔥`;
     } else {
-      motivationText = `Hver træning tæller! ${remainingTasksToday > 0 ? `${remainingTasksToday} opgaver tilbage indtil i dag.` : 'Alle opgaver indtil i dag er fuldført!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} opgaver tilbage for ugen.` : 'Hele ugen er fuldført!'} ⚽`;
+      motivationText = `Every training session counts! ${remainingTasksToday > 0 ? `${remainingTasksToday} tasks left through today.` : 'All tasks through today are complete!'}\n${remainingTasksWeek > 0 ? `${remainingTasksWeek} tasks left this week.` : 'The whole week is complete!'} ⚽`;
     }
 
     // Get gradient colors based on performance (same thresholds as performance screen)
@@ -2140,7 +2140,7 @@ export default function HomeScreen() {
       });
     }
 
-    // Add DENNE UGE card
+    // Add current week card
     if (safeCurrentWeekSummary) {
       appendWeekAccordionRows(safeCurrentWeekSummary, 'currentWeek');
     }
@@ -2291,14 +2291,14 @@ export default function HomeScreen() {
 
         const summaryEyebrowText =
           item.section === 'previous'
-            ? 'TIDLIGERE UGE'
+            ? 'PREVIOUS WEEK'
             : item.section === 'currentWeek'
-              ? 'DENNE UGE'
-              : 'KOMMENDE UGE';
-        const summaryTimeLabelPrefix = item.section === 'previous' ? 'Planlagt' : 'Planlagt';
+              ? 'THIS WEEK'
+              : 'UPCOMING WEEK';
+        const summaryTimeLabelPrefix = item.section === 'previous' ? 'Planned' : 'Planned';
 
         if (item.section === 'currentWeek') {
-          const weekNumber = getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da });
+          const weekNumber = getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: enUS });
           const isExpanded = expandedUpcomingWeeks[item.weekKey] === true;
           const percentage = Math.max(0, Math.min(100, Math.round(performanceMetrics.percentageUpToToday || 0)));
           const trophyCount = percentage >= 80 ? 1 : percentage >= 60 ? 2 : 3;
@@ -2312,12 +2312,12 @@ export default function HomeScreen() {
               testID="home.weekSummary.currentWeek"
             >
               <ThisWeekPremiumCard
-                weekLabel={`Uge ${weekNumber}`}
+                weekLabel={`Week ${weekNumber}`}
                 dateRangeLabel={getWeekLabel(item.weekGroup.weekStart)}
                 percentNumber={percentage}
-                tasksLabel={`Opgaver ${performanceMetrics.completedTasksWeek}/${performanceMetrics.totalTasksWeek}`}
-                plannedLabel={`Planlagt ${formatHoursDa(item.totalMinutes)}`}
-                activitiesLabel={`Aktiviteter ${item.activityCount}`}
+                tasksLabel={`Tasks ${performanceMetrics.completedTasksWeek}/${performanceMetrics.totalTasksWeek}`}
+                plannedLabel={`Planned ${formatHoursDa(item.totalMinutes)}`}
+                activitiesLabel={`Activities ${item.activityCount}`}
                 trophyCount={trophyCount}
                 expanded={isExpanded}
                 onToggle={() => toggleUpcomingWeekExpanded(item.weekKey, item.section)}
@@ -2366,7 +2366,7 @@ export default function HomeScreen() {
                         {summaryEyebrowText}
                       </Text>
                       <Text style={[styles.upcomingSummaryTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>
-                        Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                        Week {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: enUS })}
                       </Text>
                     </View>
 
@@ -2375,7 +2375,7 @@ export default function HomeScreen() {
                         style={styles.upcomingChevronShadow}
                         onPress={handleOpenCreateModal}
                         accessibilityRole="button"
-                        accessibilityLabel="Opret aktivitet"
+                        accessibilityLabel="Create activity"
                       >
                         <LinearGradient
                           colors={isDark ? ['#3CC06A', '#1F8A43'] : ['#4CC46E', '#279B4A']}
@@ -2447,7 +2447,7 @@ export default function HomeScreen() {
                         ellipsizeMode="tail"
                         style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
                       >
-                        Aktiviteter · {item.activityCount}
+                        Activities · {item.activityCount}
                       </Text>
                     </View>
 
@@ -2468,7 +2468,7 @@ export default function HomeScreen() {
                         ellipsizeMode="tail"
                         style={[styles.upcomingSummaryChipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}
                       >
-                        Opgaver · {item.totalTasks}
+                        Tasks · {item.totalTasks}
                       </Text>
                     </View>
 
@@ -2507,7 +2507,7 @@ export default function HomeScreen() {
         const todayDayKey = format(new Date(), 'yyyy-MM-dd');
         const isCurrentWeekTodayLabel =
           isCurrentWeekSection && String(item.dayKey) === todayDayKey;
-        const label = isCurrentWeekTodayLabel ? 'I dag' : getUpcomingDayLabel(date);
+        const label = isCurrentWeekTodayLabel ? 'Today' : getUpcomingDayLabel(date);
         if (!label) return null;
         const dayToggleKey =
           typeof item.dayToggleKey === 'string' && item.dayToggleKey.length > 0
@@ -2629,7 +2629,7 @@ export default function HomeScreen() {
           return (
             <View style={styles.weekGroup}>
               <Text style={[styles.weekLabel, { color: isDark ? '#e3e3e3' : colors.text }]}>
-                Uge {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: da })}
+                Week {getWeek(item.weekGroup.weekStart, { weekStartsOn: 1, locale: enUS })}
               </Text>
               <Text style={[styles.weekDateRange, { color: isDark ? '#999' : colors.textSecondary }]}>{getWeekLabel(item.weekGroup.weekStart)}</Text>
             </View>
@@ -2743,7 +2743,7 @@ export default function HomeScreen() {
       case 'emptyToday':
         return (
           <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: isDark ? '#999' : colors.textSecondary }]}>Ingen aktiviteter i dag</Text>
+            <Text style={[styles.emptyText, { color: isDark ? '#999' : colors.textSecondary }]}>No activities today</Text>
           </View>
         );
 
@@ -2765,7 +2765,7 @@ export default function HomeScreen() {
                   ]}
                   onPress={handleLoadMorePrevious}
                   accessibilityRole="button"
-                  accessibilityLabel="Hent en tidligere uge mere"
+                  accessibilityLabel="Load one more previous week"
                   testID="home.previousWeeks.loadOne"
                 >
                   <Text style={[styles.loadMoreButtonText, styles.loadMoreSecondaryText, { color: isDark ? '#e3e3e3' : colors.text }]}>
@@ -2796,11 +2796,11 @@ export default function HomeScreen() {
                 ]}
                 onPress={handleOpenPreviousWeeksModal}
                 accessibilityRole="button"
-                accessibilityLabel="Vis forrige uger"
+                accessibilityLabel="Show previous weeks"
                 testID="home.previousWeeks.toggle"
               >
                 <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
-                  Forrige
+                  Previous
                 </Text>
               </Pressable>
             </View>
@@ -2877,7 +2877,7 @@ export default function HomeScreen() {
           </View>
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>Football Coach</Text>
-            <Text style={styles.headerSubtitle}>Træn som en Pro</Text>
+            <Text style={styles.headerSubtitle}>Train like a Pro</Text>
           </View>
         </View>
 
@@ -2891,7 +2891,7 @@ export default function HomeScreen() {
               color={isDark ? '#FFB74D' : '#F57C00'}
             />
             <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
-              Du kan kun redigere indhold, du selv har oprettet.
+              You can only edit content you created yourself.
             </Text>
           </View>
         )}
@@ -2943,15 +2943,15 @@ export default function HomeScreen() {
         <View style={styles.previousModalOverlay}>
           <View style={[styles.previousModalRoot, { backgroundColor: isDark ? '#111' : '#F3F4F6' }]}>
             <View style={[styles.previousModalHeader, { paddingTop: insets.top + 8 }]}>
-              <Text style={[styles.previousModalTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Forrige Uger</Text>
+              <Text style={[styles.previousModalTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Previous Weeks</Text>
               <Pressable
                 style={[styles.previousModalCloseButton, { borderColor: isDark ? '#444' : '#D6D6D6' }]}
                 onPress={handleClosePreviousWeeksModal}
                 accessibilityRole="button"
-                accessibilityLabel="Luk forrige uger"
+                accessibilityLabel="Close previous weeks"
                 testID="home.previousWeeks.toggle"
               >
-                <Text style={[styles.previousModalCloseText, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Luk</Text>
+                <Text style={[styles.previousModalCloseText, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Close</Text>
               </Pressable>
             </View>
 

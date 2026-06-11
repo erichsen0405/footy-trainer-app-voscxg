@@ -1,7 +1,36 @@
 import { extractFirstPlayableVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
 
+export type TaskMediaType = 'video' | 'image' | 'pdf' | 'unknown';
+
 function trimString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function extensionFromUrl(value: string): string | null {
+  const withoutQuery = value.split('?')[0]?.split('#')[0] ?? value;
+  const match = withoutQuery.match(/\.([a-zA-Z0-9]+)$/);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+export function getTaskMediaType(value: unknown): TaskMediaType {
+  const url = trimString(value);
+  if (!url) return 'unknown';
+  if (isPlayableVideoUrl(url)) return 'video';
+  if (!isHttpUrl(url)) return 'unknown';
+
+  const extension = extensionFromUrl(url);
+  if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') return 'image';
+  if (extension === 'pdf') return 'pdf';
+
+  return 'unknown';
+}
+
+export function isTaskMediaUrl(value: unknown): boolean {
+  return getTaskMediaType(value) !== 'unknown';
 }
 
 export function normalizeTaskVideoUrls(value: unknown): string[] {
@@ -13,7 +42,7 @@ export function normalizeTaskVideoUrls(value: unknown): string[] {
 
   rawValues.forEach((raw) => {
     const url = trimString(raw);
-    if (!url || !isPlayableVideoUrl(url)) return;
+    if (!url || !isTaskMediaUrl(url)) return;
     const key = url.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);

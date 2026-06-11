@@ -1,17 +1,31 @@
 export const MAX_PLAYER_PROFILE_POSITIONS = 5;
 
 export const PLAYER_PROFILE_POSITION_OPTIONS = [
-  'Målmand',
-  'Back',
-  'Midterforsvarer',
-  'Central midtbane',
-  'Offensiv midtbane',
-  'Kant',
-  'Angriber',
-  'Midtbane',
+  'Goalkeeper',
+  'Fullback',
+  'Center back',
+  'Central midfielder',
+  'Attacking midfielder',
+  'Winger',
+  'Striker',
+  'Midfielder',
 ] as const;
 
-const ALLOWED_PLAYER_POSITIONS = new Set<string>(PLAYER_PROFILE_POSITION_OPTIONS);
+const LEGACY_PLAYER_PROFILE_POSITION_MAP = new Map<string, string>([
+  ['Målmand', 'Goalkeeper'],
+  ['Back', 'Fullback'],
+  ['Midterforsvarer', 'Center back'],
+  ['Central midtbane', 'Central midfielder'],
+  ['Offensiv midtbane', 'Attacking midfielder'],
+  ['Kant', 'Winger'],
+  ['Angriber', 'Striker'],
+  ['Midtbane', 'Midfielder'],
+]);
+
+const ALLOWED_PLAYER_POSITIONS = new Set<string>([
+  ...PLAYER_PROFILE_POSITION_OPTIONS,
+  ...LEGACY_PLAYER_PROFILE_POSITION_MAP.keys(),
+]);
 
 export const PROFILE_SELECT_WITH_PLAYER_FIELDS =
   'full_name, phone_number, avatar_url, player_positions, club_name, playing_level';
@@ -34,7 +48,7 @@ export function normalizePlayerProfilePositions(value?: readonly string[] | null
   const positions: string[] = [];
 
   for (const candidate of value) {
-    const normalized = candidate.trim();
+    const normalized = LEGACY_PLAYER_PROFILE_POSITION_MAP.get(candidate.trim()) ?? candidate.trim();
     if (!normalized || seen.has(normalized) || !ALLOWED_PLAYER_POSITIONS.has(normalized)) {
       continue;
     }

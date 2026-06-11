@@ -264,7 +264,7 @@ export default function TaskFeedbackNoteScreen() {
     [params]
   );
   const taskTitle = useMemo(
-    () => decodeParam((params as any).title ?? (params as any).taskTitle) ?? 'opgave',
+    () => decodeParam((params as any).title ?? (params as any).taskTitle) ?? 'task',
     [params]
   );
 
@@ -309,7 +309,7 @@ export default function TaskFeedbackNoteScreen() {
 
   useEffect(() => {
     if (!activityId || !templateId) {
-      Alert.alert('Kan ikke åbne', 'Mangler nødvendige parametre (activityId/templateId).');
+      Alert.alert('Can\'t open', 'Missing required parameters (activityId/templateId).');
       safeDismiss();
     }
   }, [activityId, templateId, safeDismiss]);
@@ -404,7 +404,7 @@ export default function TaskFeedbackNoteScreen() {
           // ignore
         }
       } catch {
-        if (!cancelled) setErrorSafe('Kunne ikke hente bruger-session.');
+        if (!cancelled) setErrorSafe('Failed to retrieve user session.');
       }
     })();
 
@@ -427,13 +427,13 @@ export default function TaskFeedbackNoteScreen() {
       setErrorSafe(null);
 
       if (!userId) {
-        setErrorSafe('Bruger-ID mangler. Prøv igen.');
+        setErrorSafe('User ID is missing. Try again.');
         return;
       }
 
       const candidateIds = activityIdCandidates.filter((id) => normalizeUuid(id));
       if (!candidateIds.length) {
-        setErrorSafe('Aktiviteten mangler et gyldigt ID. Prøv igen.');
+        setErrorSafe('The activity is missing a valid ID. Try again.');
         return;
       }
 
@@ -576,8 +576,8 @@ export default function TaskFeedbackNoteScreen() {
           optimisticId,
           source: 'task-feedback-note',
         });
-        setErrorSafe(`Kunne ikke gemme feedback${suffix}. Prøv igen.`);
-        Alert.alert('Kunne ikke gemme', 'Feedback kunne ikke gemmes. Prøv igen.');
+        setErrorSafe(`Could not save feedback${suffix}. Please try again.`);
+        Alert.alert('Failed to save', 'Feedback could not be saved. Try again.');
       } finally {
         setIsSavingSafe(false);
       }
@@ -604,13 +604,13 @@ export default function TaskFeedbackNoteScreen() {
     setErrorSafe(null);
 
     if (!userId) {
-      setErrorSafe('Bruger-ID mangler. Prøv igen.');
+      setErrorSafe('User ID is missing. Try again.');
       return;
     }
 
     const candidateIds = activityIdCandidates.filter((id) => normalizeUuid(id));
     if (!candidateIds.length) {
-      setErrorSafe('Aktiviteten mangler et gyldigt ID. Prøv igen.');
+      setErrorSafe('The activity is missing a valid ID. Try again.');
       return;
     }
 
@@ -733,8 +733,8 @@ export default function TaskFeedbackNoteScreen() {
         optimisticId,
         source: 'task-feedback-note',
       });
-      setErrorSafe(`Kunne ikke fjerne feedback${suffix}. Prøv igen.`);
-      Alert.alert('Kunne ikke fjerne', 'Feedback kunne ikke fjernes. Prøv igen.');
+      setErrorSafe(`Could not remove feedback${suffix}. Please try again.`);
+      Alert.alert('Could not remove', 'Feedback could not be removed. Try again.');
     } finally {
       setIsSavingSafe(false);
     }
@@ -759,29 +759,29 @@ export default function TaskFeedbackNoteScreen() {
     <TaskScoreNoteModal
       key={`feedback-${taskInstanceId ?? 'missing'}-${templateId ?? 'missing'}`}
       visible
-      title={`Feedback på ${stripLeadingFeedbackPrefix(taskTitle)}`}
-      introText="Hvordan gik det?"
-      helperText={enableScore ? (config.scoreExplanation ?? 'Hvor god var du til dine fokuspunkter') : null}
+      title={`Feedback on ${stripLeadingFeedbackPrefix(taskTitle)}`}
+      introText="How did it go?"
+      helperText={enableScore ? (config.scoreExplanation ?? 'How well did you do on your focus points') : null}
       initialScore={initialScore}
       initialNote={initialNote}
       enableScore={enableScore}
       enableNote={enableNote}
       scoreOptions={FEEDBACK_SCORE_OPTIONS}
-      scorePlaceholder="Vælg feedback"
+      scorePlaceholder="Choose feedback"
       isSaving={isSaving}
       error={error}
       onSave={handleSave}
       onClear={handleClear}
-      clearLabel="Markér som ikke udført"
-      infoButtonAccessibilityLabel="Vis info om feedback-score"
-      infoModalTitle="Sådan giver du din Feedback-score"
+      clearLabel="Mark as not completed"
+      infoButtonAccessibilityLabel="Show info in feedback score"
+      infoModalTitle="How to give your feedback score"
       infoModalLines={[
-        'Vælg et fokuspunkt i biblioteket, som du gerne vil blive bedre til.',
-        'Efter træning giver du dig selv en score for, hvor godt du gjorde det på fokuspunktet.',
-        'Vær ærlig. Det hjælper dig mest.',
-        'Det er ikke en konkurrence med andre. Det er din egen udvikling.',
-        'Hvis du sætter scoren for højt, skifter du måske fokuspunkt for tidligt.',
-        'Bliv ved med det samme fokuspunkt, indtil du virkelig mestrer det.',
+        'Choose a focal point in the library that you would like to improve.',
+        'After training, you give yourself a score for how well you did on the focal point.',
+        'Be honest. It helps you the most.',
+        'It is not a competition with others. It is your own development.',
+        'If you set the score too high, you may change focus too early.',
+        'Stay with the same focus point until you truly master it.',
       ]}
       onClose={handleClose}
     />

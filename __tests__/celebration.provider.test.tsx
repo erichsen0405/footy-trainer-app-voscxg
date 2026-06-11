@@ -76,9 +76,9 @@ describe('CelebrationProvider overlay', () => {
 
     expect(getByTestId('celebration-overlay')).toBeTruthy();
     expect(getByTestId('celebration-overlay.type')).toHaveTextContent('task');
-    expect(getByTestId('celebration-title')).toHaveTextContent('Opgave fuldført');
-    expect(getByTestId('celebration-subtitle')).toHaveTextContent('2 tilbage i dag');
-    expect(getByText('I dag: 3/5')).toBeTruthy();
+    expect(getByTestId('celebration-title')).toHaveTextContent('Task completed');
+    expect(getByTestId('celebration-subtitle')).toHaveTextContent('2 left today');
+    expect(getByText('Today: 3/5')).toBeTruthy();
     expect(UNSAFE_getByType(IOSPremiumConfettiView)).toBeTruthy();
     expect(queryAllByTestId('celebration-rocket')).toHaveLength(0);
     expect(queryAllByTestId('celebration-fountain')).toHaveLength(0);
@@ -132,9 +132,9 @@ describe('CelebrationProvider overlay', () => {
 
     expect(getByTestId('celebration-overlay')).toBeTruthy();
     expect(getByTestId('celebration-overlay.type')).toHaveTextContent('dayComplete');
-    expect(getByTestId('celebration-title')).toHaveTextContent('Dagens opgaver fuldført');
-    expect(getByTestId('celebration-subtitle')).toHaveTextContent('Nyd resten af dagen.');
-    expect(getByTestId('celebration-progress')).toHaveTextContent('I dag: 5/5');
+    expect(getByTestId('celebration-title')).toHaveTextContent("Today's tasks completed");
+    expect(getByTestId('celebration-subtitle')).toHaveTextContent('Enjoy the rest of the day.');
+    expect(getByTestId('celebration-progress')).toHaveTextContent('Today: 5/5');
     expect(UNSAFE_getByType(IOSLastTaskCelebrationView)).toBeTruthy();
     expect(queryAllByTestId('celebration-rocket')).toHaveLength(0);
     expect(queryAllByTestId('celebration-fountain')).toHaveLength(0);

@@ -60,7 +60,7 @@ describe('TaskDetailsModal', () => {
       />
     );
 
-    expect(getByText('Ingen detaljer på denne opgave endnu.')).toBeTruthy();
+    expect(getByText('No details on this task yet.')).toBeTruthy();
   });
 
   it('renders video from a URL embedded in the description', () => {
@@ -80,7 +80,7 @@ describe('TaskDetailsModal', () => {
     expect(mockSmartVideoPlayer.mock.calls.at(-1)?.[0]?.url).toBe(
       'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
     );
-    expect(queryByText('Beskrivelse')).toBeNull();
+    expect(queryByText('Description')).toBeNull();
   });
 
   it('keeps ordinary links in the description instead of treating them as video', () => {
@@ -97,8 +97,8 @@ describe('TaskDetailsModal', () => {
     );
 
     expect(queryByTestId('mock.smartVideoPlayer')).toBeNull();
-    expect(getByText('Beskrivelse')).toBeTruthy();
+    expect(getByText('Description')).toBeTruthy();
     expect(getByText('Laes mere her https://example.com/guide')).toBeTruthy();
-    expect(queryByText('Ingen detaljer på denne opgave endnu.')).toBeNull();
+    expect(queryByText('No details on this task yet.')).toBeNull();
   });
 });

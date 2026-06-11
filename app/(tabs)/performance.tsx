@@ -136,7 +136,7 @@ export default function PerformanceScreen() {
       .catch((error) => {
         console.error('[Performance] Failed to load trainer players:', error);
         if (active) {
-          setPlayerDropdownError('Kunne ikke indlæse spillere');
+          setPlayerDropdownError('Failed to load players');
         }
       })
       .finally(() => {
@@ -362,7 +362,7 @@ export default function PerformanceScreen() {
     >
       <View style={styles.header} testID="performance.result">
         <Text style={[styles.headerTitle, { color: textColor }]}>🏆 Performance</Text>
-        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>Se dine spilleres performance over tid</Text>
+        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>View your players' performance over time</Text>
       </View>
 
       {isTrainerProfile ? (
@@ -380,9 +380,9 @@ export default function PerformanceScreen() {
             ]}
           >
             <View style={styles.playerDropdownTextBlock}>
-              <Text style={[styles.playerDropdownLabel, { color: textSecondaryColor }]}>Spiller</Text>
+              <Text style={[styles.playerDropdownLabel, { color: textSecondaryColor }]}>Player</Text>
               <Text style={[styles.playerDropdownValue, { color: textColor }]} numberOfLines={1}>
-                {selectedPerformancePlayer?.full_name ?? 'Vælg spiller'}
+                {selectedPerformancePlayer?.full_name ?? 'Select player'}
               </Text>
             </View>
             <IconSymbol
@@ -398,7 +398,7 @@ export default function PerformanceScreen() {
               testID="performance.selectedPlayer"
               style={[styles.selectedPlayerText, { color: textSecondaryColor }]}
             >
-              Viser performance for {selectedPerformancePlayer.full_name}
+              Showing performance for {selectedPerformancePlayer.full_name}
             </Text>
           ) : null}
         </View>
@@ -434,9 +434,9 @@ export default function PerformanceScreen() {
 
               <View style={styles.historyHeader}>
                 <View style={styles.historyTitleBlock}>
-                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Pokaler</Text>
+                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Trophies</Text>
                   <Text style={[styles.historySubtitle, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
-                    Se dine pokaler for tidligere uger
+                    See your trophies from previous weeks
                   </Text>
                 </View>
                 <View style={styles.historyChevronShadow}>
@@ -470,9 +470,9 @@ export default function PerformanceScreen() {
         showTrophyLoadingState ? (
           <View style={[styles.sectionLoadingCard, { backgroundColor: isDark ? '#24362C' : '#EAF5EE' }]}>
             <ActivityIndicator size="small" color={palette.primary} />
-            <Text style={[styles.sectionLoadingTitle, { color: textColor }]}>Indlæser pokaler og kalendere...</Text>
+            <Text style={[styles.sectionLoadingTitle, { color: textColor }]}>Loading trophies and calendars...</Text>
             <Text style={[styles.sectionLoadingSubtitle, { color: textSecondaryColor }]}>
-              Historik er klar, mens performance-data hentes i baggrunden.
+              History is ready while performance data loads in the background.
             </Text>
           </View>
         ) : (
@@ -483,12 +483,12 @@ export default function PerformanceScreen() {
           >
             <View style={styles.trophiesHeader}>
               <View style={styles.trophiesContent}>
-                <Text style={styles.trophiesTitle}>Guld pokaler</Text>
+                <Text style={styles.trophiesTitle}>Gold trophies</Text>
                 <Text testID="performance.trophies.count.gold" style={styles.trophiesCount}>{goldTrophies}</Text>
               </View>
               <View style={styles.trophiesMeta}>
                 <Text style={styles.trophiesEmoji}>🥇</Text>
-                <Text style={styles.expandHint}>{expandedTrophy === 'gold' ? 'Skjul' : 'Vis uger'}</Text>
+                <Text style={styles.expandHint}>{expandedTrophy === 'gold' ? 'Hide' : 'Show weeks'}</Text>
               </View>
             </View>
             {expandedTrophy === 'gold' && (
@@ -497,10 +497,10 @@ export default function PerformanceScreen() {
                 scrollEnabled={false}
                 keyExtractor={(item, index) => `gold-${item.year}-${item.week}-${index}`}
                 contentContainerStyle={styles.expandedList}
-                ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen guld-uger endnu</Text>}
+                ListEmptyComponent={<Text style={styles.emptyWeekText}>No gold weeks yet</Text>}
                 renderItem={({ item }) => (
                   <View style={styles.weekRow}>
-                    <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                    <Text style={styles.weekLabel}>Week {item.week}, {item.year}</Text>
                     <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
                   </View>
                 )}
@@ -514,12 +514,12 @@ export default function PerformanceScreen() {
           >
             <View style={styles.trophiesHeader}>
               <View style={styles.trophiesContent}>
-                <Text style={styles.trophiesTitle}>Sølv pokaler</Text>
+                <Text style={styles.trophiesTitle}>Silver trophies</Text>
                 <Text testID="performance.trophies.count.silver" style={styles.trophiesCount}>{silverTrophies}</Text>
               </View>
               <View style={styles.trophiesMeta}>
                 <Text style={styles.trophiesEmoji}>🥈</Text>
-                <Text style={styles.expandHint}>{expandedTrophy === 'silver' ? 'Skjul' : 'Vis uger'}</Text>
+                <Text style={styles.expandHint}>{expandedTrophy === 'silver' ? 'Hide' : 'Show weeks'}</Text>
               </View>
             </View>
             {expandedTrophy === 'silver' && (
@@ -528,10 +528,10 @@ export default function PerformanceScreen() {
                 scrollEnabled={false}
                 keyExtractor={(item, index) => `silver-${item.year}-${item.week}-${index}`}
                 contentContainerStyle={styles.expandedList}
-                ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen sølv-uger endnu</Text>}
+                ListEmptyComponent={<Text style={styles.emptyWeekText}>No silver weeks yet</Text>}
                 renderItem={({ item }) => (
                   <View style={styles.weekRow}>
-                    <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                    <Text style={styles.weekLabel}>Week {item.week}, {item.year}</Text>
                     <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
                   </View>
                 )}
@@ -545,12 +545,12 @@ export default function PerformanceScreen() {
           >
             <View style={styles.trophiesHeader}>
               <View style={styles.trophiesContent}>
-                <Text style={styles.trophiesTitle}>Bronze pokaler</Text>
+                <Text style={styles.trophiesTitle}>Bronze trophies</Text>
                 <Text testID="performance.trophies.count.bronze" style={styles.trophiesCount}>{bronzeTrophies}</Text>
               </View>
               <View style={styles.trophiesMeta}>
                 <Text style={styles.trophiesEmoji}>🥉</Text>
-                <Text style={styles.expandHint}>{expandedTrophy === 'bronze' ? 'Skjul' : 'Vis uger'}</Text>
+                <Text style={styles.expandHint}>{expandedTrophy === 'bronze' ? 'Hide' : 'Show weeks'}</Text>
               </View>
             </View>
             {expandedTrophy === 'bronze' && (
@@ -559,10 +559,10 @@ export default function PerformanceScreen() {
                 scrollEnabled={false}
                 keyExtractor={(item, index) => `bronze-${item.year}-${item.week}-${index}`}
                 contentContainerStyle={styles.expandedList}
-                ListEmptyComponent={<Text style={styles.emptyWeekText}>Ingen bronze-uger endnu</Text>}
+                ListEmptyComponent={<Text style={styles.emptyWeekText}>No bronze weeks yet</Text>}
                 renderItem={({ item }) => (
                   <View style={styles.weekRow}>
-                    <Text style={styles.weekLabel}>Uge {item.week}, {item.year}</Text>
+                    <Text style={styles.weekLabel}>Week {item.week}, {item.year}</Text>
                     <Text style={styles.weekValue}>{item.completedTasks} / {item.totalTasks}</Text>
                   </View>
                 )}
@@ -603,9 +603,9 @@ export default function PerformanceScreen() {
 
               <View style={styles.historyHeader}>
                 <View style={styles.historyTitleBlock}>
-                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Udvikling</Text>
+                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Development</Text>
                   <Text style={[styles.historySubtitle, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
-                    Se din udvikling for fokuspunkter og intensitet.
+                    Track your development for focus points and intensity.
                   </Text>
                 </View>
                 <View style={styles.historyChevronShadow}>
@@ -669,9 +669,9 @@ export default function PerformanceScreen() {
 
               <View style={styles.historyHeader}>
                 <View style={styles.historyTitleBlock}>
-                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>Historik</Text>
+                  <Text style={[styles.historyTitle, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>History</Text>
                   <Text style={[styles.historySubtitle, { color: isDark ? '#B5D8C2' : '#2C5A40' }]}>
-                    Overståede uger og udført arbejde
+                    Weeks completed and work done
                   </Text>
                 </View>
                 <View style={styles.historyChevronShadow}>
@@ -705,12 +705,12 @@ export default function PerformanceScreen() {
         homeActivitiesLoading || (!hasLoadedFullHistoryWindow && isBootstrappingHistoryData) ? (
           <View style={styles.historyPlaceholder}>
             <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>
-              Indlæser fuld historik...
+              Loading full history...
             </Text>
           </View>
         ) : historyWeeks.length === 0 ? (
           <View style={styles.historyPlaceholder}>
-            <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>Ingen historik endnu</Text>
+            <Text style={[styles.historyPlaceholderText, { color: textSecondaryColor }]}>No history yet</Text>
           </View>
         ) : (
           <FlatList
@@ -727,8 +727,8 @@ export default function PerformanceScreen() {
                     activityCount={item.week.activityCount}
                     totalTasks={item.week.totalCompletedTasks}
                     totalMinutes={item.week.totalMinutes}
-                    eyebrowText="HISTORIK UGE"
-                    timeLabelPrefix="Udført"
+                    eyebrowText="HISTORY WEEK"
+                    timeLabelPrefix="Completed"
                   />
                 );
               }
@@ -769,7 +769,7 @@ export default function PerformanceScreen() {
               onPress={() => undefined}
             >
               <View style={styles.playerModalHeader}>
-                <Text style={[styles.playerModalTitle, { color: textColor }]}>Vælg spiller</Text>
+                <Text style={[styles.playerModalTitle, { color: textColor }]}>Select player</Text>
                 <Pressable
                   testID="performance.playerDropdown.close"
                   onPress={() => setIsPlayerDropdownOpen(false)}
@@ -797,7 +797,7 @@ export default function PerformanceScreen() {
                           testID="performance.playerDropdown.loading"
                           style={[styles.playerDropdownStateText, { color: textSecondaryColor }]}
                         >
-                          Indlæser spillere...
+                          Loading players...
                         </Text>
                       </>
                     ) : playerDropdownError ? (
@@ -812,7 +812,7 @@ export default function PerformanceScreen() {
                         testID="performance.playerDropdown.empty"
                         style={[styles.playerDropdownStateText, { color: textSecondaryColor }]}
                       >
-                        Ingen spillere tilknyttet endnu
+                        No players assigned yet
                       </Text>
                     )}
                   </View>

@@ -57,7 +57,7 @@ type CachedAuthoritativeNoSub = {
 
 export function OnboardingGate({ children, renderInlinePaywall = false }: OnboardingGateProps) {
   const STARTUP_TIMEOUT_MS = 12000;
-  const STARTUP_ERROR_MESSAGE = 'Kunne ikke klargøre konto. Prøv igen.';
+  const STARTUP_ERROR_MESSAGE = 'Could not prepare account. Try again.';
   const { authReady, user, refreshSession } = useAuthSession();
 
   const [state, setState] = useState<GateState>({
@@ -68,7 +68,8 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     initError: null,
   });
   const [activatingSubscription, setActivatingSubscription] = useState(false);
-  const [activationMessage, setActivationMessage] = useState('Aktiverer abonnement...');
+  const [activationMessage, setActivationMessage] = useState('Activating subscription...');
+  const [signingOut, setSigningOut] = useState(false);
   const { subscriptionStatus, subscriptionMeta, refreshSubscription, createSubscription } =
     useSubscription();
   const { entitlementSnapshot, refreshSubscriptionStatus } = useAppleIAP();
@@ -524,25 +525,25 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
 
   const handleCreateSubscription = useCallback(async (planId: string) => {
     if (!state.user) return;
-    setActivationMessage('Aktiverer abonnement...');
+    setActivationMessage('Activating subscription...');
     setActivatingSubscription(true);
     try {
       const result = await createSubscription(planId);
       if (!result.success && !result.alreadyHasSubscription) {
-        Alert.alert('Fejl', result.error || 'Kunne ikke oprette abonnement. Prøv igen.');
+        Alert.alert('Error', result.error || 'Could not create subscription. Try again.');
         return;
       }
       await refreshSubscription();
       await refreshSubscriptionStatus({ force: true, reason: 'onboarding_create' });
     } catch (error: any) {
-      Alert.alert('Fejl', error?.message || 'Der opstod en fejl.');
+      Alert.alert('Error', error?.message || 'An error occurred.');
     } finally {
       setActivatingSubscription(false);
     }
   }, [createSubscription, refreshSubscription, refreshSubscriptionStatus, state.user]);
 
   const handleIOSPurchaseStarted = useCallback(() => {
-    setActivationMessage('Aktiverer abonnement...');
+    setActivationMessage('Activating subscription...');
     setActivatingSubscription(true);
   }, []);
 
@@ -559,6 +560,40 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
       }
     }
   }, [refreshSubscriptionStatus, resolving]);
+
+  const handlePaywallSignOut = useCallback(async () => {
+    if (signingOut) return;
+
+    setSigningOut(true);
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem(ONBOARDING_ACCESS_CACHE_KEY),
+        AsyncStorage.removeItem(ONBOARDING_AUTHORITATIVE_NO_SUB_KEY),
+      ]);
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) {
+        throw error;
+      }
+      setState({
+        hydrating: false,
+        user: null,
+        role: null,
+        needsSubscription: false,
+        initError: null,
+      });
+      await refreshSession();
+      router.replace({
+        pathname: '/(tabs)/profile',
+        params: { authMode: 'login' },
+      } as any);
+    } catch (error: any) {
+      Alert.alert('Sign out failed', error?.message || 'Could not sign out. Restart the app and try again.');
+    } finally {
+      if (isMountedRef.current) {
+        setSigningOut(false);
+      }
+    }
+  }, [refreshSession, router, signingOut]);
 
   const needsPaywall = Boolean(state.user && state.needsSubscription && !resolving);
 
@@ -618,8 +653,8 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
     return (
       <View style={styles.paywallContainer}>
         <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>Vælg dit abonnement</Text>
-          <Text style={styles.subtitle}>Vælg et abonnement for at fortsætte — du kan altid ændre det senere.</Text>
+          <Text style={styles.title}>Choose your subscription</Text>
+          <Text style={styles.subtitle}>Select a subscription to continue — you can always change it later.</Text>
 
           <View style={styles.card}>
             {Platform.OS === 'ios' ? (
@@ -637,6 +672,25 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
               />
             )}
           </View>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.signOutButton,
+              pressed && styles.signOutButtonPressed,
+              signingOut && styles.signOutButtonDisabled,
+            ]}
+            onPress={handlePaywallSignOut}
+            disabled={signingOut}
+            testID="paywall.signOutButton"
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            {signingOut ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={styles.signOutButtonText}>Sign out</Text>
+            )}
+          </Pressable>
         </ScrollView>
 
         {activatingSubscription && (
@@ -650,7 +704,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
   }
 
   const showBlockingOverlay = Boolean(state.initError);
-  const overlayMessage = state.initError ?? 'Der opstod en fejl.';
+  const overlayMessage = state.initError ?? 'An error occurred.';
 
   return (
     <View style={styles.container}>
@@ -665,7 +719,7 @@ export function OnboardingGate({ children, renderInlinePaywall = false }: Onboar
               onPress={handleRetryStartup}
               testID="onboarding.error.retryButton"
             >
-              <Text style={styles.retryButtonText}>Prøv igen</Text>
+              <Text style={styles.retryButtonText}>Try again</Text>
             </Pressable>
           ) : null}
         </View>
@@ -712,6 +766,27 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     gap: 16,
+  },
+  signOutButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    marginTop: 18,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  signOutButtonPressed: {
+    opacity: 0.72,
+  },
+  signOutButtonDisabled: {
+    opacity: 0.6,
+  },
+  signOutButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
   },
   paywallContainer: {
     flex: 1,

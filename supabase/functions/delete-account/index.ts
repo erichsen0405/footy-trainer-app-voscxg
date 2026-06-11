@@ -61,6 +61,23 @@ Deno.serve(async (req) => {
       throw cleanupError;
     }
 
+    const { error: authBlockerCleanupError } = await supabaseAdmin.rpc('delete_user_account_auth_blockers', {
+      p_user_id: userId,
+    });
+    if (authBlockerCleanupError) {
+      const blockerMessage = String(authBlockerCleanupError.message ?? '');
+      const blockerCode = String(authBlockerCleanupError.code ?? '');
+      const helperMissing =
+        blockerCode === 'PGRST202' ||
+        (blockerMessage.includes('delete_user_account_auth_blockers') && blockerMessage.includes('not found'));
+      if (helperMissing) {
+        console.warn('[delete-account] Auth blocker cleanup helper is not deployed yet; continuing.');
+      } else {
+        console.error('[delete-account] Auth blocker cleanup error', authBlockerCleanupError);
+        throw authBlockerCleanupError;
+      }
+    }
+
     const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (authDeleteError) {
       console.error('[delete-account] Auth delete failed', authDeleteError);

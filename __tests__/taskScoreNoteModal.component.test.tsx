@@ -55,11 +55,11 @@ describe('TaskScoreNoteModal', () => {
     fireEvent.press(getByTestId('feedback.scoreInput'));
 
     expect(getAllByTestId(/feedback\.scoreOption\./)).toHaveLength(5);
-    expect(getByText('Meget svært i dag')).toBeTruthy();
-    expect(getByText('Lidt svært i dag')).toBeTruthy();
-    expect(getByText('Okay i dag')).toBeTruthy();
-    expect(getByText('Godt i dag')).toBeTruthy();
-    expect(getByText('Rigtig godt i dag')).toBeTruthy();
+    expect(getByText('Very difficult today')).toBeTruthy();
+    expect(getByText('A little difficult today')).toBeTruthy();
+    expect(getByText('Okay today')).toBeTruthy();
+    expect(getByText('Good today')).toBeTruthy();
+    expect(getByText('Very good today')).toBeTruthy();
   });
 
   it('sends expected payload on save after input changes', () => {

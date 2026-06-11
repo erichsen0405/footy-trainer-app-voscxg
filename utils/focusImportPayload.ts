@@ -36,10 +36,10 @@ function buildFocusDescription(row: FocusMetadataRow): string | null {
   const sections: string[] = [];
 
   if (howTo.length > 0) {
-    sections.push(`Sådan gør du:\n${howTo.map(line => `- ${line}`).join('\n')}`);
+    sections.push(`How to do it:\n${howTo.map(line => `- ${line}`).join('\n')}`);
   }
   if (why) {
-    sections.push(`Hvorfor værdifuldt:\n${why}`);
+    sections.push(`Why it matters:\n${why}`);
   }
 
   if (sections.length === 0) return null;

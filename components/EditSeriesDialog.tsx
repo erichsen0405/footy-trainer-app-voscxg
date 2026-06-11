@@ -44,10 +44,10 @@ export default function EditSeriesDialog({
               color={colors.primary}
             />
             <Text style={[styles.dialogTitle, { color: textColor }]}>
-              Rediger gentagende aktivitet
+              Edit recurring activity
             </Text>
             <Text style={[styles.dialogMessage, { color: textSecondaryColor }]}>
-              Denne aktivitet er en del af en serie. Vil du redigere kun denne aktivitet eller hele serien?
+              This activity is part of a series. Do you want to edit only this activity or the whole series?
             </Text>
           </View>
 
@@ -66,7 +66,7 @@ export default function EditSeriesDialog({
                 size={24}
                 color="#fff"
               />
-              <Text style={styles.dialogButtonText}>Kun denne aktivitet</Text>
+              <Text style={styles.dialogButtonText}>Only this activity</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -95,7 +95,7 @@ export default function EditSeriesDialog({
               onPress={onClose}
               activeOpacity={0.7}
             >
-              <Text style={[styles.cancelButtonText, { color: textColor }]}>Annuller</Text>
+              <Text style={[styles.cancelButtonText, { color: textColor }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>

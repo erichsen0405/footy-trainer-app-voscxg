@@ -60,18 +60,18 @@ interface TaskScoreNoteModalProps {
 function TaskScoreNoteModalComponent({
   visible,
   title,
-  introText = 'Hvordan gik det?',
-  helperText = 'Hvor god var du til dine fokuspunkter',
+  introText = 'How did it go?',
+  helperText = 'How well did you do on your focus points',
   initialScore,
   initialNote = '',
   enableScore = true,
   enableNote = true,
-  noteLabel = 'Noter (valgfrit)',
-  notePlaceholder = 'Skriv hvad der gik godt eller skidt...',
-  clearLabel = 'Markér som ikke udført',
-  primaryButtonLabel = 'Markér som udført',
-  missingScoreTitle = 'Mangler score',
-  missingScoreMessage = 'Vælg en score først.',
+  noteLabel = 'Notes (optional)',
+  notePlaceholder = 'Write what went well or poorly...',
+  clearLabel = 'Mark as not completed',
+  primaryButtonLabel = 'Mark as completed',
+  missingScoreTitle = 'Missing score',
+  missingScoreMessage = 'Choose a score first.',
   isSaving = false,
   readonly = false,
   error,
@@ -79,10 +79,10 @@ function TaskScoreNoteModalComponent({
   onClear,
   onClose,
   scoreOptions = FEEDBACK_SCORE_OPTIONS,
-  scorePlaceholder = 'Vælg score',
+  scorePlaceholder = 'Choose score',
   infoModalTitle,
   infoModalLines,
-  infoButtonAccessibilityLabel = 'Vis info',
+  infoButtonAccessibilityLabel = 'Show info',
 }: TaskScoreNoteModalProps) {
   const normalizedInitialScore = useMemo(
     () => (enableScore ? normalizeFivePointScore(initialScore) : null),
@@ -198,10 +198,10 @@ function TaskScoreNoteModalComponent({
       return;
     }
 
-    Alert.alert('forlad uden at gemme?', 'Dine ændringer bliver ikke gemt.', [
-      { text: 'Bliv', style: 'cancel' },
+    Alert.alert('leave without saving?', 'Your changes will not be saved.', [
+      { text: 'Stay', style: 'cancel' },
       {
-        text: 'Forlad',
+        text: 'Leave',
         style: 'destructive',
         onPress: () => {
           onClose();
@@ -229,7 +229,7 @@ function TaskScoreNoteModalComponent({
           style={[styles.scoreDropdownButton, disableInteractions && styles.scoreDropdownButtonDisabled]}
           accessibilityRole="button"
           testID="feedback.scoreInput"
-          accessibilityLabel="Vælg score"
+          accessibilityLabel="Choose score"
           onPress={toggleScoreDropdown}
           disabled={disableInteractions}
         >
@@ -270,11 +270,11 @@ function TaskScoreNoteModalComponent({
               style={[styles.scoreDoneButton, disableInteractions && styles.scoreDoneButtonDisabled]}
               testID="feedback.scoreDoneButton"
               accessibilityRole="button"
-              accessibilityLabel="Færdig"
+              accessibilityLabel="Done"
               onPress={() => setIsScoreDropdownOpen(false)}
               disabled={disableInteractions}
             >
-              <Text style={styles.scoreDoneButtonText}>Færdig</Text>
+              <Text style={styles.scoreDoneButtonText}>Done</Text>
             </Pressable>
           </View>
         ) : null}
@@ -400,7 +400,7 @@ function TaskScoreNoteModalComponent({
                       onPress={() => setIsInfoModalOpen(false)}
                       style={styles.infoModalCloseButton}
                       accessibilityRole="button"
-                      accessibilityLabel="Luk info"
+                      accessibilityLabel="Close info"
                     >
                       <Text style={styles.infoModalCloseButtonText}>X</Text>
                     </Pressable>
@@ -416,9 +416,9 @@ function TaskScoreNoteModalComponent({
                     onPress={() => setIsInfoModalOpen(false)}
                     style={styles.infoModalFooterButton}
                     accessibilityRole="button"
-                    accessibilityLabel="Luk"
+                    accessibilityLabel="Close"
                   >
-                    <Text style={styles.infoModalFooterButtonText}>Luk</Text>
+                    <Text style={styles.infoModalFooterButtonText}>Close</Text>
                   </Pressable>
                 </View>
               </View>

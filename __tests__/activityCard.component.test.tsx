@@ -123,7 +123,7 @@ describe('ActivityCard completion UI', () => {
           tasks: [
             {
               id: 'feedback-task-1',
-              title: 'Feedback på: fokus',
+              title: 'Feedback on: fokus',
               completed: false,
               feedback_template_id: 'template-1',
             },
@@ -135,9 +135,9 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(getByText('Feedback på:')).toBeTruthy();
-    expect(getByText(/Feedback på:\s*fokus/)).toBeTruthy();
-    expect(getByText('Feedback på: fokus')).toHaveStyle({ textDecorationLine: 'line-through' });
+    expect(getByText('Feedback on:')).toBeTruthy();
+    expect(getByText(/Feedback on:\s*fokus/)).toBeTruthy();
+    expect(getByText('Feedback on: fokus')).toHaveStyle({ textDecorationLine: 'line-through' });
   });
 
   it('keeps feedback task not completed without completion signals', () => {
@@ -148,7 +148,7 @@ describe('ActivityCard completion UI', () => {
           tasks: [
             {
               id: 'feedback-task-2',
-              title: 'Feedback på teknik',
+              title: 'Feedback on teknik',
               completed: false,
               feedback_template_id: 'template-2',
             },
@@ -162,7 +162,7 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(getByText('Feedback på: teknik')).not.toHaveStyle({ textDecorationLine: 'line-through' });
+    expect(getByText('Feedback on: teknik')).not.toHaveStyle({ textDecorationLine: 'line-through' });
   });
 
   it('renders NFD encoded feedback prefix without corrupting the task name', () => {
@@ -184,7 +184,7 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(getByText('Feedback på: fokus')).toBeTruthy();
+    expect(getByText('Feedback on: fokus')).toBeTruthy();
   });
 
   it('renders task duration badge when task duration is enabled', () => {
@@ -207,7 +207,7 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(getByText('Varighed: 25 min')).toBeTruthy();
+    expect(getByText('Duration: 25 min')).toBeTruthy();
   });
 
   it('does not render task duration badge for feedback tasks', () => {
@@ -218,7 +218,7 @@ describe('ActivityCard completion UI', () => {
           tasks: [
             {
               id: 'feedback-with-duration-1',
-              title: 'Feedback på: Pasningsøvelse',
+              title: 'Feedback on: Pasningsøvelse',
               completed: false,
               feedback_template_id: 'feedback-template-1',
               task_duration_enabled: true,
@@ -231,7 +231,7 @@ describe('ActivityCard completion UI', () => {
       />
     );
 
-    expect(queryByText('Varighed: 25 min')).toBeNull();
+    expect(queryByText('Duration: 25 min')).toBeNull();
   });
 
   it('opens canonical feedback modal route from Home card', () => {
@@ -242,7 +242,7 @@ describe('ActivityCard completion UI', () => {
           tasks: [
             {
               id: 'feedback-task-route-1',
-              title: 'Feedback på teknik',
+              title: 'Feedback on teknik',
               completed: false,
               feedback_template_id: 'feedback-template-route-1',
             },
@@ -260,7 +260,7 @@ describe('ActivityCard completion UI', () => {
       params: {
         activityId: 'activity-1',
         templateId: 'feedback-template-route-1',
-        title: 'Feedback på teknik',
+        title: 'Feedback on teknik',
         taskInstanceId: 'feedback-task-route-1',
       },
     });
@@ -362,6 +362,6 @@ describe('ActivityCard completion UI', () => {
     );
 
     expect(getByTestId('home.activity.trainerAssignedBadge')).toBeTruthy();
-    expect(getByText('Tildelt af træner')).toBeTruthy();
+    expect(getByText('Assigned by coach')).toBeTruthy();
   });
 });

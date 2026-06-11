@@ -63,7 +63,7 @@ export async function getActivities(
 }
 
 /**
- * Hent kategorier for en bruger
+ * Hent categoryer for en bruger
  * - Abort-safe
  * - Sorteret alfabetisk
  */

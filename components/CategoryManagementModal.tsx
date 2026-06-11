@@ -139,7 +139,7 @@ export default function CategoryManagementModal({
 
   const handleCreateCategory = useCallback(async () => {
     if (!categoryName.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst et kategorinavn');
+      Alert.alert('Error', 'Please enter a category name');
       return;
     }
 
@@ -167,7 +167,7 @@ export default function CategoryManagementModal({
         throw error;
       }
 
-      Alert.alert('Succes', 'Kategori oprettet!');
+      Alert.alert('Success', 'Category created!');
       onRefresh();
       setMode('list');
       setCategoryName('');
@@ -175,7 +175,7 @@ export default function CategoryManagementModal({
       setSelectedColor(COLOR_OPTIONS[0]);
     } catch (error) {
       console.error('Failed to create category:', error);
-      Alert.alert('Fejl', 'Kunne ikke oprette kategori');
+      Alert.alert('Error', 'Could not create category');
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +183,7 @@ export default function CategoryManagementModal({
 
   const handleEditCategory = useCallback(async () => {
     if (!selectedCategory || !categoryName.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst et kategorinavn');
+      Alert.alert('Error', 'Please enter a category name');
       return;
     }
 
@@ -196,7 +196,7 @@ export default function CategoryManagementModal({
       }
 
       if (!isUserManagedActivityCategory(selectedCategory, user.id)) {
-        Alert.alert('Fejl', 'Du kan ikke redigere denne kategori');
+        Alert.alert('Error', 'You cannot edit this category');
         return;
       }
 
@@ -223,18 +223,18 @@ export default function CategoryManagementModal({
       }
 
       if (!updatedRows || updatedRows.length === 0) {
-        Alert.alert('Fejl', 'Du kan ikke redigere denne kategori');
+        Alert.alert('Error', 'You cannot edit this category');
         return;
       }
 
-      Alert.alert('Succes', 'Kategori opdateret!');
+      Alert.alert('Success', 'Category updated!');
       onRefresh();
       setMode('list');
       setSelectedCategory(null);
       setCategoryName('');
     } catch (error) {
       console.error('Failed to update category:', error);
-      Alert.alert('Fejl', 'Kunne ikke opdatere kategori');
+      Alert.alert('Error', 'Failed to update category');
     } finally {
       setIsLoading(false);
     }
@@ -267,11 +267,11 @@ export default function CategoryManagementModal({
       }
 
       if (!deletedRows || deletedRows.length === 0) {
-        Alert.alert('Fejl', 'Du kan ikke slette denne kategori');
+        Alert.alert('Error', 'You cannot delete this category');
         return;
       }
 
-      Alert.alert('Succes', 'Kategori slettet!');
+      Alert.alert('Success', 'Category deleted!');
       onRefresh();
       setMode('list');
       setSelectedCategory(null);
@@ -280,7 +280,7 @@ export default function CategoryManagementModal({
       setDeleteModeAction('delete');
     } catch (error) {
       console.error('Failed to delete category:', error);
-      Alert.alert('Fejl', 'Kunne ikke slette kategori');
+      Alert.alert('Error', 'Could not delete category');
     } finally {
       setIsLoading(false);
     }
@@ -300,7 +300,7 @@ export default function CategoryManagementModal({
         : safeCategories.find(c => c.id === categoryId);
 
       if (!isHideableSystemActivityCategory(category)) {
-        Alert.alert('Fejl', 'Du kan ikke fjerne denne kategori');
+        Alert.alert('Error', 'You cannot remove this category');
         return;
       }
 
@@ -316,7 +316,7 @@ export default function CategoryManagementModal({
         throw error;
       }
 
-      Alert.alert('Succes', 'Kategori fjernet!');
+      Alert.alert('Success', 'Category removed!');
       onRefresh();
       setMode('list');
       setSelectedCategory(null);
@@ -325,7 +325,7 @@ export default function CategoryManagementModal({
       setDeleteModeAction('delete');
     } catch (error) {
       console.error('Failed to hide category:', error);
-      Alert.alert('Fejl', 'Kunne ikke fjerne kategori');
+      Alert.alert('Error', 'Could not remove category');
     } finally {
       setIsLoading(false);
     }
@@ -343,7 +343,7 @@ export default function CategoryManagementModal({
       }
 
       if (!isUserManagedActivityCategory(category, user.id)) {
-        Alert.alert('Fejl', 'Du kan ikke slette denne kategori');
+        Alert.alert('Error', 'You cannot delete this category');
         return;
       }
 
@@ -425,7 +425,7 @@ export default function CategoryManagementModal({
       }
     } catch (error) {
       console.error('Failed to check category usage:', error);
-      Alert.alert('Fejl', 'Kunne ikke kontrollere kategori');
+      Alert.alert('Error', 'Could not check category');
     } finally {
       setIsLoading(false);
     }
@@ -443,7 +443,7 @@ export default function CategoryManagementModal({
       }
 
       if (!isHideableSystemActivityCategory(category)) {
-        Alert.alert('Fejl', 'Du kan ikke fjerne denne kategori');
+        Alert.alert('Error', 'You cannot remove this category');
         return;
       }
 
@@ -525,7 +525,7 @@ export default function CategoryManagementModal({
       }
     } catch (error) {
       console.error('Failed to check category usage:', error);
-      Alert.alert('Fejl', 'Kunne ikke kontrollere kategori');
+      Alert.alert('Error', 'Could not check category');
     } finally {
       setIsLoading(false);
     }
@@ -533,12 +533,12 @@ export default function CategoryManagementModal({
 
   const handleReassignAndDelete = useCallback(async () => {
     if (!selectedCategory || !reassignCategoryId) {
-      Alert.alert('Fejl', 'Vælg venligst en ny kategori');
+      Alert.alert('Error', 'Please select a new category');
       return;
     }
 
     if (reassignCategoryId === selectedCategory.id) {
-      Alert.alert('Fejl', 'Du kan ikke tildele samme kategori');
+      Alert.alert('Error', 'You cannot assign the same category');
       return;
     }
 
@@ -595,19 +595,19 @@ export default function CategoryManagementModal({
       await handleDeleteCategoryConfirm(selectedCategory.id);
     } catch (error) {
       console.error('Failed to reassign and delete:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele aktiviteter til ny kategori');
+      Alert.alert('Error', 'Could not assign activities to new category');
       setIsLoading(false);
     }
   }, [selectedCategory, reassignCategoryId, activitiesUsingCategory, handleDeleteCategoryConfirm]);
 
   const handleReassignAndHide = useCallback(async () => {
     if (!selectedCategory || !reassignCategoryId) {
-      Alert.alert('Fejl', 'Vælg venligst en ny kategori');
+      Alert.alert('Error', 'Please select a new category');
       return;
     }
 
     if (reassignCategoryId === selectedCategory.id) {
-      Alert.alert('Fejl', 'Du kan ikke tildele samme kategori');
+      Alert.alert('Error', 'You cannot assign the same category');
       return;
     }
 
@@ -664,7 +664,7 @@ export default function CategoryManagementModal({
       await handleHideCategoryConfirm(selectedCategory.id);
     } catch (error) {
       console.error('Failed to reassign and hide:', error);
-      Alert.alert('Fejl', 'Kunne ikke tildele aktiviteter til ny kategori');
+      Alert.alert('Error', 'Could not assign activities to new category');
       setIsLoading(false);
     }
   }, [selectedCategory, reassignCategoryId, activitiesUsingCategory, handleHideCategoryConfirm]);
@@ -680,7 +680,7 @@ export default function CategoryManagementModal({
   const renderListMode = useCallback(() => (
     <React.Fragment>
       <View style={styles.modalHeader}>
-        <Text style={[styles.modalTitle, { color: textColor }]}>Administrer kategorier</Text>
+        <Text style={[styles.modalTitle, { color: textColor }]}>Manage categories</Text>
         <TouchableOpacity onPress={onClose} activeOpacity={0.7} testID="category.manage.closeButton">
           <IconSymbol
             ios_icon_name="xmark.circle.fill"
@@ -705,7 +705,7 @@ export default function CategoryManagementModal({
             size={24}
             color="#fff"
           />
-          <Text style={styles.createButtonText}>Opret ny kategori</Text>
+          <Text style={styles.createButtonText}>Create new category</Text>
         </TouchableOpacity>
 
         <View style={styles.categoriesList}>
@@ -806,7 +806,7 @@ export default function CategoryManagementModal({
           />
         </TouchableOpacity>
         <Text style={[styles.modalTitle, { color: textColor }]}>
-          {mode === 'create' ? 'Opret kategori' : 'Rediger kategori'}
+          {mode === 'create' ? 'Create category' : 'Edit category'}
         </Text>
         <View style={{ width: 32 }} />
       </View>
@@ -818,7 +818,7 @@ export default function CategoryManagementModal({
             style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
             value={categoryName}
             onChangeText={setCategoryName}
-            placeholder="F.eks. Træning"
+            placeholder="For example Training"
             placeholderTextColor={textSecondaryColor}
             testID="category.manage.nameInput"
           />
@@ -876,7 +876,7 @@ export default function CategoryManagementModal({
         </View>
 
         <View style={styles.previewContainer}>
-          <Text style={[styles.fieldLabel, { color: textColor }]}>Forhåndsvisning</Text>
+          <Text style={[styles.fieldLabel, { color: textColor }]}>Preview</Text>
           <View
             style={[
               styles.previewChip,
@@ -887,7 +887,7 @@ export default function CategoryManagementModal({
             ]}
           >
             <Text style={styles.previewEmoji}>{selectedEmoji}</Text>
-            <Text style={styles.previewName}>{categoryName || 'Kategorinavn'}</Text>
+            <Text style={styles.previewName}>{categoryName || 'Categorynavn'}</Text>
           </View>
         </View>
       </ScrollView>
@@ -903,7 +903,7 @@ export default function CategoryManagementModal({
           activeOpacity={0.7}
           disabled={isLoading}
         >
-          <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+          <Text style={[styles.modalButtonText, { color: textColor }]}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -920,7 +920,7 @@ export default function CategoryManagementModal({
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Text style={[styles.modalButtonText, { color: '#fff' }]}>
-              {mode === 'create' ? 'Opret' : 'Gem'}
+              {mode === 'create' ? 'Create' : 'Save'}
             </Text>
           )}
         </TouchableOpacity>
@@ -954,7 +954,7 @@ export default function CategoryManagementModal({
             />
           </TouchableOpacity>
           <Text style={[styles.modalTitle, { color: textColor }]}>
-            {deleteModeAction === 'remove' ? 'Fjern kategori' : 'Slet kategori'}
+            {deleteModeAction === 'remove' ? 'Remove category' : 'Delete category'}
           </Text>
           <View style={{ width: 32 }} />
         </View>
@@ -968,17 +968,16 @@ export default function CategoryManagementModal({
               color={colors.warning}
             />
             <Text style={[styles.warningTitle, { color: textColor }]}>
-              Kategorien er i brug
+              Category is in use
             </Text>
             <Text style={[styles.warningMessage, { color: textSecondaryColor }]}>
-              Kategorien "{selectedCategory?.name}" bruges af {activitiesUsingCategory.length} aktivitet(er).
-              Du skal tildele disse aktiviteter til en anden kategori før du kan {deleteModeAction === 'remove' ? 'fjerne' : 'slette'} denne.
+              Category "{selectedCategory?.name}" is used by {activitiesUsingCategory.length} activity(s). You must assign these activities to another category before you can {deleteModeAction === 'remove' ? 'remove' : 'delete'} it.
             </Text>
           </View>
 
           <View style={styles.activitiesList}>
             <Text style={[styles.fieldLabel, { color: textColor }]}>
-              Aktiviteter der bruger denne kategori:
+              Activities using this category:
             </Text>
             {(activitiesUsingCategory || []).slice(0, 5).map((activity) => (
               <View
@@ -989,7 +988,7 @@ export default function CategoryManagementModal({
                   {activity.title}
                 </Text>
                 <Text style={[styles.activityDate, { color: textSecondaryColor }]}>
-                  {new Date(activity.date).toLocaleDateString('da-DK')} • {activity.time}
+                  {new Date(activity.date).toLocaleDateString('en-US')} • {activity.time}
                 </Text>
               </View>
             ))}
@@ -1002,7 +1001,7 @@ export default function CategoryManagementModal({
 
           <View style={styles.fieldContainer}>
             <Text style={[styles.fieldLabel, { color: textColor }]}>
-              Vælg ny kategori for disse aktiviteter *
+              Choose a new category for these activities *
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
               {availableCategories.map((cat) => (
@@ -1046,7 +1045,7 @@ export default function CategoryManagementModal({
             activeOpacity={0.7}
             disabled={isLoading}
           >
-            <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+            <Text style={[styles.modalButtonText, { color: textColor }]}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[

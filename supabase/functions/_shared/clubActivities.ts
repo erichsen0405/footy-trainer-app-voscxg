@@ -724,7 +724,7 @@ function buildMemberOptions(members: ClubMemberRow[], profilesByUserId: Map<stri
     })
     .map((member) => {
       const fullName = profilesByUserId.get(member.user_id) || normalizeString(member.full_name);
-      const roleLabel = member.role === 'coach' ? 'træner' : member.role === 'player' ? 'spiller' : member.role;
+      const roleLabel = member.role === 'coach' ? 'coach' : member.role === 'player' ? 'player' : member.role;
       return {
         targetType: 'member',
         targetId: member.user_id,

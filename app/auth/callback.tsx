@@ -83,12 +83,56 @@ const waitForSession = async (attempts: number, delayMs: number) => {
   return false;
 };
 
+const getFunctionErrorMessage = async (error: any, fallback: string) => {
+  const response = error?.context;
+  if (response && typeof response.clone === 'function') {
+    try {
+      const payload = await response.clone().json();
+      if (typeof payload?.message === 'string' && payload.message.trim()) {
+        return payload.message;
+      }
+      if (typeof payload?.error === 'string' && payload.error.trim()) {
+        return payload.error;
+      }
+    } catch {
+      // Fall back to the Supabase error message below.
+    }
+  }
+
+  return error?.message ?? fallback;
+};
+
+const getClubInviteToken = (params: URLSearchParams) => {
+  const token = params.get('clubInviteToken')?.trim();
+  return token || null;
+};
+
+const acceptClubInviteIfPresent = async (params: URLSearchParams) => {
+  const clubInviteToken = getClubInviteToken(params);
+  if (!clubInviteToken) {
+    return false;
+  }
+
+  const { error } = await supabase.functions.invoke('acceptClubInvite', {
+    body: {
+      token: clubInviteToken,
+      fullName: null,
+    },
+  });
+
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error, 'Could not accept club invitation.'));
+  }
+
+  return true;
+};
+
 export default function AuthCallbackScreen() {
   const router = useRouter();
   const incomingUrl = Linking.useURL();
   const routeParams = useLocalSearchParams<Record<string, string | string[]>>();
   const [status, setStatus] = useState<CallbackStatus>('loading');
-  const [message, setMessage] = useState('Bekræfter login...');
+  const [message, setMessage] = useState('Confirming login...');
 
   const parsedParams = useMemo(
     () => parseParams(incomingUrl, routeParams),
@@ -161,6 +205,8 @@ export default function AuthCallbackScreen() {
           const hasSession = await waitForSession(12, 300);
           if (!cancelled) {
             if (hasSession) {
+              setMessage('Accepting invitation...');
+              await acceptClubInviteIfPresent(effectiveParams);
               router.replace('/(tabs)/profile');
             } else {
               router.replace({ pathname: '/(tabs)/profile', params: { authMode: 'login' } });
@@ -175,13 +221,15 @@ export default function AuthCallbackScreen() {
           if (shouldGoToPasswordReset) {
             router.replace('/update-password');
           } else {
+            setMessage('Accepting invitation...');
+            await acceptClubInviteIfPresent(effectiveParams);
             router.replace('/(tabs)/profile');
           }
         }
       } catch (error: any) {
         if (!cancelled) {
           setStatus('error');
-          setMessage(error?.message ?? 'Kunne ikke gennemføre login fra bekræftelseslinket.');
+          setMessage(error?.message ?? 'Failed to complete login from verification link.');
         }
       }
     };
@@ -204,7 +252,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.errorTitle}>Kunne ikke logge ind</Text>
+      <Text style={styles.errorTitle}>Could not log in</Text>
       <Text style={styles.text}>{message}</Text>
       <Pressable
         style={styles.button}

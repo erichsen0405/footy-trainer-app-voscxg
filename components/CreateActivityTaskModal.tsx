@@ -18,9 +18,8 @@ import { supabase } from '@/integrations/supabase/client';
 import type { TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { pickAndUploadTaskVideo } from '@/utils/taskVideoUpload';
-import { buildTaskVideoPayload, mergeTaskVideoUrls } from '@/utils/taskVideos';
-import { isPlayableVideoUrl } from '@/utils/videoUrlParser';
+import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
+import { buildTaskVideoPayload, getTaskMediaType, isTaskMediaUrl, mergeTaskVideoUrls } from '@/utils/taskVideos';
 
 /*
  * ========================================
@@ -74,6 +73,16 @@ const TASK_FEEDBACK_OPTIONAL_COLUMNS = [
   'feedback_template_id',
   'is_feedback_task',
 ] as const;
+
+const getTaskMediaLabel = (url: string): string => {
+  const mediaType = getTaskMediaType(url);
+  if (mediaType === 'image') return 'Image';
+  if (mediaType === 'pdf') return 'PDF';
+  if (String(url).toLowerCase().includes('youtu')) return 'YouTube';
+  if (String(url).toLowerCase().includes('vimeo.com')) return 'Vimeo';
+  if (String(url).toLowerCase().includes('instagram.com')) return 'Instagram';
+  return 'Video';
+};
 
 type ActivityTaskFeedbackUpdatePayload = TablesUpdate<'activity_tasks'> & {
   is_feedback_task?: boolean;
@@ -228,7 +237,7 @@ export function CreateActivityTaskModal({
   }, [activityDate]);
 
   const activityDateLabel = useMemo(
-    () => (safeActivityDate ? safeActivityDate.toLocaleDateString('da-DK') : 'Ukendt dato'),
+    () => (safeActivityDate ? safeActivityDate.toLocaleDateString('en-US') : 'Unknown date'),
     [safeActivityDate],
   );
   const resolvedActivityLinkId = useMemo(() => {
@@ -255,12 +264,12 @@ export function CreateActivityTaskModal({
 
   const buildFeedbackTaskTitle = useCallback((taskTitle: string): string => {
     const trimmed = String(taskTitle ?? '').trim();
-    return `Feedback på ${trimmed || 'opgaven'}`;
+    return `Feedback on ${trimmed || 'the task'}`;
   }, []);
 
   const buildFeedbackTaskDescription = useCallback((templateId: string): string => {
     const normalizedTemplateId = String(templateId ?? '').trim();
-    return `Del din feedback efter træningen direkte til træneren. [auto-after-training:${normalizedTemplateId}]`;
+    return `Share your feedback after training directly with your coach. [auto-after-training:${normalizedTemplateId}]`;
   }, []);
 
   const upsertLocalTaskTemplate = useCallback(
@@ -300,7 +309,7 @@ export function CreateActivityTaskModal({
           .maybeSingle();
 
         if (existingTemplateError) {
-          throw new Error(`Kunne ikke hente opgaveskabelon: ${existingTemplateError.message}`);
+          throw new Error(`Could not load task template: ${existingTemplateError.message}`);
         }
 
         if (
@@ -338,7 +347,7 @@ export function CreateActivityTaskModal({
           .eq('user_id', ownerUserId);
 
         if (updateError) {
-          throw new Error(`Kunne ikke opdatere lokal opgaveskabelon: ${updateError.message}`);
+          throw new Error(`Could not update local task template: ${updateError.message}`);
         }
 
         return reusableTemplateId;
@@ -355,7 +364,7 @@ export function CreateActivityTaskModal({
 
       if (insertError || !insertedTemplate?.id) {
         throw new Error(
-          `Kunne ikke oprette lokal opgaveskabelon: ${insertError?.message || 'Mangler template-id'}`
+          `Could not create local task template: ${insertError?.message || 'Missing template ID'}`
         );
       }
 
@@ -398,7 +407,7 @@ export function CreateActivityTaskModal({
 
       if (existingRowsFull.error) {
         if (!hasMissingTaskFeedbackOptionError(existingRowsFull.error)) {
-          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFull.error.message}`);
+          throw new Error(`Could not load existing feedback task: ${existingRowsFull.error.message}`);
         }
         supportsFeedbackColumns = false;
         const existingRowsFallback = await supabase
@@ -406,7 +415,7 @@ export function CreateActivityTaskModal({
           .select('id, description, created_at, completed, task_template_id')
           .eq('activity_id', normalizedActivityLinkId);
         if (existingRowsFallback.error) {
-          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFallback.error.message}`);
+          throw new Error(`Could not load existing feedback task: ${existingRowsFallback.error.message}`);
         }
         existingRows = Array.isArray(existingRowsFallback.data) ? existingRowsFallback.data : [];
       } else {
@@ -452,7 +461,7 @@ export function CreateActivityTaskModal({
             .delete()
             .in('id', matchedIds);
           if (deleteError) {
-            throw new Error(`Kunne ikke fjerne feedback-opgave: ${deleteError.message}`);
+            throw new Error(`Could not remove feedback task: ${deleteError.message}`);
           }
         }
         return;
@@ -476,7 +485,7 @@ export function CreateActivityTaskModal({
           .update(updateFeedbackPayload as any)
           .eq('id', keepId);
         if (updateFeedbackError) {
-          throw new Error(`Kunne ikke opdatere feedback-opgave: ${updateFeedbackError.message}`);
+          throw new Error(`Could not update feedback task: ${updateFeedbackError.message}`);
         }
 
         if (matchedIds.length > 1) {
@@ -486,7 +495,7 @@ export function CreateActivityTaskModal({
             .delete()
             .in('id', extras);
           if (deleteExtrasError) {
-            throw new Error(`Kunne ikke rydde op i ekstra feedback-opgaver: ${deleteExtrasError.message}`);
+            throw new Error(`Could not clean up extra feedback tasks: ${deleteExtrasError.message}`);
           }
         }
 
@@ -510,7 +519,7 @@ export function CreateActivityTaskModal({
         .insert(insertFeedbackPayload as any);
 
       if (insertFeedbackError) {
-        throw new Error(`Kunne ikke oprette feedback-opgave: ${insertFeedbackError.message}`);
+        throw new Error(`Could not create feedback task: ${insertFeedbackError.message}`);
       }
     },
     [activityId, buildFeedbackTaskDescription, buildFeedbackTaskTitle],
@@ -550,7 +559,7 @@ export function CreateActivityTaskModal({
 
       if (existingRowsFull.error) {
         if (!hasMissingTaskFeedbackOptionError(existingRowsFull.error)) {
-          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFull.error.message}`);
+          throw new Error(`Could not load existing feedback task: ${existingRowsFull.error.message}`);
         }
         supportsFeedbackColumns = false;
         const existingRowsFallback = await supabase
@@ -558,7 +567,7 @@ export function CreateActivityTaskModal({
           .select('id, description, created_at, completed, task_template_id')
           .eq('local_meta_id', normalizedLocalMetaId);
         if (existingRowsFallback.error) {
-          throw new Error(`Kunne ikke hente eksisterende feedback-opgave: ${existingRowsFallback.error.message}`);
+          throw new Error(`Could not load existing feedback task: ${existingRowsFallback.error.message}`);
         }
         existingRows = Array.isArray(existingRowsFallback.data) ? existingRowsFallback.data : [];
       } else {
@@ -604,7 +613,7 @@ export function CreateActivityTaskModal({
             .delete()
             .in('id', matchedIds);
           if (deleteError) {
-            throw new Error(`Kunne ikke fjerne feedback-opgave: ${deleteError.message}`);
+            throw new Error(`Could not remove feedback task: ${deleteError.message}`);
           }
         }
         return;
@@ -628,7 +637,7 @@ export function CreateActivityTaskModal({
           .update(updateFeedbackPayload as any)
           .eq('id', keepId);
         if (updateFeedbackError) {
-          throw new Error(`Kunne ikke opdatere feedback-opgave: ${updateFeedbackError.message}`);
+          throw new Error(`Could not update feedback task: ${updateFeedbackError.message}`);
         }
 
         if (matchedIds.length > 1) {
@@ -638,7 +647,7 @@ export function CreateActivityTaskModal({
             .delete()
             .in('id', extras);
           if (deleteExtrasError) {
-            throw new Error(`Kunne ikke rydde op i ekstra feedback-opgaver: ${deleteExtrasError.message}`);
+            throw new Error(`Could not clean up extra feedback tasks: ${deleteExtrasError.message}`);
           }
         }
 
@@ -662,7 +671,7 @@ export function CreateActivityTaskModal({
         .insert(insertFeedbackPayload as any);
 
       if (insertFeedbackError) {
-        throw new Error(`Kunne ikke oprette feedback-opgave: ${insertFeedbackError.message}`);
+        throw new Error(`Could not create feedback task: ${insertFeedbackError.message}`);
       }
     },
     [buildFeedbackTaskDescription, buildFeedbackTaskTitle],
@@ -677,7 +686,7 @@ export function CreateActivityTaskModal({
       .delete()
       .eq('activity_task_id', normalizedTaskId);
     if (deleteError) {
-      throw new Error(`Kunne ikke opdatere delopgaver: ${deleteError.message}`);
+      throw new Error(`Could not update subtasks: ${deleteError.message}`);
     }
 
     const validSubtasks = (drafts ?? [])
@@ -694,7 +703,7 @@ export function CreateActivityTaskModal({
       .from('activity_task_subtasks')
       .insert(rows);
     if (insertError) {
-      throw new Error(`Kunne ikke gemme delopgaver: ${insertError.message}`);
+      throw new Error(`Could not save subtasks: ${insertError.message}`);
     }
   }, []);
 
@@ -754,8 +763,8 @@ export function CreateActivityTaskModal({
   const handleAddVideoUrl = useCallback(() => {
     const trimmed = videoUrlInput.trim();
     if (!trimmed) return;
-    if (!isPlayableVideoUrl(trimmed)) {
-      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+    if (!isTaskMediaUrl(trimmed)) {
+      Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
     }
     setVideoUrls(prev => mergeTaskVideoUrls(prev, trimmed));
@@ -764,18 +773,18 @@ export function CreateActivityTaskModal({
 
   const handlePickVideo = useCallback(async () => {
     if (!userId) {
-      Alert.alert('Fejl', 'Du skal være logget ind for at uploade video.');
+      Alert.alert('Error', 'You must be logged in to upload files.');
       return;
     }
 
     setIsUploadingVideo(true);
     try {
-      const uploadedVideo = await pickAndUploadTaskVideo(userId);
-      if (!uploadedVideo) return;
-      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedVideo.publicUrl));
-      Alert.alert('Video uploadet', 'Videoen er føjet til opgaven.');
+      const uploadedMedia = await pickAndUploadTaskMedia(userId);
+      if (!uploadedMedia) return;
+      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedMedia.publicUrl));
+      Alert.alert('File uploaded', 'The file has been added to the task.');
     } catch (error: any) {
-      Alert.alert('Fejl', error?.message || 'Kunne ikke uploade video.');
+      Alert.alert('Error', error?.message || 'Failed to upload file.');
     } finally {
       setIsUploadingVideo(false);
     }
@@ -940,10 +949,10 @@ export function CreateActivityTaskModal({
 
     // Add a small delay on iOS to ensure the activity is fully committed
     if (Platform.OS === 'ios' && visible) {
-      const timer = setTimeout(() => {
+      const hours = setTimeout(() => {
         verifyActivity();
       }, 500);
-      return () => clearTimeout(timer);
+      return () => clearTimeout(hours);
     } else {
       verifyActivity();
     }
@@ -951,31 +960,31 @@ export function CreateActivityTaskModal({
 
   const handleSave = useCallback(async () => {
     if (!title.trim()) {
-      Alert.alert('Fejl', 'Opgavetitel er påkrævet');
+      Alert.alert('Error', 'Assignment title is required');
       return;
     }
 
     if (!userId) {
-      Alert.alert('Fejl', 'Bruger ikke autentificeret');
+      Alert.alert('Error', 'User not authenticated');
       return;
     }
 
     if (isUploadingVideo) {
-      Alert.alert('Vent venligst', 'Videoen uploades stadig. Prøv igen om et øjeblik.');
+      Alert.alert('Please wait', 'The file is still uploading. Please try again in a moment.');
       return;
     }
 
-    if (videoUrlInput.trim() && !isPlayableVideoUrl(videoUrlInput)) {
-      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+    if (videoUrlInput.trim() && !isTaskMediaUrl(videoUrlInput)) {
+      Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
     }
 
     if (!activityExists || !resolvedActivityLinkId) {
       Alert.alert(
-        'Vent venligst',
+        'Please wait',
         isExternalActivity
-          ? 'Aktiviteten synkroniseres stadig. Prøv igen om et øjeblik.'
-          : 'Aktiviteten er ved at blive oprettet. Prøv igen om et øjeblik.',
+          ? 'The activity is still syncing. Please try again in a moment.'
+          : 'The activity is being created. Please try again in a moment.',
         [{ text: 'OK' }]
       );
       return;
@@ -1091,7 +1100,7 @@ export function CreateActivityTaskModal({
         }
 
         if (!insertResponse.data) {
-          throw new Error('Ingen data returneret fra databasen');
+          throw new Error('No data returned from the database');
         }
 
         return insertResponse.data;
@@ -1115,7 +1124,7 @@ export function CreateActivityTaskModal({
         }
 
         if (!updated) {
-          throw new Error('Opgaven kunne ikke findes på aktiviteten.');
+          throw new Error('The task could not be found on the activity.');
         }
 
         if (activeTable === 'activity_tasks') {
@@ -1139,7 +1148,7 @@ export function CreateActivityTaskModal({
           });
         }
 
-        Alert.alert('Opgave opdateret', `Opgaven "${title}" er opdateret.`, [{ text: 'OK' }]);
+        Alert.alert('Task updated', `The task "${title}" was updated.`, [{ text: 'OK' }]);
         if (onTaskUpdated) {
           await onTaskUpdated();
         }
@@ -1152,7 +1161,7 @@ export function CreateActivityTaskModal({
             .single();
 
           if (activityCheckError || !activityCheck) {
-            throw new Error('Aktiviteten kunne ikke findes. Prøv at lukke og åbne aktiviteten igen.');
+            throw new Error('The activity could not be found. Try closing and opening the activity again.');
           }
         }
 
@@ -1200,25 +1209,25 @@ export function CreateActivityTaskModal({
 
           if (success) {
             Alert.alert(
-              'Opgave oprettet',
-              `Opgaven "${title}" er oprettet med påmindelse ${reminderPayload ?? 0} minutter før aktiviteten.`,
+              'Task created',
+              `The task "${title}" was created with a reminder ${reminderPayload ?? 0} minutes before the activity.`,
               [{ text: 'OK' }]
             );
           } else {
             Alert.alert(
-              'Opgave oprettet',
-              `Opgaven "${title}" er oprettet. Påmindelsen vil blive planlagt automatisk.`,
+              'Task created',
+              `The task "${title}" was created. The reminder will be scheduled automatically.`,
               [{ text: 'OK' }]
             );
           }
         } else if (!isExternalActivity && hasReminder && !safeActivityDate) {
           Alert.alert(
-            'Opgave oprettet',
-            `Opgaven "${title}" er oprettet, men der kunne ikke planlægges påmindelse uden gyldig dato.`,
+            'Task created',
+            `The task "${title}" was created, but a reminder could not be scheduled without a valid date.`,
             [{ text: 'OK' }],
           );
         } else {
-          Alert.alert('Opgave oprettet', `Opgaven "${title}" er oprettet.`, [{ text: 'OK' }]);
+          Alert.alert('Task created', `The task "${title}" was created.`, [{ text: 'OK' }]);
         }
 
         if (onTaskCreated) {
@@ -1270,8 +1279,8 @@ export function CreateActivityTaskModal({
       console.error('  Error stack:', error?.stack);
       
       Alert.alert(
-        'Fejl',
-        error?.message || 'Kunne ikke oprette opgave. Prøv venligst igen.',
+        'Error',
+        error?.message || 'Could not create task. Please try again.',
         [{ text: 'OK' }]
       );
     } finally {
@@ -1326,7 +1335,7 @@ export function CreateActivityTaskModal({
       >
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{isEditMode ? 'Rediger opgave' : 'Ny opgave'}</Text>
+            <Text style={styles.modalTitle}>{isEditMode ? 'Edit task' : 'New task'}</Text>
             <TouchableOpacity
               style={styles.closeButton}
               onPress={onClose}
@@ -1341,16 +1350,16 @@ export function CreateActivityTaskModal({
             For: {activityTitle}
           </Text>
           <Text style={styles.activityInfo}>
-            Dato: {activityDateLabel}
-            {safeActivityDate ? ` kl. ${activityTime}` : ''}
+            Date: {activityDateLabel}
+            {safeActivityDate ? ` at ${activityTime}` : ''}
           </Text>
 
           {!activityExists && (
             <View style={styles.warningBanner}>
               <Text style={styles.warningText}>
                 ⏳ {isExternalActivity
-                  ? 'Venter på at ekstern aktivitet bliver synkroniseret...'
-                  : 'Venter på at aktiviteten bliver oprettet...'}
+                  ? 'Waiting for external activity to sync...'
+                  : 'Waiting for the activity to be created...'}
               </Text>
             </View>
           )}
@@ -1362,23 +1371,23 @@ export function CreateActivityTaskModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.label}>Titel</Text>
+            <Text style={styles.label}>Title</Text>
             <TextInput
               style={styles.input}
               value={title}
               onChangeText={setTitle}
-              placeholder="Opgavens titel"
+              placeholder="Task title"
               placeholderTextColor={colors.textSecondary}
               editable={activityExists}
               returnKeyType="next"
             />
 
-            <Text style={styles.label}>Beskrivelse</Text>
+            <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={description}
               onChangeText={setDescription}
-              placeholder="Beskrivelse af opgaven"
+              placeholder="Task description"
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
@@ -1388,16 +1397,16 @@ export function CreateActivityTaskModal({
 
             <View style={styles.videoSection}>
               <View style={styles.videoLabelRow}>
-                <Text style={styles.label}>Videoer</Text>
+                <Text style={styles.label}>Media</Text>
                 <Text style={styles.videoCountText}>
-                  {videoUrls.length ? `${videoUrls.length} tilføjet` : 'Ingen tilføjet'}
+                  {videoUrls.length ? `${videoUrls.length} added` : 'None added'}
                 </Text>
               </View>
               <TextInput
                 style={styles.input}
                 value={videoUrlInput}
                 onChangeText={setVideoUrlInput}
-                placeholder="Indsæt YouTube, Vimeo, Instagram eller video-link"
+                placeholder="Paste a video, image, or PDF link"
                 placeholderTextColor={colors.textSecondary}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -1413,7 +1422,7 @@ export function CreateActivityTaskModal({
                 disabled={!activityExists || isUploadingVideo || !videoUrlInput.trim()}
                 activeOpacity={0.85}
               >
-                <Text style={styles.addVideoUrlButtonText}>Tilføj video-link</Text>
+                <Text style={styles.addVideoUrlButtonText}>Add media link</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -1425,7 +1434,7 @@ export function CreateActivityTaskModal({
                 activeOpacity={0.85}
               >
                 <Text style={styles.uploadVideoButtonText}>
-                  {isUploadingVideo ? 'Uploader video...' : 'Vælg video fra telefon'}
+                  {isUploadingVideo ? 'Uploading file...' : 'Choose image, video, or PDF'}
                 </Text>
               </TouchableOpacity>
               {videoUrls.length ? (
@@ -1433,9 +1442,10 @@ export function CreateActivityTaskModal({
                   {videoUrls.map((url, index) => (
                     <View key={`${url}-${index}`} style={styles.videoListItem}>
                       <View style={styles.videoListTextWrap}>
-                        <Text style={styles.videoListTitle}>Video {index + 1}</Text>
+                        <Text style={styles.videoListTitle}>Media {index + 1}</Text>
                         <Text style={styles.videoListSubtitle} numberOfLines={1}>
-                          {videoUrls.length > 1 ? 'Swipe i opgaven for at skifte video' : 'Afspilles direkte i opgaven'}
+                          {getTaskMediaLabel(url)}
+                          {videoUrls.length > 1 ? ' - swipe in the viewer' : ''}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -1444,31 +1454,31 @@ export function CreateActivityTaskModal({
                         disabled={!activityExists || isUploadingVideo}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.removeVideoButtonText}>Fjern</Text>
+                        <Text style={styles.removeVideoButtonText}>Remove</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
                   {videoUrls.length > 1 ? (
-                    <Text style={styles.videoSuccessText}>Swipe til siden i opgaven for at afspille næste video.</Text>
+                    <Text style={styles.videoSuccessText}>Swipe sideways in the task to switch between files.</Text>
                   ) : null}
                 </View>
               ) : null}
-              {videoUrlInput.trim() && !isPlayableVideoUrl(videoUrlInput) ? (
+              {videoUrlInput.trim() && !isTaskMediaUrl(videoUrlInput) ? (
                 <Text style={styles.videoErrorText}>
-                  Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.
+                  Invalid media. Use a video, image, or PDF link.
                 </Text>
               ) : null}
             </View>
 
             <View style={styles.subtasksSection}>
               <View style={styles.subtasksHeader}>
-                <Text style={styles.label}>Delopgaver</Text>
+                <Text style={styles.label}>Subtasks</Text>
                 <TouchableOpacity
                   style={[styles.addSubtaskButton, !activityExists && styles.addSubtaskButtonDisabled]}
                   onPress={addSubtask}
                   disabled={!activityExists}
                 >
-                  <Text style={styles.addSubtaskButtonText}>Tilføj</Text>
+                  <Text style={styles.addSubtaskButtonText}>Add</Text>
                 </TouchableOpacity>
               </View>
               {subtasks.map((subtask, index) => (
@@ -1477,7 +1487,7 @@ export function CreateActivityTaskModal({
                     style={[styles.input, styles.subtaskInput]}
                     value={subtask.title}
                     onChangeText={(value) => updateSubtask(index, value)}
-                    placeholder={`Delopgave ${index + 1}`}
+                    placeholder={`Subtask ${index + 1}`}
                     placeholderTextColor={colors.textSecondary}
                     editable={activityExists}
                   />
@@ -1487,7 +1497,7 @@ export function CreateActivityTaskModal({
                       onPress={() => removeSubtask(index)}
                       disabled={!activityExists}
                     >
-                      <Text style={styles.removeSubtaskButtonText}>Fjern</Text>
+                      <Text style={styles.removeSubtaskButtonText}>Remove</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1497,9 +1507,9 @@ export function CreateActivityTaskModal({
             <View style={styles.reminderSectionCard}>
               <View style={styles.reminderSectionHeader}>
                 <View style={styles.toggleTextWrapper}>
-                  <Text style={styles.toggleLabel}>Påmindelse før start</Text>
+                  <Text style={styles.toggleLabel}>Reminder before start</Text>
                   <Text style={styles.toggleHelperText}>
-                    Slå til for at vise en påmindelse inden aktiviteten starter.
+                    Turn on to show a reminder before the activity starts.
                   </Text>
                 </View>
                 <Switch
@@ -1514,7 +1524,7 @@ export function CreateActivityTaskModal({
 
               {hasReminder && (
                 <View style={styles.reminderSectionBody}>
-                  <Text style={styles.label}>Minutter før start</Text>
+                  <Text style={styles.label}>Minutes before start</Text>
                   <View style={styles.delayOptionsRow}>
                   {REMINDER_DELAY_OPTIONS.map((option) => {
                     const selected = normalizeDurationInput(reminderMinutes) === option.value;
@@ -1538,7 +1548,7 @@ export function CreateActivityTaskModal({
                   })}
                   </View>
                   <Text style={styles.helperText}>
-                    0 = på starttidspunktet. Påmindelsen vises før aktivitetens starttid.
+                    0 = at start time. The reminder is displayed before the activity's start time.
                   </Text>
                 </View>
               )}
@@ -1549,9 +1559,9 @@ export function CreateActivityTaskModal({
             <View style={styles.reminderSectionCard}>
               <View style={styles.reminderSectionHeader}>
                 <View style={styles.toggleTextWrapper}>
-                  <Text style={styles.toggleLabel}>Opret efter-træning feedback</Text>
+                  <Text style={styles.toggleLabel}>Create post-training feedback</Text>
                   <Text style={styles.toggleHelperText}>
-                    Når denne skabelon bruges på en aktivitet, oprettes automatisk en efter-træning feedback-opgave til aktiviteten.
+                    When this template is used on an activity, a post-training feedback task is automatically created for the activity.
                   </Text>
                 </View>
                 <Switch
@@ -1566,7 +1576,7 @@ export function CreateActivityTaskModal({
 
               {hasAfterTrainingFeedback && (
                 <View style={styles.reminderSectionBody}>
-                  <Text style={styles.label}>Påmindelse efter slut (minutter)</Text>
+                  <Text style={styles.label}>Reminder after end (minutes)</Text>
                   <View style={styles.delayOptionsRow}>
                   {REMINDER_DELAY_OPTIONS.map((option) => {
                     const selected = normalizeDurationInput(afterTrainingDelayMinutes) === option.value;
@@ -1589,7 +1599,7 @@ export function CreateActivityTaskModal({
                     );
                   })}
                   </View>
-                  <Text style={styles.helperText}>Vises efter aktivitetens sluttidspunkt + valgt delay.</Text>
+                  <Text style={styles.helperText}>Shown after the activity's end time + selected delay.</Text>
                 </View>
               )}
             </View>
@@ -1599,9 +1609,9 @@ export function CreateActivityTaskModal({
             <View style={styles.reminderSectionCard}>
               <View style={styles.reminderSectionHeader}>
                 <View style={styles.toggleTextWrapper}>
-                  <Text style={styles.toggleLabel}>Tid på opgave</Text>
+                  <Text style={styles.toggleLabel}>Task time</Text>
                   <Text style={styles.toggleHelperText}>
-                    Når slået til tæller opgavetiden i performance-kortet i stedet for aktivitetstiden.
+                    When switched on, the task time counts in the performance card instead of the activity time.
                   </Text>
                 </View>
                 <Switch
@@ -1616,7 +1626,7 @@ export function CreateActivityTaskModal({
 
               {hasTaskDuration && (
                 <View style={styles.reminderSectionBody}>
-                  <Text style={styles.label}>Varighed (minutter)</Text>
+                  <Text style={styles.label}>Duration (minutes)</Text>
                   <TextInput
                     style={styles.input}
                     value={taskDurationMinutes}
@@ -1641,7 +1651,7 @@ export function CreateActivityTaskModal({
               onPress={onClose}
               disabled={isLoading || isUploadingVideo}
             >
-              <Text style={styles.cancelButtonText}>Annuller</Text>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1655,14 +1665,14 @@ export function CreateActivityTaskModal({
             >
               <Text style={styles.saveButtonText}>
                 {isLoading
-                  ? 'Gemmer...'
+                  ? 'Saving...'
                   : isUploadingVideo
-                    ? 'Uploader...'
+                    ? 'Uploading...'
                     : !activityExists
-                      ? 'Vent...'
+                      ? 'Wait...'
                       : isEditMode
-                        ? 'Gem ændringer'
-                        : 'Gem'}
+                        ? 'Save changes'
+                        : 'Save'}
               </Text>
             </TouchableOpacity>
           </View>

@@ -16,7 +16,7 @@ interface ContextConfirmationDialogProps {
   contextType: 'player' | 'team' | null;
   contextName: string | null;
   actionType: 'create' | 'edit' | 'complete' | 'delete';
-  itemType: 'activity' | 'task' | 'opgave';
+  itemType: 'activity' | 'task';
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -33,28 +33,26 @@ export default function ContextConfirmationDialog({
   const getActionText = () => {
     switch (actionType) {
       case 'create':
-        return 'oprette';
+        return 'create';
       case 'edit':
-        return 'redigere';
+        return 'edit';
       case 'complete':
-        return 'fuldføre';
+        return 'complete';
       case 'delete':
-        return 'slette';
+        return 'delete';
       default:
-        return 'ændre';
+        return 'change';
     }
   };
 
   const getItemText = () => {
     switch (itemType) {
       case 'activity':
-        return 'aktiviteten';
+        return 'the activity';
       case 'task':
-        return 'opgaven';
-      case 'opgave':
-        return 'opgaven';
+        return 'the task';
       default:
-        return 'elementet';
+        return 'the item';
     }
   };
 
@@ -62,9 +60,9 @@ export default function ContextConfirmationDialog({
     if (!contextType || !contextName) return '';
     
     if (contextType === 'player') {
-      return `spilleren "${contextName}"`;
+      return `player "${contextName}"`;
     } else {
-      return `teamet "${contextName}"`;
+      return `team "${contextName}"`;
     }
   };
 
@@ -86,14 +84,14 @@ export default function ContextConfirmationDialog({
             />
           </View>
 
-          <Text style={styles.title}>Bekræft handling</Text>
+          <Text style={styles.title}>Confirm action</Text>
           
           <Text style={styles.message}>
-            Du er ved at {getActionText()} {getItemText()} for {getContextText()}.
+            You are about to {getActionText()} {getItemText()} for {getContextText()}.
           </Text>
 
           <Text style={styles.subMessage}>
-            Er du sikker på at du vil fortsætte?
+            Are you sure you want to continue?
           </Text>
 
           <View style={styles.buttonContainer}>
@@ -102,7 +100,7 @@ export default function ContextConfirmationDialog({
               onPress={onCancel}
               activeOpacity={0.7}
             >
-              <Text style={styles.cancelButtonText}>Annuller</Text>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -110,7 +108,7 @@ export default function ContextConfirmationDialog({
               onPress={onConfirm}
               activeOpacity={0.7}
             >
-              <Text style={styles.confirmButtonText}>Fortsæt</Text>
+              <Text style={styles.confirmButtonText}>Continue</Text>
             </TouchableOpacity>
           </View>
         </View>

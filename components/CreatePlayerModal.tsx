@@ -72,13 +72,13 @@ export default function CreatePlayerModal({
   const handleSearch = useCallback(async () => {
     // Validation
     if (!searchEmail.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst en email-adresse');
+      Alert.alert('Error', 'Please enter an email address');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(searchEmail)) {
-      Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
@@ -101,25 +101,25 @@ export default function CreatePlayerModal({
       if (error) {
         console.error('Search error:', error);
         if (error instanceof FunctionsHttpError && error.context) {
-          let message = 'Kunne ikke søge efter bruger. Prøv igen.';
+          let message = 'Could not search for user. Try again.';
           try {
             const body = await error.context.clone().json();
             if (body?.error) message = body.error;
           } catch {}
           throw new Error(message);
         }
-        throw new Error(error.message || 'Kunne ikke søge efter bruger. Prøv igen.');
+        throw new Error(error.message || 'Could not search for user. Try again.');
       }
 
       if (!data || !data.success) {
-        const errorMessage = data?.error || 'Kunne ikke søge efter bruger';
+        const errorMessage = data?.error || 'Could not search for user';
         throw new Error(errorMessage);
       }
 
       if (!data.user) {
         Alert.alert(
-          'Ingen bruger fundet',
-          `Der blev ikke fundet nogen bruger med email: ${searchEmail}\n\nBrugeren skal først oprette en konto i appen, før du kan tilføje dem som spiller.`,
+          'No user found',
+          `No user was found with email: ${searchEmail}\n\nThe user must create an account in the app before you can add them as a player.`,
           [{ text: 'OK' }]
         );
         return;
@@ -134,7 +134,7 @@ export default function CreatePlayerModal({
 
     } catch (error: any) {
       console.error('Error searching for user:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl ved søgning efter bruger');
+      Alert.alert('Error', error.message || 'An error occurred while searching for user');
     } finally {
       setSearching(false);
     }
@@ -142,7 +142,7 @@ export default function CreatePlayerModal({
 
   const handleAddPlayer = useCallback(async () => {
     if (!searchResult) {
-      Alert.alert('Fejl', 'Ingen bruger valgt');
+      Alert.alert('Error', 'No user selected');
       return;
     }
 
@@ -164,29 +164,29 @@ export default function CreatePlayerModal({
       if (error) {
         console.error('Add player error:', error);
         if (error instanceof FunctionsHttpError && error.context) {
-          let message = 'Kunne ikke tilføje spiller. Prøv igen.';
+          let message = 'Could not add player. Try again.';
           try {
             const body = await error.context.clone().json();
             if (body?.error) message = body.error;
           } catch {}
           throw new Error(message);
         }
-        throw new Error(error.message || 'Kunne ikke tilføje spiller. Prøv igen.');
+        throw new Error(error.message || 'Could not add player. Try again.');
       }
 
       if (!data || !data.success) {
-        const errorMessage = data?.error || 'Kunne ikke tilføje spiller';
+        const errorMessage = data?.error || 'Could not add player';
         
         // Check for specific error cases
         if (errorMessage.includes('already linked') || errorMessage.includes('already exists')) {
-          throw new Error('Denne spiller er allerede tilknyttet din profil.');
+          throw new Error('This player is already associated with your profile.');
         }
         
         throw new Error(errorMessage);
       }
 
       console.log('Player added successfully');
-      setSuccessMessage(data?.message || 'Anmodning sendt til spilleren.');
+      setSuccessMessage(data?.message || 'Request sent to the player.');
 
       // Show success message
       setShowSuccess(true);
@@ -201,7 +201,7 @@ export default function CreatePlayerModal({
 
     } catch (error: any) {
       console.error('Error adding player:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl ved tilføjelse af spiller');
+      Alert.alert('Error', error.message || 'An error occurred while adding player');
     } finally {
       setLoading(false);
     }
@@ -233,7 +233,7 @@ export default function CreatePlayerModal({
             </View>
             <Text style={styles.successTitle}>Anmodning sendt! 🎉</Text>
             <Text style={styles.successMessage}>
-              {successMessage || `${searchResult?.full_name || searchResult?.email} er tilføjet.`}
+              {successMessage || `${searchResult?.full_name || searchResult?.email} has been added.`}
             </Text>
             <View style={styles.successDetails}>
               <View style={styles.successDetailRow}>
@@ -261,7 +261,7 @@ export default function CreatePlayerModal({
                   color={colors.text}
                 />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Tilføj Spiller</Text>
+              <Text style={styles.headerTitle}>Add Player</Text>
               <View style={styles.placeholder} />
             </View>
 
@@ -283,8 +283,7 @@ export default function CreatePlayerModal({
               </View>
 
               <Text style={styles.description}>
-                Søg efter en eksisterende bruger ved at indtaste deres email-adresse. 
-                Brugeren skal allerede have oprettet en konto i appen.
+                Search for an existing user by entering their email address. The user must have already created an account in the app.
               </Text>
 
               <View style={styles.form}>
@@ -294,7 +293,7 @@ export default function CreatePlayerModal({
                     style={styles.searchInput}
                     value={searchEmail}
                     onChangeText={setSearchEmail}
-                    placeholder="spiller@email.dk"
+                    placeholder="player@example.com"
                     placeholderTextColor={colors.textSecondary}
                     autoCapitalize="none"
                     keyboardType="email-address"
@@ -337,7 +336,7 @@ export default function CreatePlayerModal({
                       />
                       <View style={styles.resultInfo}>
                         <Text style={styles.resultName}>
-                          {searchResult.full_name || 'Ingen navn'}
+                          {searchResult.full_name || 'No name'}
                         </Text>
                         <Text style={styles.resultEmail}>{searchResult.email}</Text>
                       </View>
@@ -362,7 +361,7 @@ export default function CreatePlayerModal({
                             size={20}
                             color="#fff"
                           />
-                          <Text style={styles.addPlayerButtonText}>Tilføj spiller</Text>
+                          <Text style={styles.addPlayerButtonText}>Add player</Text>
                         </>
                       )}
                     </TouchableOpacity>
@@ -377,12 +376,12 @@ export default function CreatePlayerModal({
                     color={colors.secondary}
                   />
                   <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoTitle}>Sådan fungerer det:</Text>
+                    <Text style={styles.infoTitle}>Here's how it works:</Text>
                     <Text style={styles.infoText}>
-                      1. Indtast spillerens email-adresse{'\n'}
-                      2. Klik på søg-knappen{'\n'}
-                      3. Hvis brugeren findes, kan du tilføje dem som spiller{'\n'}
-                      4. Spilleren vil nu være tilknyttet din træner-profil
+                      1. Enter the player's email address{'\n'}
+                      2. Click the search button{'\n'}
+                      3. If the user exists, you can add them as a player{'\n'}
+                      4. The player will now be associated with your coach profile
                     </Text>
                   </View>
                 </View>
@@ -395,8 +394,7 @@ export default function CreatePlayerModal({
                     color={colors.primary}
                   />
                   <Text style={styles.infoText}>
-                    Når du tilføjer en spiller, kan du oprette aktiviteter og opgaver for dem. 
-                    Spilleren vil kunne se disse i deres Hjem og Opgaver sider.
+                    When you add a player, you can create activities and tasks for them. The player will be able to see these in their Home and Tasks pages.
                   </Text>
                 </View>
               </View>
@@ -411,7 +409,7 @@ export default function CreatePlayerModal({
                 onPress={onClose}
                 disabled={loading || searching}
               >
-                <Text style={styles.cancelButtonText}>Luk</Text>
+                <Text style={styles.cancelButtonText}>Close</Text>
               </TouchableOpacity>
             </View>
           </>

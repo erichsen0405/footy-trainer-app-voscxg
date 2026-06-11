@@ -86,7 +86,7 @@ export default function SubscriptionManager({
 
     // Normal flow - create subscription
     const confirmed = window.confirm(
-      `Vil du starte en 14-dages gratis prøveperiode med ${planName} planen?\n\nDu kan oprette op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}.`
+      `Do you want to start a 14-day free trial with the ${planName} plan?\n\nYou can create up to ${maxPlayers} player${maxPlayers > 1 ? 's' : ''}.`
     );
 
     if (confirmed) {
@@ -107,7 +107,7 @@ export default function SubscriptionManager({
         setShowPlans(false);
         setRetryCount(0);
         
-        window.alert('Succes! 🎉\n\nDin 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.');
+        window.alert('Success! 🎉\n\nYour 14-day free trial has started. You can now create players.');
         
         // Force another refresh to ensure UI is updated
         console.log('[SubscriptionManager.web] Forcing final refresh after successful creation...');
@@ -131,13 +131,13 @@ export default function SubscriptionManager({
         setRefreshKey(prev => prev + 1);
         
         // Show a friendly message
-        window.alert('Du har allerede et abonnement\n\nDit nuværende abonnement vises nu.');
+        window.alert('You already have a subscription\n\nYour current subscription is now displayed.');
       } else {
         console.error('[SubscriptionManager.web] Subscription creation failed:', result.error);
         
         // Show error with retry option
         const retry = window.confirm(
-          `Fejl ved oprettelse af abonnement\n\n${result.error || 'Kunne ikke oprette abonnement'}\n\nVil du prøve igen?`
+          `Error creating subscription\n\n${result.error || 'Could not create subscription'}\n\nDo you want to try again?`
         );
 
         if (retry) {
@@ -146,15 +146,15 @@ export default function SubscriptionManager({
           
           if (newRetryCount >= 3) {
             window.alert(
-              'Vedvarende fejl\n\n' +
-              'Der er problemer med at oprette dit abonnement. Dette kan skyldes:\n\n' +
-              '• Dårlig internetforbindelse\n' +
+              'Persistent error\n\n' +
+              'There are problems creating your subscription. This may be due to:\n\n' +
+              '• Bad internet connection' +
               '• Server problemer\n\n' +
-              'Prøv venligst:\n' +
+              'Please try:' +
               '1. Tjek din internetforbindelse\n' +
-              '2. Log ud og ind igen\n' +
-              '3. Genindlæs siden\n\n' +
-              'Hvis problemet fortsætter, kontakt support.'
+              '2. Sign out and sign back in\n' +
+              '3. Reload the page' +
+              'If the problem persists, contact support.'
             );
             setRetryCount(0);
           } else {
@@ -167,7 +167,7 @@ export default function SubscriptionManager({
     } catch (error: any) {
       console.error('[SubscriptionManager.web] ========== UNEXPECTED ERROR ==========');
       console.error('[SubscriptionManager.web] Error:', error);
-      window.alert('Uventet fejl\n\nDer opstod en uventet fejl. Prøv venligst igen.');
+      window.alert('Unexpected error\n\nAn unexpected error occurred. Please try again.');
       setRetryCount(0);
     } finally {
       setCreatingPlanId(null);
@@ -177,7 +177,7 @@ export default function SubscriptionManager({
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toLocaleDateString('da-DK', {
+    return date.toLocaleDateString('en-US', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -257,7 +257,7 @@ export default function SubscriptionManager({
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: textColor }]}>Henter abonnement...</Text>
+        <Text style={[styles.loadingText, { color: textColor }]}>Loading subscription...</Text>
       </View>
     );
   }
@@ -271,7 +271,7 @@ export default function SubscriptionManager({
           onPress={() => setShowDiagnostic(false)}
         >
           <Text style={[styles.diagnosticButtonText, { color: colors.primary }]}>
-            ← Tilbage til abonnementer
+            ← Back to subscriptions
           </Text>
         </TouchableOpacity>
         <SubscriptionDiagnostic />
@@ -284,9 +284,9 @@ export default function SubscriptionManager({
       {/* Header - Only show when user doesn't have a subscription */}
       {!isSignupFlow && !subscriptionStatus?.hasSubscription && (
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din plan</Text>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Choose your plan</Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            Start med 14 dages gratis prøveperiode
+            Start with a 14-day free trial
           </Text>
         </View>
       )}
@@ -306,12 +306,12 @@ export default function SubscriptionManager({
               color="#fff"
             />
             <View style={styles.currentPlanInfo}>
-              <Text style={styles.currentPlanLabel}>Din nuværende plan:</Text>
+              <Text style={styles.currentPlanLabel}>Your current plan:</Text>
               <Text style={styles.currentPlanName}>{subscriptionStatus.planName}</Text>
             </View>
             <View style={styles.currentPlanBadge}>
               <Text style={styles.currentPlanBadgeText}>
-                {subscriptionStatus.status === 'trial' ? 'Prøveperiode' : 'Aktiv'}
+                {subscriptionStatus.status === 'trial' ? 'Trial period' : 'Aktiv'}
               </Text>
             </View>
           </View>
@@ -329,7 +329,7 @@ export default function SubscriptionManager({
                     size={20}
                     color="#fff"
                   />
-                  <Text style={styles.orangeBoxDetailLabel}>Spillere</Text>
+                  <Text style={styles.orangeBoxDetailLabel}>Players</Text>
                 </View>
                 <Text style={styles.orangeBoxDetailValue}>
                   {subscriptionStatus.currentPlayers} / {subscriptionStatus.maxPlayers}
@@ -345,10 +345,10 @@ export default function SubscriptionManager({
                       size={20}
                       color="#fff"
                     />
-                    <Text style={styles.orangeBoxDetailLabel}>Prøveperiode</Text>
+                    <Text style={styles.orangeBoxDetailLabel}>Trial period</Text>
                   </View>
                   <Text style={styles.orangeBoxDetailValue}>
-                    {getDaysRemaining(subscriptionStatus.trialEnd)} dage tilbage
+                    {getDaysRemaining(subscriptionStatus.trialEnd)} days left
                   </Text>
                 </View>
               )}
@@ -361,7 +361,7 @@ export default function SubscriptionManager({
                     size={20}
                     color="#fff"
                   />
-                  <Text style={styles.orangeBoxDetailLabel}>Udløber</Text>
+                  <Text style={styles.orangeBoxDetailLabel}>Expires</Text>
                 </View>
                 <Text style={[styles.orangeBoxDetailValue, { fontSize: 13 }]}>
                   {formatDate(subscriptionStatus.status === 'trial' ? subscriptionStatus.trialEnd : subscriptionStatus.currentPeriodEnd)}
@@ -397,7 +397,7 @@ export default function SubscriptionManager({
               color={colors.primary}
             />
             <Text style={[styles.expandButtonText, { color: textColor }]}>
-              {showPlans ? 'Skjul abonnementer' : 'Se tilgængelige abonnementer'}
+              {showPlans ? 'Hide subscriptions' : 'See available subscriptions'}
             </Text>
           </View>
           <IconSymbol
@@ -430,11 +430,11 @@ export default function SubscriptionManager({
                 disabled={isCreating || isCurrentPlan}
                 activeOpacity={0.7}
                 testID={`paywall.planCard.${plan.id}`}
-                accessibilityLabel={`Abonnement ${plan.name}`}
+                accessibilityLabel={`Subscription ${plan.name}`}
               >
                 {isPopular && !isCurrentPlan && (
                   <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.popularBadgeText}>Mest populær</Text>
+                    <Text style={styles.popularBadgeText}>Most popular</Text>
                   </View>
                 )}
 
@@ -446,7 +446,7 @@ export default function SubscriptionManager({
                       size={16}
                       color="#fff"
                     />
-                    <Text style={styles.currentBadgeText}>Din nuværende plan</Text>
+                    <Text style={styles.currentBadgeText}>Your current plan</Text>
                   </View>
                 )}
 
@@ -468,7 +468,7 @@ export default function SubscriptionManager({
                   <Text style={[styles.price, { color: isCurrentPlan ? colors.success : colors.primary }]}>
                     {getPlanPriceLabel(plan)}
                   </Text>
-                  <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
+                  <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ month</Text>
                 </View>
 
                 <View style={styles.featuresContainer}>
@@ -481,8 +481,8 @@ export default function SubscriptionManager({
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       {plan.max_players === 1 
-                        ? 'Personlig spiller konto'
-                        : `Op til ${plan.max_players} spillere`
+                        ? 'Personal player account'
+                        : `Up to ${plan.max_players} players`
                       }
                     </Text>
                   </View>
@@ -495,7 +495,7 @@ export default function SubscriptionManager({
                       color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
-                      14 dages gratis prøveperiode
+                      14-day free trial
                     </Text>
                   </View>
 
@@ -519,7 +519,7 @@ export default function SubscriptionManager({
                       color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
-                      Opsig når som helst
+                      Terminate at any time
                     </Text>
                   </View>
                 </View>
@@ -534,7 +534,7 @@ export default function SubscriptionManager({
                     onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                     disabled={isCreating}
                     testID="paywall.primaryCtaButton"
-                    accessibilityLabel={isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+                    accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
                   >
                     {isCreating ? (
                       <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -545,7 +545,7 @@ export default function SubscriptionManager({
                           { color: isPopular ? '#fff' : colors.primary },
                         ]}
                       >
-                        {isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+                        {isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -579,8 +579,8 @@ export default function SubscriptionManager({
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
             {isSignupFlow 
-              ? 'Du får 14 dages gratis prøveperiode. Ingen binding - du kan opsige når som helst.'
-              : 'Du kan opsige dit abonnement når som helst. Ingen binding.'
+              ? 'You get a 14-day free trial. No obligation - you can cancel at any time.'
+              : 'You can cancel your subscription at any time. No binding.'
             }
           </Text>
         </View>

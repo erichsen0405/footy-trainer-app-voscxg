@@ -271,23 +271,23 @@ function resolveCelebrationMessage(celebration: ActiveCelebration): CelebrationM
 
   if (celebration.type === 'dayComplete') {
     return {
-      title: 'Dagens opgaver fuldført',
-      subtitle: 'Nyd resten af dagen.',
+      title: 'Today\'s tasks completed',
+      subtitle: 'Enjoy the rest of the day.',
       progressLine:
-        totalToday && completedToday !== null ? `I dag: ${completedToday}/${totalToday}` : undefined,
+        totalToday && completedToday !== null ? `Today: ${completedToday}/${totalToday}` : undefined,
     };
   }
 
   if (totalToday && completedToday !== null && remainingToday !== null) {
     return {
-      title: 'Opgave fuldført',
-      subtitle: remainingToday > 0 ? `${remainingToday} tilbage i dag` : `I dag: ${completedToday}/${totalToday}`,
-      progressLine: remainingToday > 0 ? `I dag: ${completedToday}/${totalToday}` : undefined,
+      title: 'Task completed',
+      subtitle: remainingToday > 0 ? `${remainingToday} left today` : `Today: ${completedToday}/${totalToday}`,
+      progressLine: remainingToday > 0 ? `Today: ${completedToday}/${totalToday}` : undefined,
     };
   }
 
   return {
-    title: 'Opgave fuldført',
+    title: 'Task completed',
     subtitle: 'Godt arbejde.',
   };
 }

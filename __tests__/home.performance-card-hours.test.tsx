@@ -240,7 +240,7 @@ describe('Home performance card hour sums', () => {
     const { getByText, getByTestId } = render(<HomeScreen />);
 
     expect(getByTestId('home.thisWeekPremiumCard')).toBeTruthy();
-    expect(getByText(/DENNE UGE/i)).toBeTruthy();
+    expect(getByText(/THIS WEEK/i)).toBeTruthy();
     expect(getByTestId('home.thisWeekPremiumCard.percent')).toBeTruthy();
     expect(getByTestId('home.thisWeekPremiumCard.ring')).toBeTruthy();
     expect(getByTestId('home.thisWeekPremiumCard.progress')).toBeTruthy();
@@ -319,14 +319,14 @@ describe('Home performance card hour sums', () => {
     } = render(<HomeScreen />);
 
     expect(getByTestId('home.thisWeekPremiumCard')).toBeTruthy();
-    expect(getAllByText('I dag').length).toBeGreaterThan(0);
+    expect(getAllByText('Today').length).toBeGreaterThan(0);
     expect(queryAllByTestId('home.weekSummary.currentWeek')).toHaveLength(1);
     expect(queryAllByTestId('home.weekSummary.upcoming')).toHaveLength(1);
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(1);
 
     fireEvent.press(getByTestId('home.currentWeek.modeToggle'));
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(0);
-    const todayLabels = getAllByText('I dag');
+    const todayLabels = getAllByText('Today');
     fireEvent.press(todayLabels[todayLabels.length - 1]);
     expect(queryAllByTestId('mock.activityCard')).toHaveLength(1);
 

@@ -46,20 +46,20 @@ export default function TeamManagement() {
 
   const handleCreateTeam = async () => {
     if (!teamName.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst et teamnavn');
+      Alert.alert('Error', 'Please enter a team name');
       return;
     }
 
     setProcessing(true);
     try {
       await createTeam(teamName, teamDescription);
-      Alert.alert('Succes', 'Team oprettet');
+      Alert.alert('Success', 'Team created');
       setShowCreateModal(false);
       setTeamName('');
       setTeamDescription('');
     } catch (error: any) {
       console.error('Error creating team:', error);
-      Alert.alert('Fejl', 'Kunne ikke oprette team: ' + error.message);
+      Alert.alert('Error', 'Failed to create team: ' + error.message);
     } finally {
       setProcessing(false);
     }
@@ -67,21 +67,21 @@ export default function TeamManagement() {
 
   const handleUpdateTeam = async () => {
     if (!selectedTeam || !teamName.trim()) {
-      Alert.alert('Fejl', 'Indtast venligst et teamnavn');
+      Alert.alert('Error', 'Please enter a team name');
       return;
     }
 
     setProcessing(true);
     try {
       await updateTeam(selectedTeam.id, teamName, teamDescription);
-      Alert.alert('Succes', 'Team opdateret');
+      Alert.alert('Success', 'Team updated');
       setShowEditModal(false);
       setSelectedTeam(null);
       setTeamName('');
       setTeamDescription('');
     } catch (error: any) {
       console.error('Error updating team:', error);
-      Alert.alert('Fejl', 'Kunne ikke opdatere team: ' + error.message);
+      Alert.alert('Error', 'Failed to update team: ' + error.message);
     } finally {
       setProcessing(false);
     }
@@ -89,21 +89,21 @@ export default function TeamManagement() {
 
   const handleDeleteTeam = (team: Team) => {
     Alert.alert(
-      'Slet team',
-      `Er du sikker på at du vil slette "${team.name}"?\n\nDette vil ikke slette spillerne, men alle aktiviteter og data tilknyttet teamet vil blive slettet.`,
+      'Delete team',
+      `Are you sure you want to delete "${team.name}"?\n\nThis will not delete the players, but all activities and data linked to the team will be deleted.`,
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Slet',
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             setProcessing(true);
             try {
               await deleteTeam(team.id);
-              Alert.alert('Succes', 'Team slettet');
+              Alert.alert('Success', 'Team deleted');
             } catch (error: any) {
               console.error('Error deleting team:', error);
-              Alert.alert('Fejl', 'Kunne ikke slette team: ' + error.message);
+              Alert.alert('Error', 'Could not delete team: ' + error.message);
             } finally {
               setProcessing(false);
             }
@@ -122,7 +122,7 @@ export default function TeamManagement() {
       setShowMembersModal(true);
     } catch (error: any) {
       console.error('Error fetching team members:', error);
-      Alert.alert('Fejl', 'Kunne ikke hente teammedlemmer: ' + error.message);
+      Alert.alert('Error', 'Failed to retrieve team members: ' + error.message);
     } finally {
       setProcessing(false);
     }
@@ -136,13 +136,13 @@ export default function TeamManagement() {
       await addPlayerToTeam(selectedTeam.id, playerId);
       const members = await getTeamMembers(selectedTeam.id);
       setTeamMembers(members);
-      Alert.alert('Succes', 'Spiller tilføjet til team');
+      Alert.alert('Success', 'Player added to team');
     } catch (error: any) {
       console.error('Error adding player to team:', error);
       if (error.message.includes('duplicate')) {
-        Alert.alert('Fejl', 'Spilleren er allerede medlem af dette team');
+        Alert.alert('Error', 'Spilleren er allerede medlem af dette team');
       } else {
-        Alert.alert('Fejl', 'Kunne ikke tilføje spiller: ' + error.message);
+        Alert.alert('Error', 'Could not add player:' + error.message);
       }
     } finally {
       setProcessing(false);
@@ -153,12 +153,12 @@ export default function TeamManagement() {
     if (!selectedTeam) return;
 
     Alert.alert(
-      'Fjern spiller',
-      'Er du sikker på at du vil fjerne denne spiller fra teamet?',
+      'Remove player',
+      'Are you sure you want to remove this player from the team?',
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Fjern',
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             setProcessing(true);
@@ -166,10 +166,10 @@ export default function TeamManagement() {
               await removePlayerFromTeam(selectedTeam.id, playerId);
               const members = await getTeamMembers(selectedTeam.id);
               setTeamMembers(members);
-              Alert.alert('Succes', 'Spiller fjernet fra team');
+              Alert.alert('Success', 'Player removed from team');
             } catch (error: any) {
               console.error('Error removing player from team:', error);
-              Alert.alert('Fejl', 'Kunne ikke fjerne spiller: ' + error.message);
+              Alert.alert('Error', 'Could not remove player: ' + error.message);
             } finally {
               setProcessing(false);
             }
@@ -190,7 +190,7 @@ export default function TeamManagement() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Indlæser teams...</Text>
+        <Text style={styles.loadingText}>Loading teams...</Text>
       </View>
     );
   }
@@ -215,7 +215,7 @@ export default function TeamManagement() {
             size={20}
             color="#fff"
           />
-          <Text style={styles.addButtonText}>Opret team</Text>
+          <Text style={styles.addButtonText}>Create team</Text>
         </TouchableOpacity>
       </View>
 
@@ -227,9 +227,9 @@ export default function TeamManagement() {
             size={64}
             color={colors.textSecondary}
           />
-          <Text style={styles.emptyTitle}>Ingen teams endnu</Text>
+          <Text style={styles.emptyTitle}>No teams yet</Text>
           <Text style={styles.emptyText}>
-            Opret et team for at organisere dine spillere
+            Create a team to organize your players
           </Text>
         </View>
       ) : (
@@ -314,28 +314,28 @@ export default function TeamManagement() {
                 color={colors.text}
               />
             </TouchableOpacity>
-            <Text style={styles.modalTitle} testID="team.create.modalTitle">Opret team</Text>
+            <Text style={styles.modalTitle} testID="team.create.modalTitle">Create team</Text>
             <View style={{ width: 24 }} />
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Teamnavn *</Text>
+            <Text style={styles.label}>Team name *</Text>
             <TextInput
               style={styles.input}
               value={teamName}
               onChangeText={setTeamName}
-              placeholder="F.eks. U15 Drenge"
+              placeholder="E.g. U15 Boys"
               placeholderTextColor={colors.textSecondary}
               editable={!processing}
               testID="team.create.nameInput"
             />
 
-            <Text style={styles.label}>Beskrivelse</Text>
+            <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={teamDescription}
               onChangeText={setTeamDescription}
-              placeholder="Valgfri beskrivelse af teamet"
+              placeholder="Optional description of the team"
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
@@ -350,7 +350,7 @@ export default function TeamManagement() {
               onPress={() => setShowCreateModal(false)}
               disabled={processing}
             >
-              <Text style={styles.cancelButtonText}>Annuller</Text>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: colors.primary }]}
@@ -361,7 +361,7 @@ export default function TeamManagement() {
               {processing ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.saveButtonText}>Opret</Text>
+                <Text style={styles.saveButtonText}>Create</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -388,27 +388,27 @@ export default function TeamManagement() {
                 color={colors.text}
               />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Rediger team</Text>
+            <Text style={styles.modalTitle}>Edit team</Text>
             <View style={{ width: 24 }} />
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Teamnavn *</Text>
+            <Text style={styles.label}>Team name *</Text>
             <TextInput
               style={styles.input}
               value={teamName}
               onChangeText={setTeamName}
-              placeholder="F.eks. U15 Drenge"
+              placeholder="E.g. U15 Boys"
               placeholderTextColor={colors.textSecondary}
               editable={!processing}
             />
 
-            <Text style={styles.label}>Beskrivelse</Text>
+            <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={teamDescription}
               onChangeText={setTeamDescription}
-              placeholder="Valgfri beskrivelse af teamet"
+              placeholder="Optional description of the team"
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
@@ -422,7 +422,7 @@ export default function TeamManagement() {
               onPress={() => setShowEditModal(false)}
               disabled={processing}
             >
-              <Text style={styles.cancelButtonText}>Annuller</Text>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: colors.primary }]}
@@ -432,7 +432,7 @@ export default function TeamManagement() {
               {processing ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.saveButtonText}>Gem</Text>
+                <Text style={styles.saveButtonText}>Save</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -461,10 +461,10 @@ export default function TeamManagement() {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.sectionTitle}>Medlemmer ({teamMembers.length})</Text>
+            <Text style={styles.sectionTitle}>Members ({teamMembers.length})</Text>
             {teamMembers.length === 0 ? (
               <View style={styles.emptyMembers}>
-                <Text style={styles.emptyMembersText}>Ingen medlemmer endnu</Text>
+                <Text style={styles.emptyMembersText}>No members yet</Text>
               </View>
             ) : (
               teamMembers.map((member) => (
@@ -500,12 +500,12 @@ export default function TeamManagement() {
             )}
 
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>
-              Tilføj spillere ({availablePlayers.length})
+              Add Players ({availablePlayers.length})
             </Text>
             {availablePlayers.length === 0 ? (
               <View style={styles.emptyMembers}>
                 <Text style={styles.emptyMembersText}>
-                  Alle spillere er allerede medlemmer
+                  All players are already members
                 </Text>
               </View>
             ) : (

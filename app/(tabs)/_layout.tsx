@@ -114,7 +114,7 @@ function FloatingTabsLayout({
           route: '/(tabs)/profile',
           icon: 'person.fill',
           materialIcon: 'person',
-          label: 'Profil',
+          label: 'Profile',
         },
       ];
     }
@@ -127,7 +127,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/(home)/',
       icon: 'house.fill',
       materialIcon: 'home',
-      label: 'Hjem',
+      label: 'Home',
     };
 
     const taskTab: TabBarItem = {
@@ -135,7 +135,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/tasks',
       icon: 'checklist',
       materialIcon: 'checklist',
-      label: 'Opgaver',
+      label: 'Tasks',
     };
 
     const performanceTab: TabBarItem = {
@@ -143,7 +143,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/performance',
       icon: 'trophy.fill',
       materialIcon: 'stars',
-      label: 'Performance',
+      label: 'Progress',
     };
 
     const libraryTab: TabBarItem = {
@@ -151,7 +151,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/library',
       icon: 'book.fill',
       materialIcon: 'menu_book',
-      label: 'Bibliotek',
+      label: 'Library',
     };
 
     const profileTab: TabBarItem = {
@@ -159,7 +159,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/profile',
       icon: 'person.fill',
       materialIcon: 'person',
-      label: 'Profil',
+      label: 'Profile',
     };
 
     const tabsForRole: TabBarItem[] = [homeTab, taskTab];

@@ -33,14 +33,15 @@ function organizeFolders(templateTasks: Task[]): FolderItem[] {
   templateTasks.forEach(task => {
     const sourceFolder = (task as any)?.source_folder as string | undefined;
 
-    if (sourceFolder && sourceFolder.startsWith('Fra træner:')) {
-      const trainerName = sourceFolder.replace('Fra træner:', '').trim();
+    const lowerSource = sourceFolder?.toLowerCase();
+    if (sourceFolder && (lowerSource?.startsWith('from coach:') || lowerSource?.startsWith('fra træner:'))) {
+      const trainerName = sourceFolder.replace(/^from coach:|^fra træner:/i, '').trim();
       const trainerId = `trainer_${trainerName || 'unknown'}`;
 
       if (!trainerFolders.has(trainerId)) {
         trainerFolders.set(trainerId, {
           id: trainerId,
-          name: `Fra træner: ${trainerName || 'Ukendt'}`,
+          name: `From coach: ${trainerName || 'Unknown'}`,
           type: 'trainer',
           tasks: [],
         });
@@ -111,7 +112,7 @@ export default function TasksScreen() {
     try {
       await refreshData();
     } catch (e: any) {
-      Alert.alert('Fejl', 'Kunne ikke opdatere: ' + (e?.message || 'Ukendt fejl'));
+      Alert.alert('Error', 'Could not update: ' + (e?.message || 'Unknown error'));
     } finally {
       setRefreshing(false);
     }
@@ -129,8 +130,8 @@ export default function TasksScreen() {
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       } catch (error: any) {
         Alert.alert(
-          'Fejl',
-          'Kunne ikke duplikere opgaven: ' + (error?.message || 'Ukendt fejl'),
+          'Error',
+          'Could not duplicate the task: ' + (error?.message || 'Unknown error'),
         );
       } finally {
         setIsDuplicating(false);
@@ -145,7 +146,7 @@ export default function TasksScreen() {
       try {
         await deleteTask(taskId);
       } catch (error: any) {
-        Alert.alert('Fejl', 'Kunne ikke slette opgaven: ' + (error?.message || 'Ukendt fejl'));
+        Alert.alert('Error', 'Could not delete the task: ' + (error?.message || 'Unknown error'));
       }
     },
     [deleteTask, isDuplicating],
@@ -285,7 +286,7 @@ export default function TasksScreen() {
       {isDuplicating && (
         <View style={styles.duplicatingOverlay}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.duplicatingText, { color: theme.text }]}>Duplikerer opgave...</Text>
+          <Text style={[styles.duplicatingText, { color: theme.text }]}>Duplicating task...</Text>
         </View>
       )}
       <FlatList
@@ -303,7 +304,7 @@ export default function TasksScreen() {
         windowSize={10}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>Ingen opgaver endnu</Text>
+            <Text style={styles.emptyText}>No tasks yet</Text>
           </View>
         }
       />

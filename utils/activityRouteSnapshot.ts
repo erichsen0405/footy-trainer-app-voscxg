@@ -59,7 +59,7 @@ function normalizeNumberOrNull(value: unknown): number | null {
 function normalizeCategory(activity: any): ActivityCategory {
   return {
     id: normalizeString(activity?.category?.id ?? activity?.category_id),
-    name: normalizeString(activity?.category?.name) || 'Ukendt kategori',
+    name: normalizeString(activity?.category?.name) || 'Unknown category',
     color: normalizeString(activity?.category?.color) || '#999999',
     emoji: normalizeString(activity?.category?.emoji) || '⚽️',
   };
@@ -224,7 +224,7 @@ export function deserializeActivitySnapshotFromRoute(value: unknown): Activity |
       location: normalizeString(parsed?.location),
       category: {
         id: normalizeString(parsed?.category?.id),
-        name: normalizeString(parsed?.category?.name) || 'Ukendt kategori',
+        name: normalizeString(parsed?.category?.name) || 'Unknown category',
         color: normalizeString(parsed?.category?.color) || '#999999',
         emoji: normalizeString(parsed?.category?.emoji) || '⚽️',
       },

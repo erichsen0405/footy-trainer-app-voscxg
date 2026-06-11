@@ -88,7 +88,7 @@ async function readUploadBody(asset: ImagePicker.ImagePickerAsset): Promise<Blob
 
   const response = await fetch(asset.uri);
   if (!response.ok && response.status > 0) {
-    throw new Error('Kunne ikke læse billedet fra enheden.');
+    throw new Error('Could not read the image from the device.');
   }
 
   if (typeof response.arrayBuffer === 'function') {
@@ -107,19 +107,19 @@ export async function uploadProfileImageAsset({
 }): Promise<UploadedProfileImage> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) {
-    throw new Error('Du skal være logget ind for at uploade profilbillede.');
+    throw new Error('You must be logged in to upload a profile picture.');
   }
 
   if (!asset.uri) {
-    throw new Error('Billedet kunne ikke læses.');
+    throw new Error('The image could not be read.');
   }
 
   if (asset.type && asset.type !== 'image') {
-    throw new Error('Vælg en billedfil.');
+    throw new Error('Select an image file.');
   }
 
   if (typeof asset.fileSize === 'number' && asset.fileSize > MAX_PROFILE_IMAGE_BYTES) {
-    throw new Error('Billedet er for stort til upload. Maksimal størrelse er 8 MB.');
+    throw new Error('Image is too large to upload. Maximum size is 8 MB.');
   }
 
   const { path, fileName, contentType } = buildStoragePath(asset, normalizedUserId);
@@ -134,12 +134,12 @@ export async function uploadProfileImageAsset({
     });
 
   if (error) {
-    throw new Error(`Kunne ikke uploade profilbillede: ${error.message}`);
+    throw new Error(`Could not upload profile image: ${error.message}`);
   }
 
   const { data } = supabase.storage.from(PROFILE_IMAGE_BUCKET).getPublicUrl(path);
   if (!data?.publicUrl) {
-    throw new Error('Billedet blev uploadet, men URL kunne ikke oprettes.');
+    throw new Error('The image was uploaded, but the URL could not be created.');
   }
 
   return {
@@ -167,7 +167,7 @@ async function launchProfileImagePicker(source: 'camera' | 'library') {
 
   const hasPermission = await ensureMediaLibraryPermission();
   if (!hasPermission) {
-    throw new Error('Giv adgang til fotobiblioteket for at vælge et profilbillede.');
+    throw new Error('Allow access to the photo library to select a profile picture.');
   }
 
   return ImagePicker.launchImageLibraryAsync({

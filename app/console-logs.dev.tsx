@@ -179,7 +179,7 @@ export default function ConsoleLogsScreen() {
           onPress={() => setFilter('all')}
         >
           <Text style={[styles.filterButtonText, filter === 'all' && styles.filterButtonTextActive]}>
-            Alle ({logs.length})
+            All ({logs.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -187,7 +187,7 @@ export default function ConsoleLogsScreen() {
           onPress={() => setFilter('notification')}
         >
           <Text style={[styles.filterButtonText, filter === 'notification' && styles.filterButtonTextActive]}>
-            Notifikationer
+            Notifications
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -195,7 +195,7 @@ export default function ConsoleLogsScreen() {
           onPress={() => setFilter('error')}
         >
           <Text style={[styles.filterButtonText, filter === 'error' && styles.filterButtonTextActive]}>
-            Fejl
+            Error
           </Text>
         </TouchableOpacity>
       </View>
@@ -248,13 +248,13 @@ export default function ConsoleLogsScreen() {
       >
         {filteredLogs.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Ingen logs at vise</Text>
+            <Text style={styles.emptyText}>No logs to show</Text>
           </View>
         ) : (
           filteredLogs.map((log, index) => (
             <View key={index} style={styles.logItem}>
               <Text style={styles.logTimestamp}>
-                {new Date(log.timestamp).toLocaleTimeString('da-DK')}
+                {new Date(log.timestamp).toLocaleTimeString('en-US')}
               </Text>
               <Text style={[styles.logMessage, { color: getLogColor(log.type, log.message) }]}>
                 {log.message}

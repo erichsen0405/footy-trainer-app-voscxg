@@ -33,9 +33,15 @@ import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getTaskModalVideoUrls } from '@/utils/taskModalContent';
-import { pickAndUploadTaskVideo } from '@/utils/taskVideoUpload';
-import { buildTaskVideoPayload, mergeTaskVideoUrls, normalizeTaskVideoUrls } from '@/utils/taskVideos';
-import { isDirectVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
+import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
+import {
+  buildTaskVideoPayload,
+  getTaskMediaType,
+  isTaskMediaUrl,
+  mergeTaskVideoUrls,
+  normalizeTaskVideoUrls,
+} from '@/utils/taskVideos';
+import { isDirectVideoUrl } from '@/utils/videoUrlParser';
 
 // ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
 import * as CommonStyles from '@/styles/commonStyles';
@@ -72,17 +78,19 @@ const normalizeTaskDurationValue = (value: unknown): number | null => {
   return rounded >= 0 ? rounded : null;
 };
 
-// Local helper function to validate video URLs
 function isValidVideoUrl(url?: string | null): boolean {
-  return isPlayableVideoUrl(String(url ?? ''));
+  return isTaskMediaUrl(String(url ?? ''));
 }
 
 function getVideoSourceLabel(url?: string | null): string {
   const normalizedUrl = String(url ?? '').toLowerCase();
+  const mediaType = getTaskMediaType(url);
+  if (mediaType === 'image') return normalizedUrl.endsWith('.png') ? 'PNG image' : 'Image';
+  if (mediaType === 'pdf') return 'PDF';
   if (normalizedUrl.includes('instagram.com')) return 'Instagram';
   if (normalizedUrl.includes('vimeo.com')) return 'Vimeo';
   if (normalizedUrl.includes('youtu')) return 'YouTube';
-  if (normalizedUrl.includes('/storage/v1/object/public/') || isDirectVideoUrl(normalizedUrl)) return 'Uploadet video';
+  if (normalizedUrl.includes('/storage/v1/object/public/') || isDirectVideoUrl(normalizedUrl)) return 'Uploaded video';
   return 'Video';
 }
 
@@ -138,7 +146,8 @@ const isFootballCoachSource = (sourceFolder: string) =>
 
 const parseTrainerNameFromSource = (sourceFolder: string): string | null => {
   const normalized = sourceFolder.trim();
-  if (!normalized.toLowerCase().startsWith('fra træner')) return null;
+  const lower = normalized.toLowerCase();
+  if (!lower.startsWith('from coach') && !lower.startsWith('fra træner')) return null;
   const [, rawName] = normalized.split(':');
   const trainerName = String(rawName ?? '').trim();
   return trainerName || null;
@@ -154,7 +163,7 @@ const getTaskTrainerName = (task: any): string => {
   const fromTask = String(task?.trainerName ?? task?.trainer_name ?? '').trim();
   if (fromTask) return fromTask;
   const fromSource = parseTrainerNameFromSource(getTaskSourceFolder(task));
-  return fromSource || 'Ukendt træner';
+  return fromSource || 'Unknown coach';
 };
 
 const normalizeModalSubtasks = (subtasks: any[] | undefined | null) => {
@@ -192,9 +201,9 @@ type PendingAction =
   | { type: 'create' | 'edit'; data: { task: Task; videoUrls: string[]; isCreating: boolean } }
   | { type: 'delete'; data: { taskId: string } };
 
-const DELETE_TEMPLATE_CONFIRM_TEXT = 'SLET';
+const DELETE_TEMPLATE_CONFIRM_TEXT = 'DELETE';
 const DELETE_TEMPLATE_WARNING_TEXT =
-  'Hvis du sletter denne opgaveskabelon, slettes alle tidligere og fremtidige opgaver på relaterede aktiviteter. Hvis du vil beholde historik, vælg Arkiver i stedet.';
+  'Deleting this task template will delete all previous and future tasks on related activities. If you want to keep history, select Archive instead.';
 
 // ✅ læs source-folder robust (snake_case eller camelCase)
 function getTaskSourceFolder(task: any): string {
@@ -208,7 +217,7 @@ function getIconsForFolderName(name: string): { icon: string; androidIcon: strin
   if (n.startsWith('footballcoach inspiration')) {
     return { icon: 'star.fill', androidIcon: 'stars' };
   }
-  if (n.startsWith('fra træner:')) {
+  if (n.startsWith('from coach:') || n.startsWith('fra træner:')) {
     return { icon: 'folder.fill', androidIcon: 'folder' };
   }
   if (n.includes('personligt') || n.includes('personlige')) {
@@ -246,6 +255,8 @@ function organizeFolders(
     if (isPlayerSelf) {
       const isTrainerTask =
         sf === 'trainer' ||
+        sf === 'from coach' ||
+        sf.startsWith('from coach:') ||
         sf === 'fra træner' ||
         sf.startsWith('fra træner:') ||
         (!!ownerId && !!options.currentUserId && ownerId !== options.currentUserId);
@@ -255,10 +266,10 @@ function organizeFolders(
         const stableId = ownerId || trainerName;
         const folderId = `trainer.${sanitizeTestIdSegment(stableId)}`;
         if (!trainerFolders.has(folderId)) {
-          const icons = getIconsForFolderName(`Fra træner: ${trainerName}`);
+          const icons = getIconsForFolderName(`From coach: ${trainerName}`);
           trainerFolders.set(folderId, {
             id: folderId,
-            name: `Fra træner: ${trainerName}`,
+            name: `From coach: ${trainerName}`,
             type: 'trainer',
             icon: icons.icon,
             androidIcon: icons.androidIcon,
@@ -280,10 +291,10 @@ function organizeFolders(
   const folders: FolderItem[] = [];
 
   if (personalTasks.length) {
-    const icons = getIconsForFolderName('Personlige opgaver');
+    const icons = getIconsForFolderName('Personal tasks');
     folders.push({
       id: 'personal',
-      name: 'Personlige opgaver',
+      name: 'Personal tasks',
       type: 'personal',
       icon: icons.icon,
       androidIcon: icons.androidIcon,
@@ -336,6 +347,7 @@ export const TaskCard = React.memo(
     const videoUrls = getTaskModalVideoUrls(task);
     const videoUrl = videoUrls[0] ?? null;
     const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
+    const primaryMediaType = getTaskMediaType(videoUrl);
     const taskId = String((task as any)?.id ?? '');
     const categoryItems = getCategoryItems((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean));
     const description = String((task as any)?.description ?? '').trim();
@@ -400,17 +412,27 @@ export const TaskCard = React.memo(
           <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrls, 0)} activeOpacity={0.85}>
             {ytThumb ? (
               <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
+            ) : primaryMediaType === 'image' ? (
+              <Image source={{ uri: videoUrl }} style={styles.videoThumbnail} resizeMode="cover" />
             ) : (
               <View style={styles.videoThumbnailFallback}>
+                {primaryMediaType === 'pdf' ? (
+                  <IconSymbol ios_icon_name="doc.fill" android_material_icon_name="picture_as_pdf" size={36} color="#fff" />
+                ) : null}
                 <Text style={styles.videoThumbnailFallbackLabel}>{getVideoSourceLabel(videoUrl)}</Text>
               </View>
             )}
             <View style={styles.videoOverlay}>
-              <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={56} color="#fff" />
+              <IconSymbol
+                ios_icon_name={primaryMediaType === 'video' ? 'play.circle.fill' : primaryMediaType === 'image' ? 'photo.fill' : 'doc.fill'}
+                android_material_icon_name={primaryMediaType === 'video' ? 'play_circle' : primaryMediaType === 'image' ? 'image' : 'picture_as_pdf'}
+                size={56}
+                color="#fff"
+              />
             </View>
             {hasMultipleVideos ? (
               <View style={styles.videoSwipeBadge}>
-                <Text style={styles.videoSwipeBadgeText}>{videoUrls.length} videoer - swipe</Text>
+                <Text style={styles.videoSwipeBadgeText}>{videoUrls.length} files - swipe</Text>
               </View>
             ) : null}
           </TouchableOpacity>
@@ -419,7 +441,7 @@ export const TaskCard = React.memo(
         {(task as any)?.reminder != null && String((task as any).reminder).length > 0 && (
           <View style={styles.reminderBadge}>
             <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-            <Text style={[styles.reminderText, { color: colors.accent }]}>{String((task as any).reminder)} min før</Text>
+            <Text style={[styles.reminderText, { color: colors.accent }]}>{String((task as any).reminder)} min before</Text>
           </View>
         )}
 
@@ -427,7 +449,7 @@ export const TaskCard = React.memo(
           <View style={styles.reminderBadge}>
             <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color={colors.primary} />
             <Text style={[styles.reminderText, { color: colors.primary }]}>
-              {String((task as any)?.taskDurationMinutes ?? 0)} min opgavetid
+              {String((task as any)?.taskDurationMinutes ?? 0)} min task time
             </Text>
           </View>
         )}
@@ -436,7 +458,7 @@ export const TaskCard = React.memo(
           <View style={styles.categoriesBlock}>
             <View style={styles.categoriesLabelRow}>
               <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
-              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Kategorier</Text>
+              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Categories</Text>
             </View>
             <View style={styles.taskCategoryBadges}>
               {categoryItems.map((category: any) => {
@@ -507,7 +529,7 @@ const FolderItemComponent = React.memo(
             <View style={styles.folderTextWrap}>
               <Text style={[styles.folderName, { color: textColor }]} numberOfLines={1}>{folder.name}</Text>
               <Text style={[styles.folderSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-                {folder.tasks.length} opgaver
+                {folder.tasks.length} assignments
               </Text>
             </View>
             <View style={[styles.countBadge, { backgroundColor: isExpanded ? colors.primary : withAlpha(colors.primary, 0.12) }]}>
@@ -740,10 +762,10 @@ export default function TasksScreen() {
   const validateTaskForm = useCallback(() => {
     const nextErrors: { title?: string; videoUrl?: string } = {};
     if (!String((selectedTask as any)?.title ?? '').trim()) {
-      nextErrors.title = 'Titel er påkrævet.';
+      nextErrors.title = 'Title is required.';
     }
     if (videoUrlInput.trim() && !isValidVideoUrl(videoUrlInput)) {
-      nextErrors.videoUrl = 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.';
+      nextErrors.videoUrl = 'Invalid media. Use a video, image, or PDF link.';
     }
     setFormErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -799,18 +821,18 @@ export default function TasksScreen() {
     if (!selectedTask) return;
 
     if (isUploadingVideo) {
-      Alert.alert('Vent venligst', 'Videoen uploades stadig. Prøv igen om et øjeblik.');
+      Alert.alert('Please wait', 'The file is still uploading. Please try again in a moment.');
       return;
     }
 
     if (videoUrlInput.trim() && !isValidVideoUrl(videoUrlInput)) {
-      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
     }
 
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
     const normalizedSubtasks = normalizeSubtasksForSave((selectedTask as any).subtasks);
-    const successMessage = isCreating ? 'Opgaveskabelon oprettet' : 'Opgaveskabelon opdateret';
+    const successMessage = isCreating ? 'Task template created' : 'Task template updated';
     const videoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
     setIsSaving(true);
 
@@ -845,7 +867,7 @@ export default function TasksScreen() {
           adminTargetId,
         });
       } else {
-        if (!updateTask) throw new Error('updateTask er ikke tilgængelig i FootballContext');
+        if (!updateTask) throw new Error('updateTask is not available in FootballContext');
 
         const taskToSave = {
           ...selectedTask,
@@ -869,14 +891,14 @@ export default function TasksScreen() {
       closeTaskModal();
 
       if (!refreshAll) {
-        throw new Error('refreshAll er ikke tilgængelig');
+        throw new Error('refreshAll is not available');
       }
 
       await refreshAll();
       emitActivitiesRefreshRequested({ reason: 'task_template_saved_from_tasks_screen' });
-      Alert.alert('Succes', successMessage);
+      Alert.alert('Success', successMessage);
     } catch (error: any) {
-      Alert.alert('Fejl', 'Kunne ikke gemme opgave: ' + (error?.message || 'Ukendt fejl'));
+      Alert.alert('Error', 'Failed to save task: ' + (error?.message || 'Unknown error'));
     } finally {
       setIsSaving(false);
     }
@@ -917,7 +939,7 @@ export default function TasksScreen() {
           await forceRefreshNotificationQueue();
         }
       } catch (error: any) {
-        Alert.alert('Fejl', error?.message || 'Kunne ikke opdatere arkivstatus');
+        Alert.alert('Error', error?.message || 'Failed to update archive status');
       }
     },
     [refreshAll, user?.id],
@@ -962,7 +984,7 @@ export default function TasksScreen() {
       await runDeleteTask(deleteCandidate.taskId);
       closeDeleteTemplateModal();
     } catch (error: any) {
-      Alert.alert('Fejl', error?.message || 'Kunne ikke slette opgaveskabelonen');
+      Alert.alert('Error', error?.message || 'Could not delete task template');
       setIsDeleteConfirming(false);
     }
   }, [deleteCandidate, deleteConfirmationText, runDeleteTask, closeDeleteTemplateModal]);
@@ -1024,7 +1046,7 @@ export default function TasksScreen() {
   const openVideoModal = useCallback((urls: string[] | string, initialIndex = 0) => {
     const nextUrls = normalizeTaskVideoUrls(urls);
     if (!nextUrls.length) {
-      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
     }
     setSelectedVideoUrls(nextUrls);
@@ -1044,7 +1066,7 @@ export default function TasksScreen() {
     const trimmed = videoUrlInput.trim();
     if (!trimmed) return;
     if (!isValidVideoUrl(trimmed)) {
-      Alert.alert('Fejl', 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.');
+      Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
     }
     setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
@@ -1054,33 +1076,33 @@ export default function TasksScreen() {
 
   const handlePickVideo = useCallback(async () => {
     if (!user?.id) {
-      Alert.alert('Fejl', 'Du skal være logget ind for at uploade video.');
+      Alert.alert('Error', 'You must be logged in to upload files.');
       return;
     }
 
     setIsUploadingVideo(true);
     try {
-      const uploadedVideo = await pickAndUploadTaskVideo(user.id);
-      if (!uploadedVideo) return;
+      const uploadedMedia = await pickAndUploadTaskMedia(user.id);
+      if (!uploadedMedia) return;
       setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
-      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedVideo.publicUrl));
-      Alert.alert('Video uploadet', 'Videoen er føjet til opgaveskabelonen.');
+      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedMedia.publicUrl));
+      Alert.alert('File uploaded', 'The file has been added to the task template.');
     } catch (error: any) {
-      Alert.alert('Fejl', error?.message || 'Kunne ikke uploade video.');
+      Alert.alert('Error', error?.message || 'Failed to upload file.');
     } finally {
       setIsUploadingVideo(false);
     }
   }, [user?.id]);
 
   const handleDeleteVideo = useCallback((index: number) => {
-    Alert.alert('Slet video', 'Er du sikker på at du vil fjerne videoen fra denne opgave?', [
-      { text: 'Annuller', style: 'cancel' },
+    Alert.alert('Remove file', 'Are you sure you want to remove the file from this task?', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Slet',
+        text: 'Remove',
         style: 'destructive',
         onPress: () => {
           setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index));
-          Alert.alert('Video fjernet', 'Husk at gemme opgaven for at bekræfte ændringen');
+          Alert.alert('File removed', 'Remember to save the task to confirm the change.');
         },
       },
     ]);
@@ -1210,7 +1232,7 @@ export default function TasksScreen() {
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.secondary} />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Her ser du dine egne opgaveskabeloner samt opgaver som din træner har tildelt dig
+              Here you see your own task templates as well as tasks assigned to you by your trainer
             </Text>
           </View>
         )}
@@ -1219,7 +1241,7 @@ export default function TasksScreen() {
           <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={textSecondaryColor} />
           <TextInput
             style={[styles.searchInput, { color: textColor }]}
-            placeholder="Søg efter opgaver..."
+            placeholder="Search for tasks..."
             placeholderTextColor={textSecondaryColor}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -1302,7 +1324,7 @@ export default function TasksScreen() {
               testID="tasks.categoryFilter.option.all"
             >
               <Text style={[styles.categoryFilterChipText, { color: !selectedCategoryFilterId ? '#fff' : colors.primary }]}>
-                Alle
+                All
               </Text>
             </TouchableOpacity>
 
@@ -1335,7 +1357,7 @@ export default function TasksScreen() {
         ) : null}
 
         <View style={styles.sectionDivider}>
-          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>Mapper</Text>
+          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>Folders</Text>
           <LinearGradient
             colors={[withAlpha(colors.highlight, 0), withAlpha(colors.highlight, 0.92), withAlpha(colors.primary, 0.35)]}
             start={{ x: 0, y: 0.5 }}
@@ -1346,7 +1368,7 @@ export default function TasksScreen() {
 
         {adminMode !== 'self' && selectedContext?.type ? (
           <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-            Opgaveskabeloner for {String(selectedContext?.name ?? '')}.
+            Task templates for {String(selectedContext?.name ?? '')}.
           </Text>
         ) : null}
 
@@ -1360,7 +1382,7 @@ export default function TasksScreen() {
             testID="tasks.template.filter.activeButton"
           >
             <Text style={[styles.templateViewToggleText, { color: templateView === 'active' ? '#fff' : textColor }]}>
-              Aktive
+              Active
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1372,7 +1394,7 @@ export default function TasksScreen() {
             testID="tasks.template.filter.archivedButton"
           >
             <Text style={[styles.templateViewToggleText, { color: templateView === 'archived' ? '#fff' : textColor }]}>
-              Arkiverede
+              Archived
             </Text>
           </TouchableOpacity>
         </View>
@@ -1402,10 +1424,10 @@ export default function TasksScreen() {
         <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={48} color={textSecondaryColor} />
         <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
           {searchQuery || selectedCategoryFilterId
-            ? 'Ingen opgaver matcher dit filter'
+            ? 'No tasks match your filter'
             : templateView === 'active'
-              ? 'Ingen aktive opgaveskabeloner'
-              : 'Ingen arkiverede opgaveskabeloner'}
+              ? 'No active task templates'
+              : 'No archived assignment templates'}
         </Text>
       </View>
     );
@@ -1428,7 +1450,7 @@ export default function TasksScreen() {
       <AdminContextWrapper isAdmin={isAdminMode} contextName={selectedContext?.name} contextType={adminTargetType || 'player'}>
         <View style={[styles.screen, { backgroundColor: bgColor }]}>
           <View style={styles.topBar}>
-            <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">Opgaver</Text>
+            <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">Tasks</Text>
           </View>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -1449,10 +1471,10 @@ export default function TasksScreen() {
               ellipsizeMode="tail"
               testID="tasks.header.title"
             >
-              Opgaver
+              Tasks
             </Text>
             <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-              {templateTasks.length} skabeloner
+              {templateTasks.length} templates
             </Text>
           </View>
           <TouchableOpacity
@@ -1462,7 +1484,7 @@ export default function TasksScreen() {
             testID="tasks.header.newTaskButton"
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>Ny opgave</Text>
+            <Text style={styles.createButtonText}>New task</Text>
           </TouchableOpacity>
         </View>
 
@@ -1494,7 +1516,7 @@ export default function TasksScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>{isCreating ? 'Ny opgave' : 'Rediger opgave'}</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{isCreating ? 'New task' : 'Edit task'}</Text>
               <TouchableOpacity onPress={closeTaskModal} disabled={isSaving || isUploadingVideo}>
                 <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={28} color={textSecondaryColor} />
               </TouchableOpacity>
@@ -1505,12 +1527,12 @@ export default function TasksScreen() {
               keyExtractor={(item) => item.key}
               renderItem={() => (
                 <View style={styles.modalBody} testID="tasks.modal.formBody">
-                  <Text style={[styles.label, { color: textColor }]}>Titel</Text>
+                  <Text style={[styles.label, { color: textColor }]}>Title</Text>
                   <TextInput
                     style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                     value={String((selectedTask as any)?.title ?? '')}
                     onChangeText={updateTaskTitle}
-                    placeholder="Opgavens titel"
+                    placeholder="Task title"
                     placeholderTextColor={textSecondaryColor}
                     editable={!isSaving}
                     testID="tasks.modal.titleInput"
@@ -1519,12 +1541,12 @@ export default function TasksScreen() {
                     <Text style={[styles.errorText, { color: colors.error }]}>{formErrors.title}</Text>
                   ) : null}
 
-                  <Text style={[styles.label, { color: textColor }]}>Beskrivelse</Text>
+                  <Text style={[styles.label, { color: textColor }]}>Description</Text>
                   <TextInput
                     style={[styles.input, styles.textArea, { backgroundColor: bgColor, color: textColor }]}
                     value={String((selectedTask as any)?.description ?? '')}
                     onChangeText={updateTaskDescription}
-                    placeholder="Beskrivelse af opgaven"
+                    placeholder="Description of the task"
                     placeholderTextColor={textSecondaryColor}
                     multiline
                     numberOfLines={4}
@@ -1534,9 +1556,9 @@ export default function TasksScreen() {
 
                   <View style={styles.videoSection}>
                     <View style={styles.videoLabelRow}>
-                      <Text style={[styles.label, { color: textColor }]}>Videoer</Text>
+                      <Text style={[styles.label, { color: textColor }]}>Media</Text>
                       <Text style={[styles.videoCountText, { color: textSecondaryColor }]}>
-                        {videoUrls.length ? `${videoUrls.length} tilføjet` : 'Ingen tilføjet'}
+                        {videoUrls.length ? `${videoUrls.length} added` : 'None added'}
                       </Text>
                     </View>
 
@@ -1544,7 +1566,7 @@ export default function TasksScreen() {
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={videoUrlInput}
                       onChangeText={updateVideoUrlInput}
-                      placeholder="Indsæt YouTube, Vimeo, Instagram eller video-link"
+                      placeholder="Paste a video, image, or PDF link"
                       placeholderTextColor={textSecondaryColor}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -1566,7 +1588,7 @@ export default function TasksScreen() {
                       activeOpacity={0.85}
                       testID="tasks.template.addVideoUrlButton"
                     >
-                      <Text style={[styles.addVideoUrlButtonText, { color: colors.secondary }]}>Tilføj video-link</Text>
+                      <Text style={[styles.addVideoUrlButtonText, { color: colors.secondary }]}>Add media link</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -1588,7 +1610,7 @@ export default function TasksScreen() {
                         color={colors.primary}
                       />
                       <Text style={[styles.uploadVideoButtonText, { color: colors.primary }]}>
-                        {isUploadingVideo ? 'Uploader video...' : 'Vælg video fra telefon'}
+                        {isUploadingVideo ? 'Uploading file...' : 'Choose image, video, or PDF'}
                       </Text>
                     </TouchableOpacity>
 
@@ -1603,10 +1625,10 @@ export default function TasksScreen() {
                             >
                               <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={24} color={colors.primary} />
                               <View style={styles.videoListTextWrap}>
-                                <Text style={[styles.videoListTitle, { color: textColor }]}>Video {index + 1}</Text>
+                                <Text style={[styles.videoListTitle, { color: textColor }]}>Media {index + 1}</Text>
                                 <Text style={[styles.videoListSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
                                   {getVideoSourceLabel(url)}
-                                  {videoUrls.length > 1 ? ' - swipe i afspilleren' : ''}
+                                  {videoUrls.length > 1 ? ' - swipe in the viewer' : ''}
                                 </Text>
                               </View>
                             </TouchableOpacity>
@@ -1622,7 +1644,7 @@ export default function TasksScreen() {
                         ))}
                         {videoUrls.length > 1 ? (
                           <Text style={[styles.videoSwipeHelperText, { color: colors.secondary }]}>
-                            Swipe til siden i opgaven for at skifte mellem videoer.
+                            Swipe sideways in the task to switch between files.
                           </Text>
                         ) : null}
                       </View>
@@ -1630,14 +1652,14 @@ export default function TasksScreen() {
 
                     {(formErrors.videoUrl || (videoUrlInput.trim() && !isValidVideoUrl(videoUrlInput))) && (
                       <Text style={[styles.errorText, { color: colors.error }]}>
-                        {formErrors.videoUrl || 'Ugyldig video. Brug YouTube, Vimeo, Instagram eller en uploadet videofil.'}
+                        {formErrors.videoUrl || 'Invalid media. Use a video, image, or PDF link.'}
                       </Text>
                     )}
                   </View>
 
                   <View style={styles.subtasksSection}>
                     <View style={styles.subtasksHeader}>
-                      <Text style={[styles.label, { color: textColor, marginBottom: 0 }]}>Delopgaver</Text>
+                      <Text style={[styles.label, { color: textColor, marginBottom: 0 }]}>Subtasks</Text>
                       <TouchableOpacity
                         style={[styles.addSubtaskButton, { borderColor: colors.primary }]}
                         onPress={addSubtask}
@@ -1645,7 +1667,7 @@ export default function TasksScreen() {
                         testID="tasks.modal.addSubtaskButton"
                       >
                         <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color={colors.primary} />
-                        <Text style={[styles.addSubtaskButtonText, { color: colors.primary }]}>Tilføj</Text>
+                        <Text style={[styles.addSubtaskButtonText, { color: colors.primary }]}>Add</Text>
                       </TouchableOpacity>
                     </View>
                     {modalSubtasks.map((subtask) => {
@@ -1656,7 +1678,7 @@ export default function TasksScreen() {
                             style={[styles.input, styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
                             value={subtask.title}
                             onChangeText={(value) => updateSubtask(subtask.id, value)}
-                            placeholder="Delopgave"
+                            placeholder="Subtask"
                             placeholderTextColor={textSecondaryColor}
                             editable={!isSaving}
                             testID={`tasks.modal.subtaskInput.${sanitizeTestIdSegment(subtask.id)}`}
@@ -1687,9 +1709,9 @@ export default function TasksScreen() {
                   >
                     <View style={styles.reminderSectionHeader}>
                       <View style={styles.toggleTextWrapper}>
-                        <Text style={[styles.toggleLabel, { color: textColor }]}>Påmindelse før start</Text>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Reminder before start</Text>
                         <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                          Slå til for at vise en påmindelse inden aktiviteten starter.
+                          Turn on to show a reminder before the activity starts.
                         </Text>
                       </View>
                       <Switch
@@ -1705,7 +1727,7 @@ export default function TasksScreen() {
 
                     {reminderEnabled && (
                       <View style={styles.reminderSectionBody}>
-                        <Text style={[styles.label, { color: textColor }]}>Minutter før start</Text>
+                        <Text style={[styles.label, { color: textColor }]}>Minutes before start</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                           {REMINDER_DELAY_OPTIONS.map(option => {
                             const current = normalizeReminderValue((selectedTask as any)?.reminder);
@@ -1739,7 +1761,7 @@ export default function TasksScreen() {
                           })}
                         </View>
                         <Text style={[styles.helperText, { color: colors.secondary, marginTop: 6 }]}>
-                          0 = på starttidspunktet. Påmindelsen vises før aktivitetens starttid.
+                          0 = at start time. The reminder is displayed before the activity's start time.
                         </Text>
                       </View>
                     )}
@@ -1758,10 +1780,10 @@ export default function TasksScreen() {
                   >
                     <View style={styles.reminderSectionHeader}>
                       <View style={styles.toggleTextWrapper}>
-                        <Text style={[styles.toggleLabel, { color: textColor }]}>Opret efter-træning feedback</Text>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Create post-training feedback</Text>
                         <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}
                         >
-                          Når denne skabelon bruges på en aktivitet, oprettes automatisk en efter-træning feedback-opgave til aktiviteten.
+                          When this template is used on an activity, a post-training feedback task is automatically created for the activity.
                         </Text>
                       </View>
                       <Switch
@@ -1777,7 +1799,7 @@ export default function TasksScreen() {
 
                     {!!selectedTask?.afterTrainingEnabled && (
                       <View style={styles.reminderSectionBody}>
-                        <Text style={[styles.label, { color: textColor }]}>Påmindelse efter slut (minutter)</Text>
+                        <Text style={[styles.label, { color: textColor }]}>Reminder after end (minutes)</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                           {REMINDER_DELAY_OPTIONS.map(option => {
                             const current = selectedTask.afterTrainingDelayMinutes ?? 0;
@@ -1809,11 +1831,11 @@ export default function TasksScreen() {
                           })}
                         </View>
                         <Text style={[styles.helperText, { color: textSecondaryColor, marginTop: 6 }]}>
-                          Vises efter aktivitetens sluttidspunkt + valgt delay.
+                          Shown after the activity's end time + selected delay.
                         </Text>
                         {afterTrainingScoreEnabled ? (
                           <>
-                            <Text style={[styles.label, { color: textColor, marginTop: 14 }]}>Score-forklaring</Text>
+                            <Text style={[styles.label, { color: textColor, marginTop: 14 }]}>Score explanation</Text>
                             <TextInput
                               style={[
                                 styles.feedbackExplanationInput,
@@ -1834,7 +1856,7 @@ export default function TasksScreen() {
                                     : prev
                                 )
                               }
-                              placeholder="Forklaring til score-feedback"
+                              placeholder="Explanation for score feedback"
                               placeholderTextColor={textSecondaryColor}
                               multiline
                               editable={!isSaving}
@@ -1859,9 +1881,9 @@ export default function TasksScreen() {
                   >
                     <View style={styles.reminderSectionHeader}>
                       <View style={styles.toggleTextWrapper}>
-                        <Text style={[styles.toggleLabel, { color: textColor }]}>Tid på opgave</Text>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Task time</Text>
                         <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                          Når slået til tæller opgavetiden i performance-kortet i stedet for aktivitetstiden.
+                          When switched on, the task time counts in the performance card instead of the activity time.
                         </Text>
                       </View>
                       <Switch
@@ -1877,7 +1899,7 @@ export default function TasksScreen() {
 
                     {taskDurationEnabled && (
                       <View style={styles.reminderSectionBody}>
-                        <Text style={[styles.label, { color: textColor }]}>Varighed (minutter)</Text>
+                        <Text style={[styles.label, { color: textColor }]}>Duration (minutes)</Text>
                         <TextInput
                           style={[styles.input, { backgroundColor: bgColor, color: textColor, marginBottom: 0 }]}
                           value={String(selectedTask?.taskDurationMinutes ?? 0)}
@@ -1899,7 +1921,7 @@ export default function TasksScreen() {
                     )}
                   </View>
 
-                  <Text style={[styles.label, { color: textColor }]}>Aktivitetskategorier</Text>
+                  <Text style={[styles.label, { color: textColor }]}>Activity categories</Text>
                   <View style={styles.categoriesGrid} testID="tasks.modal.categoryDropdownToggle">
                     {uniqueCategories.map((item: any, index: number) => {
                       const catId = String(item.id);
@@ -1940,7 +1962,7 @@ export default function TasksScreen() {
                 disabled={isSaving || isUploadingVideo}
                 testID="tasks.modal.cancelButton"
               >
-                <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+                <Text style={[styles.modalButtonText, { color: textColor }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -1953,7 +1975,7 @@ export default function TasksScreen() {
                 testID="tasks.modal.saveButton"
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>
-                  {isSaving ? 'Gemmer...' : isUploadingVideo ? 'Uploader...' : 'Gem'}
+                  {isSaving ? 'Saving...' : isUploadingVideo ? 'Uploading...' : 'Save'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1977,7 +1999,7 @@ export default function TasksScreen() {
             <TouchableOpacity onPress={closeVideoModal} style={{ padding: 4 }}>
               <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={32} color="#fff" />
             </TouchableOpacity>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>Opgave video</Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>Task media</Text>
             <View style={{ width: 32 }} />
           </View>
 
@@ -2000,12 +2022,12 @@ export default function TasksScreen() {
       >
         <View style={styles.deleteConfirmOverlay}>
           <View style={[styles.deleteConfirmCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Slet opgaveskabelon</Text>
+            <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Delete task template</Text>
             <Text style={[styles.deleteConfirmWarning, { color: textColor }]}>
               {DELETE_TEMPLATE_WARNING_TEXT}
             </Text>
             <Text style={[styles.deleteConfirmHelper, { color: textSecondaryColor }]}>
-              Skriv {DELETE_TEMPLATE_CONFIRM_TEXT} for at aktivere sletning.
+              Type {DELETE_TEMPLATE_CONFIRM_TEXT} to enable deletion.
             </Text>
             <TextInput
               style={[styles.deleteConfirmInput, { backgroundColor: bgColor, color: textColor, borderColor: isDark ? '#3a3a3a' : '#d0d7e3' }]}
@@ -2023,7 +2045,7 @@ export default function TasksScreen() {
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: bgColor }]}
                 onPress={closeDeleteTemplateModal}
               >
-                <Text style={[styles.modalButtonText, { color: textColor }]}>Annuller</Text>
+                <Text style={[styles.modalButtonText, { color: textColor }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -2044,7 +2066,7 @@ export default function TasksScreen() {
                 testID="tasks.template.deleteModal.confirmButton"
               >
                 <Text style={[styles.modalButtonText, { color: '#fff' }]}>
-                  {isDeleteConfirming ? 'Sletter...' : 'Slet'}
+                  {isDeleteConfirming ? 'Deleting...' : 'Delete'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2061,7 +2083,7 @@ export default function TasksScreen() {
         }
         contextName={String(selectedContext?.name ?? '')}
         actionType={(pendingAction?.type as any) || 'edit'}
-        itemType="opgave"
+        itemType="task"
         onConfirm={handleConfirmAction}
         onCancel={handleCancelAction}
       />

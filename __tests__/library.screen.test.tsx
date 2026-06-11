@@ -276,8 +276,8 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, queryByText } = render(<LibraryScreen />);
 
-    expect(await findByText(/Biblioteket/i)).toBeTruthy();
-    expect(queryByText(/Tilføj til opgaver/i)).toBeNull();
+    expect(await findByText('The library requires Premium')).toBeTruthy();
+    expect(queryByText(/Add to tasks/i)).toBeNull();
   });
 
   it('hides paywall gate when player has library access', async () => {
@@ -302,15 +302,15 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, queryByText } = render(<LibraryScreen />);
 
-    expect(await findByText(/Bibliotek/i)).toBeTruthy();
-    expect(queryByText(/kræver Premium/i)).toBeNull();
+    expect(await findByText(/Library/i)).toBeTruthy();
+    expect(queryByText(/requires Premium/i)).toBeNull();
   });
 
   it('renders sticky top rows with focus positions and selected path for trainer profile', async () => {
     setupSupabaseFixture({
       systemExercises: [
         buildSystemExercise('sys-faelles-1', 'Fælles øvelse', 'holdtraening_faelles'),
-        buildSystemExercise('sys-back-1', 'Back øvelse', 'holdtraening_back'),
+        buildSystemExercise('sys-back-1', 'Fullback øvelse', 'holdtraening_back'),
       ],
       personalExercises: [
         {
@@ -334,17 +334,17 @@ describe('Library screen gating and card state', () => {
     expect(await findByTestId('library.topRow.primary')).toBeTruthy();
     expect(await findByTestId('library.scrollHint.primary')).toBeTruthy();
     expect(queryByTestId('library.topRow.secondary')).toBeNull();
-    expect(getByText('Personlige øvelser')).toBeTruthy();
-    expect(getByText('Fokusområder')).toBeTruthy();
+    expect(getByText('Personal exercises')).toBeTruthy();
+    expect(getByText('Focus areas')).toBeTruthy();
 
     const footballcoachBox = await findByTestId('library.folder.footballcoach');
     fireEvent.press(footballcoachBox);
 
     expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
     expect(await findByTestId('library.scrollHint.secondary')).toBeTruthy();
-    expect(getByText('Fælles')).toBeTruthy();
-    expect(getByText('Målmand')).toBeTruthy();
-    expect(getByText('Back')).toBeTruthy();
+    expect(getByText('Shared')).toBeTruthy();
+    expect(getByText('Goalkeeper')).toBeTruthy();
+    expect(getByText('Fullback')).toBeTruthy();
 
     const faellesBox = await findByTestId('library.folder.holdtraening_faelles');
     fireEvent.press(faellesBox);
@@ -377,7 +377,7 @@ describe('Library screen gating and card state', () => {
           trainer_id: 'user-1',
           title: 'Personlig målmandsøvelse',
           is_system: false,
-          position: ' Målmand ',
+          position: ' Goalkeeper ',
         },
       ],
     });
@@ -396,7 +396,7 @@ describe('Library screen gating and card state', () => {
     fireEvent.press(await findByTestId('library.folder.personal'));
 
     expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
-    expect(getByText('Fælles')).toBeTruthy();
+    expect(getByText('Shared')).toBeTruthy();
     expect(await findByTestId('library.folder.holdtraening_maalmand')).toBeTruthy();
 
     fireEvent.press(await findByTestId('library.folder.holdtraening_faelles'));
@@ -453,7 +453,7 @@ describe('Library screen gating and card state', () => {
   });
 
   it(
-    'shows trainer personal exercise under Øvelser fra træner as already added for player',
+    'shows trainer personal exercise under Exercises from coach as already added for player',
     async () => {
     setupSupabaseFixture({
       personalExercises: [
@@ -486,12 +486,12 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
 
       const ctaButton = await findByTestId('library.addToTasksButton.trainer-personal-1');
       expect(ctaButton.props.accessibilityState?.disabled).toBe(true);
-      expect(ctaButton.props.accessibilityLabel).toMatch(/tilføjet/i);
+      expect(ctaButton.props.accessibilityLabel).toMatch(/added/i);
     },
     10000
   );
@@ -518,11 +518,11 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Personal/i));
 
     const addButton = await findByTestId('library.addToTasksButton.ex-1');
     expect(addButton.props.accessibilityState?.disabled).toBe(false);
-    expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
+    expect(addButton.props.accessibilityLabel).toMatch(/Assign/i);
   });
 
   it('keeps assign CTA enabled even when exercise is already added for trainer profile', async () => {
@@ -547,11 +547,11 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Personal/i));
 
     const addButton = await findByTestId('library.addToTasksButton.ex-2');
     expect(addButton.props.accessibilityState?.disabled).toBe(false);
-    expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
+    expect(addButton.props.accessibilityLabel).toMatch(/Assign/i);
   });
 
   it('opens assign modal from card CTA for trainer profile', async () => {
@@ -579,7 +579,7 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Personal/i));
     fireEvent.press(await findByTestId('library.addToTasksButton.ex-3'));
 
     expect(await findByTestId('library.assignExerciseModal')).toBeTruthy();
@@ -616,20 +616,20 @@ describe('Library screen gating and card state', () => {
     });
 
     const firstRender = render(<LibraryScreen />);
-    fireEvent.press(await firstRender.findByText(/Personlige/i));
+    fireEvent.press(await firstRender.findByText(/Personal/i));
     await waitFor(async () => {
       const addButton = await firstRender.findByTestId('library.addToTasksButton.ex-linked-1');
       expect(addButton.props.accessibilityState?.disabled).toBe(false);
-      expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
+      expect(addButton.props.accessibilityLabel).toMatch(/Assign/i);
     });
     firstRender.unmount();
 
     const secondRender = render(<LibraryScreen />);
-    fireEvent.press(await secondRender.findByText(/Personlige/i));
+    fireEvent.press(await secondRender.findByText(/Personal/i));
     await waitFor(async () => {
       const addButton = await secondRender.findByTestId('library.addToTasksButton.ex-linked-1');
       expect(addButton.props.accessibilityState?.disabled).toBe(false);
-      expect(addButton.props.accessibilityLabel).toMatch(/Tildel/i);
+      expect(addButton.props.accessibilityLabel).toMatch(/Assign/i);
     });
 
     expect(addTask).not.toHaveBeenCalled();
@@ -667,7 +667,7 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId, queryByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Personlige/i));
+    fireEvent.press(await findByText(/Personal/i));
 
     expect(await findByTestId('library.videoPreview.ex-anim-1')).toBeTruthy();
     expect(queryByTestId('library.animationPending.ex-anim-2')).toBeNull();
@@ -738,11 +738,11 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
 
-    expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: –/5');
-    expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: –x');
+    expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Latest: -/5');
+    expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Completed: -x');
     expect(await findByTestId('library.badge.lastScore.ex-refresh-1')).toBeTruthy();
     expect(await findByTestId('library.badge.executionCount.ex-refresh-1')).toBeTruthy();
 
@@ -756,8 +756,8 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Senest: 4/5');
-      expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.counter.lastScore.ex-refresh-1')).toHaveTextContent('Latest: 4/5');
+      expect(await findByTestId('library.counter.executionCount.ex-refresh-1')).toHaveTextContent('Completed: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-refresh-1')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-refresh-1')).toBeTruthy();
     });
@@ -791,10 +791,10 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
-    expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: –/5');
-    expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: –x');
+    expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Latest: -/5');
+    expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Completed: -x');
     expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
     expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
 
@@ -809,8 +809,8 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Senest: 4/5');
-      expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.counter.lastScore.ex-map-1')).toHaveTextContent('Latest: 4/5');
+      expect(await findByTestId('library.counter.executionCount.ex-map-1')).toHaveTextContent('Completed: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-map-1')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-map-1')).toBeTruthy();
     });
@@ -860,13 +860,13 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
 
     await waitFor(async () => {
       const addButton = await findByTestId('library.addToTasksButton.ex-existing-1');
       expect(addButton.props.accessibilityState?.disabled).toBe(true);
-      expect(addButton.props.accessibilityLabel).toMatch(/tilføjet/i);
+      expect(addButton.props.accessibilityLabel).toMatch(/added/i);
     });
 
     act(() => {
@@ -880,8 +880,8 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-existing-1')).toHaveTextContent('Senest: 5/5');
-      expect(await findByTestId('library.counter.executionCount.ex-existing-1')).toHaveTextContent('Udført: 2x');
+      expect(await findByTestId('library.counter.lastScore.ex-existing-1')).toHaveTextContent('Latest: 5/5');
+      expect(await findByTestId('library.counter.executionCount.ex-existing-1')).toHaveTextContent('Completed: 2x');
     });
   });
 
@@ -913,7 +913,7 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
 
     act(() => {
@@ -927,7 +927,7 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Completed: 1x');
       expect(await findByTestId('library.badge.executionCount.ex-map-2')).toBeTruthy();
     });
 
@@ -945,8 +945,8 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Senest: 3/5');
-      expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.counter.lastScore.ex-map-2')).toHaveTextContent('Latest: 3/5');
+      expect(await findByTestId('library.counter.executionCount.ex-map-2')).toHaveTextContent('Completed: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-map-2')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-map-2')).toBeTruthy();
     });
@@ -980,7 +980,7 @@ describe('Library screen gating and card state', () => {
 
     const { findByText, findByTestId } = render(<LibraryScreen />);
 
-    fireEvent.press(await findByText(/Øvelser fra træner/i));
+    fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
 
     act(() => {
@@ -994,7 +994,7 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Completed: 1x');
       expect(await findByTestId('library.badge.executionCount.ex-map-3')).toBeTruthy();
     });
 
@@ -1009,8 +1009,8 @@ describe('Library screen gating and card state', () => {
     });
 
     await waitFor(async () => {
-      expect(await findByTestId('library.counter.lastScore.ex-map-3')).toHaveTextContent('Senest: 5/5');
-      expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Udført: 1x');
+      expect(await findByTestId('library.counter.lastScore.ex-map-3')).toHaveTextContent('Latest: 5/5');
+      expect(await findByTestId('library.counter.executionCount.ex-map-3')).toHaveTextContent('Completed: 1x');
       expect(await findByTestId('library.badge.lastScore.ex-map-3')).toBeTruthy();
       expect(await findByTestId('library.badge.executionCount.ex-map-3')).toBeTruthy();
     });

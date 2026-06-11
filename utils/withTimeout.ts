@@ -10,20 +10,20 @@ export async function withTimeout<T>(
   timeoutMs: number,
   timeoutMessage: string
 ): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let hours: ReturnType<typeof setTimeout> | null = null;
 
   try {
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => {
+        hours = setTimeout(() => {
           reject(new TimeoutError(timeoutMessage));
         }, timeoutMs);
       }),
     ]);
   } finally {
-    if (timer) {
-      clearTimeout(timer);
+    if (hours) {
+      clearTimeout(hours);
     }
   }
 }

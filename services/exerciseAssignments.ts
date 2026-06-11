@@ -60,10 +60,10 @@ export const exerciseAssignmentsService = {
       throw exerciseError;
     }
     if (!exerciseRow) {
-      throw new Error('Kunne ikke finde øvelsen, der skulle tildeles.');
+      throw new Error('Could not find the exercise to be assigned.');
     }
 
-    const sourceFolder = 'Fra træner';
+    const sourceFolder = 'From coach';
 
     const basePayload = {
       user_id: trainerId,
@@ -163,14 +163,14 @@ export const exerciseAssignmentsService = {
     const trainerId = payload.trainerId?.trim();
 
     if (!exerciseId || !trainerId) {
-      throw new Error('Mangler øvelse eller træner. Prøv igen.');
+      throw new Error('Lacks practice or trainer. Try again.');
     }
 
     const requestedPlayerIds = normalizeIds(payload.playerIds);
     const requestedTeamIds = normalizeIds(payload.teamIds);
 
     if (!requestedPlayerIds.length && !requestedTeamIds.length) {
-      throw new Error('Vælg mindst én spiller eller ét hold.');
+      throw new Error('Select at least one player or one team.');
     }
 
     const { playerIds: existingPlayerIds, teamIds: existingTeamIds } = await this.fetchAssignments(exerciseId, trainerId);
@@ -224,10 +224,10 @@ export const exerciseAssignmentsService = {
     const teamId = String(payload.teamId ?? '').trim();
 
     if (!exerciseId || !trainerId) {
-      throw new Error('Mangler øvelse eller træner.');
+      throw new Error('Lacks practice or trainer.');
     }
     if (!playerId && !teamId) {
-      throw new Error('Mangler modtager for fjernelse.');
+      throw new Error('Missing recipient for removal.');
     }
 
     let assignmentDeleteQuery = supabase
@@ -283,7 +283,7 @@ export const exerciseAssignmentsService = {
       .select('id')
       .eq('user_id', trainerId)
       .is('library_exercise_id', null)
-      .eq('source_folder', 'Fra træner')
+      .in('source_folder', ['From coach', 'Fra træner'])
       .eq('title', String(exerciseRow.title ?? ''))
       .eq('description', String(exerciseRow.description ?? ''));
 
@@ -314,7 +314,7 @@ export const exerciseAssignmentsService = {
         throw removeError;
       }
       if (removed !== true) {
-        throw new Error('Kunne ikke fjerne legacy opgaveskabelon for modtageren.');
+        throw new Error('Could not remove legacy task template for recipient.');
       }
     }
   },

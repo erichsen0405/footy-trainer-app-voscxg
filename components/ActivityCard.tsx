@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, TouchableOpacity, useColorScheme } f
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
-import { da } from 'date-fns/locale';
+import { enUS } from 'date-fns/locale';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useFootball } from '@/contexts/FootballContext';
 import TaskDetailsModal from '@/components/TaskDetailsModal';
@@ -180,6 +180,34 @@ const decodeUtf8Garble = (value: unknown): string => {
   return fixScandi(first);
 };
 
+const LEGACY_DANISH_DISPLAY_TEXT: Record<string, string> = {
+  hjemme: 'Home',
+  ude: 'Away',
+  kamp: 'Match',
+  kampanalyse: 'Match Analysis',
+  'analyse af kamp': 'Match analysis',
+  traening: 'Training',
+  træning: 'Training',
+};
+
+const normalizeLegacyDisplayKey = (value: string): string =>
+  value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const translateLegacyDisplayText = (value: unknown): string => {
+  const decoded = decodeUtf8Garble(value).trim();
+  if (!decoded) return decoded;
+
+  const direct = LEGACY_DANISH_DISPLAY_TEXT[decoded.toLowerCase()];
+  if (direct) return direct;
+
+  return LEGACY_DANISH_DISPLAY_TEXT[normalizeLegacyDisplayKey(decoded)] ?? decoded;
+};
+
 const coerceMinutes = (val: any): number | null => {
   if (val === null || val === undefined) return null;
   const str = typeof val === 'string' ? val.trim().toLowerCase() : null;
@@ -197,27 +225,27 @@ const normalizeFeedbackTitle = (value?: string | null): string => {
 const isFeedbackTitle = (title?: string | null): boolean => {
   if (typeof title !== 'string') return false;
   const normalized = normalizeFeedbackTitle(title);
-  return normalized.startsWith('feedback pa');
+  return normalized.startsWith('feedback pa') || normalized.startsWith('feedback on');
 };
 
-const feedbackTitlePrefixRegex = /^\s*feedback\s+p(?:å|a\u030a|a)\s*[:\s-]*/i;
+const feedbackTitlePrefixRegex = /^\s*feedback\s+(?:on|p(?:å|a\u030a|a))\s*[:\s-]*/i;
 
 const splitFeedbackLabelAndName = (title?: string | null): { label: string; name: string } => {
   const decodedTitle = decodeUtf8Garble(title ?? '');
   const trimmedTitle = decodedTitle.trim();
   if (!trimmedTitle) {
-    return { label: 'Feedback på:', name: '' };
+    return { label: 'Feedback on:', name: '' };
   }
 
   const remainder = trimmedTitle.replace(feedbackTitlePrefixRegex, '').trim();
   if (remainder === trimmedTitle) {
-    return { label: 'Feedback på:', name: trimmedTitle };
+    return { label: 'Feedback on:', name: trimmedTitle };
   }
   if (!remainder) {
-    return { label: 'Feedback på:', name: '' };
+    return { label: 'Feedback on:', name: '' };
   }
 
-  return { label: 'Feedback på:', name: remainder };
+  return { label: 'Feedback on:', name: remainder };
 };
 
 const getMarkerTemplateId = (task: any): string | null => {
@@ -535,7 +563,7 @@ export default function ActivityCard({
             params: {
               activityId: String(routeActivityId),
               templateId: String(templateId),
-              title: String(task.title ?? 'opgave'),
+              title: String(task.title ?? 'task'),
               taskInstanceId: taskInstanceId ?? undefined,
             },
           });
@@ -623,9 +651,9 @@ export default function ActivityCard({
     const hours = Math.floor(reminderMinutes / 60);
     const remainingMinutes = reminderMinutes % 60;
     if (remainingMinutes === 0) {
-      return `${hours}t`;
+      return `${hours}h`;
     }
-    return `${hours}t ${remainingMinutes}m`;
+    return `${hours}h ${remainingMinutes}m`;
   };
 
   // Resolve category meta (color + emoji) without relying on legacy activity.category
@@ -655,9 +683,10 @@ export default function ActivityCard({
     [resolvedCategoryMeta?.emoji]
   );
 
-  const dayLabel = format(resolvedDate, 'EEE. d. MMM.', { locale: da });
+  const dayLabel = format(resolvedDate, 'EEE, MMM d', { locale: enUS });
   const timeLabel = format(resolvedDate, 'HH:mm');
-  const location = activity.location || activity.category_location || '';
+  const location = translateLegacyDisplayText(activity.location || activity.category_location || '');
+  const activityTitle = translateLegacyDisplayText(activity.title || activity.name || 'Untitled');
 
   const intensityValue = useMemo(() => {
     const raw = activity?.intensity ?? activity?.activity_intensity;
@@ -824,7 +853,7 @@ export default function ActivityCard({
             {/* Content */}
             <View style={styles.textContainer}>
               <Text style={styles.title} numberOfLines={1}>
-                {activity.title || activity.name || 'Uden titel'}
+                {activityTitle || 'Untitled'}
               </Text>
 
               <View style={styles.detailRow}>
@@ -861,12 +890,12 @@ export default function ActivityCard({
 
               {activity.is_external && (
                 <View style={styles.externalBadge}>
-                  <Text style={styles.externalText}>📅 Ekstern kalender</Text>
+                  <Text style={styles.externalText}>📅 External calendar</Text>
                 </View>
               )}
               {showTrainerAssignedBadge ? (
                 <View style={styles.trainerAssignedBadge} testID="home.activity.trainerAssignedBadge">
-                  <Text style={styles.trainerAssignedText}>Tildelt af træner</Text>
+                  <Text style={styles.trainerAssignedText}>Assigned by coach</Text>
                 </View>
               ) : null}
             </View>
@@ -913,7 +942,7 @@ export default function ActivityCard({
                         <View style={styles.taskContent}>
                           <View style={styles.taskTitleRow}>
                             <Text style={styles.taskTitle} numberOfLines={1}>
-                              Intensitet
+                              Intensity
                             </Text>
 
                             <View
@@ -939,7 +968,7 @@ export default function ActivityCard({
 
                           {/* Helper text ONLY when enabled AND missing */}
                           {intensityEnabled && intensityMissing && (
-                            <Text style={styles.intensityTaskHelper}>Tryk for at angive intensitet</Text>
+                            <Text style={styles.intensityTaskHelper}>Tap to set intensity</Text>
                           )}
                         </View>
                       </View>
@@ -1026,7 +1055,7 @@ export default function ActivityCard({
                                 <View style={styles.taskTitleRow}>
                                   <Text style={[styles.taskTitle, taskCompleted && styles.taskTitleCompleted]}>
                                     <Text style={styles.feedbackTaskLabel}>{label}</Text>
-                                    {name ? ` ${name}` : ''}
+                                    {name ? ` ${translateLegacyDisplayText(name)}` : ''}
                                   </Text>
                                 </View>
                               );
@@ -1036,7 +1065,7 @@ export default function ActivityCard({
                           <Text
                             style={[styles.taskTitle, taskCompleted && styles.taskTitleCompleted]}
                           >
-                            {decodeUtf8Garble(task.title)}
+                            {translateLegacyDisplayText(task.title)}
                           </Text>
                         </View>
                             )}
@@ -1064,7 +1093,7 @@ export default function ActivityCard({
                               color="rgba(255, 255, 255, 0.8)"
                             />
                             <Text style={styles.reminderText}>
-                              Varighed: {taskDurationMinutes} min
+                              Duration: {taskDurationMinutes} min
                             </Text>
                           </View>
                         )}
@@ -1085,7 +1114,7 @@ export default function ActivityCard({
                           />
                           {getTaskModalVideoUrls(task).length > 1 ? (
                             <Text style={styles.videoIndicatorText}>
-                              {getTaskModalVideoUrls(task).length} videoer - swipe
+                              {getTaskModalVideoUrls(task).length} files - swipe
                             </Text>
                           ) : null}
                         </View>
@@ -1103,7 +1132,7 @@ export default function ActivityCard({
       {isTaskModalOpen && selectedTask && (
         <TaskDetailsModal
           visible={isTaskModalOpen}
-          title={String(selectedTask?.title ?? 'Uden titel')}
+          title={String(selectedTask?.title ?? 'Untitled')}
           categoryColor={String(resolvedCategoryMeta?.color ?? '#3B82F6')}
           isDark={isDark}
           description={typeof selectedTask?.description === 'string' ? selectedTask.description : undefined}

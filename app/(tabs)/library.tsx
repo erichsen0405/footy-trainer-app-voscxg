@@ -88,7 +88,7 @@ type LibrarySection =
 const FOOTBALLCOACH_STRUCTURE = [
   {
     id: 'holdtraening',
-    name: 'Holdtræning',
+    name: 'Team training',
     icon: { ios: 'person.3.fill', android: 'groups' },
     positions: HOLDTRAINING_POSITIONS,
   },
@@ -96,6 +96,19 @@ const FOOTBALLCOACH_STRUCTURE = [
 
 const KNOWN_HOLDTRAINING_POSITION_IDS = new Set(HOLDTRAINING_POSITIONS.map(pos => pos.id));
 const FOOTBALLCOACH_POS_NAME_BY_ID = new Map<string, string>(HOLDTRAINING_POSITIONS.map(pos => [pos.id, pos.name]));
+const LEGACY_POSITION_ID_BY_SIGNATURE = new Map<string, string>([
+  ['faelles', 'holdtraening_faelles'],
+  ['faelles_alle_positioner', 'holdtraening_faelles'],
+  ['f_lles', 'holdtraening_faelles'],
+  ['f_lles_alle_positioner', 'holdtraening_faelles'],
+  ['maalmand', 'holdtraening_maalmand'],
+  ['back', 'holdtraening_back'],
+  ['midterforsvarer', 'holdtraening_midterforsvarer'],
+  ['central_midtbane', 'holdtraening_central_midtbane'],
+  ['offensiv_midtbane', 'holdtraening_offensiv_midtbane'],
+  ['kant', 'holdtraening_kant'],
+  ['angriber', 'holdtraening_angriber'],
+]);
 
 const formatHoldtraeningSlug = (posId: string) =>
   posId
@@ -109,7 +122,7 @@ const getHoldtraeningPositionTitle = (posId: string) =>
   FOOTBALLCOACH_POS_NAME_BY_ID.get(posId) ?? `Andre: ${formatHoldtraeningSlug(posId)}`;
 
 const getHoldtraeningTopRowTitle = (posId: string) =>
-  posId === 'holdtraening_faelles' ? 'Fælles' : getHoldtraeningPositionTitle(posId);
+  posId === 'holdtraening_faelles' ? 'Shared' : getHoldtraeningPositionTitle(posId);
 
 const slugifyPositionValue = (value: string) =>
   normalizeSignatureText(value)
@@ -119,6 +132,8 @@ const slugifyPositionValue = (value: string) =>
 const resolvePersonalPositionId = (positionValue: string) => {
   const normalized = normalizeSignatureText(positionValue);
   const normalizedSlug = slugifyPositionValue(positionValue);
+  const legacyId = LEGACY_POSITION_ID_BY_SIGNATURE.get(normalizedSlug);
+  if (legacyId) return legacyId;
   const knownId = HOLDTRAINING_POSITIONS.find((pos) => {
     return normalizeSignatureText(pos.name) === normalized || slugifyPositionValue(pos.name) === normalizedSlug;
   })?.id;
@@ -134,7 +149,7 @@ const buildHoldtraeningFolderVm = (posId: string, count: number): FolderVM => ({
   id: posId,
   level: 3,
   title: getHoldtraeningTopRowTitle(posId),
-  subtitle: `${count} øvelser`,
+  subtitle: `${count} exercises`,
   rightBadgeText: String(count),
   icon: buildIcon('footballcoach_position'),
   chevron: true,
@@ -148,7 +163,7 @@ const buildPersonalPositionFolderVm = (positionValue: string, count: number): Fo
     id: positionId,
     level: 3,
     title: getPersonalPositionTitle(positionValue),
-    subtitle: `${count} øvelser`,
+    subtitle: `${count} exercises`,
     rightBadgeText: String(count),
     icon: buildIcon('footballcoach_position'),
     chevron: true,
@@ -164,10 +179,10 @@ const clampDifficulty = (value: any): number => {
 };
 
 const formatLatestScoreLine = (lastScore?: number | null) =>
-  normalizeFivePointScore(lastScore) !== null ? `Senest: ${formatScoreOutOfFive(lastScore)}` : 'Senest: –/5';
+  normalizeFivePointScore(lastScore) !== null ? `Latest: ${formatScoreOutOfFive(lastScore)}` : 'Latest: -/5';
 
 const formatExecutionCountLine = (executionCount?: number | null) =>
-  typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
+  typeof executionCount === 'number' && executionCount > 0 ? `Completed: ${executionCount}x` : 'Completed: -x';
 
 const normalizeSignatureText = (value: unknown): string =>
   String(value ?? '')
@@ -442,7 +457,7 @@ const TopNavBox = memo(function TopNavBox({
               adjustsFontSizeToFit
               minimumFontScale={0.8}
             >
-              {item.rightBadgeText} øvelser
+              {item.rightBadgeText} exercises
             </Text>
           </View>
         ) : null}
@@ -525,7 +540,7 @@ const ExerciseCard = memo(function ExerciseCard({
   const isAssignMode = ctaMode === 'assign';
   const isAssignedInTrainerMode = isAssignMode && !!isAssignedToRecipients;
   const ctaDisabled = isAssignMode ? false : isAdded || isAdding;
-  const ctaLabel = isAssignMode ? (isAssignedInTrainerMode ? 'Tildelt' : 'Tildel') : isAdded ? 'tilføjet' : 'Tilføj til opgaver';
+  const ctaLabel = isAssignMode ? (isAssignedInTrainerMode ? 'Assigned' : 'Assign') : isAdded ? 'added' : 'Add to tasks';
 
   const positionLabel = positionLabelOverride ?? exercise.position ?? null;
   const positionText = positionLabel ? positionLabel : 'Position: –';
@@ -571,7 +586,7 @@ const ExerciseCard = memo(function ExerciseCard({
               numberOfLines={1}
               ellipsizeMode="clip"
             >
-              Sværhedsgrad {difficulty}/5
+              Difficulty {difficulty}/5
             </Text>
           </View>
 
@@ -676,7 +691,7 @@ const ExerciseCard = memo(function ExerciseCard({
             {isAdding && !isAssignMode ? (
               <>
                 <ActivityIndicator size="small" color={isAdded ? theme.textSecondary : '#fff'} />
-                <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>Tilføjer...</Text>
+                <Text style={[styles.ctaText, { color: isAdded ? theme.textSecondary : '#fff' }]}>Adding...</Text>
               </>
             ) : (
               <>
@@ -909,8 +924,8 @@ export default function LibraryScreen() {
       if (exerciseNode?.is_system) return 'FootballCoach inspiration';
       if (!isTrainerUser) {
         const trainerName = (exerciseNode?.trainer_name || '').trim();
-        if (trainerName.length) return `Fra træner: ${trainerName}`;
-        if (exerciseNode?.trainer_id) return 'Fra træner';
+        if (trainerName.length) return `From coach: ${trainerName}`;
+        if (exerciseNode?.trainer_id) return 'From coach';
       }
       return null;
     },
@@ -1095,7 +1110,7 @@ export default function LibraryScreen() {
           }
 
           const profileName = (trainerId: string) =>
-            trainerProfiles.find(p => String(p.user_id) === String(trainerId))?.full_name || 'Ukendt træner';
+            trainerProfiles.find(p => String(p.user_id) === String(trainerId))?.full_name || 'Unknown coach';
 
           const grouped = new Map<string, Exercise[]>();
           trainerExercises.forEach((exercise) => {
@@ -1140,7 +1155,7 @@ export default function LibraryScreen() {
       } catch (e: any) {
         if (!isMountedRef.current) return;
         setStatus('error');
-        setErrorMessage(e?.message || 'Kunne ikke hente bibliotek');
+        setErrorMessage(e?.message || 'Failed to download library');
       }
     },
     [isCreator, isTrainerUser, normalizeExercise, applyAdded, applyCounterOverrides]
@@ -1369,8 +1384,8 @@ export default function LibraryScreen() {
         {
           id: 'personal',
           level: 1,
-          title: 'Personlige øvelser',
-          subtitle: `${personalExercises.length} øvelser`,
+          title: 'Personal exercises',
+          subtitle: `${personalExercises.length} exercises`,
           rightBadgeText: String(personalExercises.length),
           icon: buildIcon('personal'),
           chevron: true,
@@ -1380,8 +1395,8 @@ export default function LibraryScreen() {
         {
           id: 'footballcoach',
           level: 1,
-          title: 'Fokusområder',
-          subtitle: `${footballCoachExercises.length} øvelser`,
+          title: 'Focus areas',
+          subtitle: `${footballCoachExercises.length} exercises`,
           rightBadgeText: String(footballCoachExercises.length),
           icon: buildIcon('footballcoach'),
           chevron: true,
@@ -1394,8 +1409,8 @@ export default function LibraryScreen() {
       {
         id: 'trainer',
         level: 1,
-        title: 'Øvelser fra træner',
-        subtitle: `${trainerTotalExercises} øvelser`,
+        title: 'Exercises from coach',
+        subtitle: `${trainerTotalExercises} exercises`,
         rightBadgeText: String(trainerTotalExercises),
         icon: buildIcon('trainer'),
         chevron: true,
@@ -1405,8 +1420,8 @@ export default function LibraryScreen() {
       {
         id: 'footballcoach',
         level: 1,
-        title: 'Fokusområder',
-        subtitle: `${footballCoachExercises.length} øvelser`,
+        title: 'Focus areas',
+        subtitle: `${footballCoachExercises.length} exercises`,
         rightBadgeText: String(footballCoachExercises.length),
         icon: buildIcon('footballcoach'),
         chevron: true,
@@ -1465,7 +1480,7 @@ export default function LibraryScreen() {
       id: tf.trainerId,
       level: 2,
       title: tf.trainerName,
-      subtitle: `${tf.exercises.length} øvelser`,
+      subtitle: `${tf.exercises.length} exercises`,
       rightBadgeText: String(tf.exercises.length),
       icon: buildIcon('trainer'),
       chevron: true,
@@ -1629,7 +1644,7 @@ export default function LibraryScreen() {
       if (!exercise) return;
       if (isTrainerUser) {
         if (!currentUserId) {
-          Alert.alert('Vent et øjeblik', 'Brugeroplysninger indlæses stadig. Prøv igen om et øjeblik.');
+          Alert.alert('Wait a moment', 'User information is still loading. Please try again in a moment.');
           return;
         }
         setAssignModalExercise(exercise);
@@ -1637,11 +1652,11 @@ export default function LibraryScreen() {
         return;
       }
       if (!addTaskToContext) {
-        Alert.alert('Ikke tilgængelig', 'Kan ikke tilføje opgaver lige nu. Prøv igen om lidt.');
+        Alert.alert('Unavailable', 'Unable to add tasks right now. Try again in a little while.');
         return;
       }
       if (isExerciseAlreadyAdded(exercise)) {
-        Alert.alert('Allerede tilføjet', 'Denne øvelse ligger allerede i dine opgaver.');
+        Alert.alert('Already added', 'This exercise is already in your assignments.');
         return;
       }
       if (isExerciseAddInFlight(exercise.id)) {
@@ -1675,11 +1690,11 @@ export default function LibraryScreen() {
   const handleConfirmAddToTasks = useCallback(async () => {
     if (!addModalExercise) return;
     if (!addTaskToContext) {
-      Alert.alert('Ikke tilgængelig', 'Kan ikke tilføje opgaver lige nu. Prøv igen senere.');
+      Alert.alert('Unavailable', 'Unable to add tasks right now. Try again later.');
       return;
     }
     if (isExerciseAlreadyAdded(addModalExercise)) {
-      Alert.alert('Allerede tilføjet', 'Denne øvelse ligger allerede i dine opgaver.');
+      Alert.alert('Already added', 'This exercise is already in your assignments.');
       handleCloseAddModal();
       return;
     }
@@ -1707,7 +1722,7 @@ export default function LibraryScreen() {
       handleCloseAddModal();
     } catch (error: any) {
       console.error('[Library] Failed to add exercise to tasks', error);
-      const message = typeof error?.message === 'string' ? error.message : 'Kunne ikke tilføje øvelse til opgaver.';
+      const message = typeof error?.message === 'string' ? error.message : 'Could not add practice to tasks.';
       Alert.alert('Noget gik galt', message);
     } finally {
       if (isMountedRef.current) {
@@ -1932,7 +1947,7 @@ export default function LibraryScreen() {
 
   const renderTopNavigation = useCallback(() => (
     <View style={[styles.topNavigation, { backgroundColor: theme.background }]}>
-      <SectionDivider title="Bibliotek" testID="library.sectionHeader.primary" />
+      <SectionDivider title="Library" testID="library.sectionHeader.primary" />
       <View style={styles.topRowShell} testID="library.topRow.primary">
         <ScrollView
           horizontal
@@ -1953,7 +1968,7 @@ export default function LibraryScreen() {
       </View>
       {showPositionRow ? (
         <>
-          <SectionDivider title="Positioner" testID="library.sectionHeader.secondary" />
+          <SectionDivider title="Positions" testID="library.sectionHeader.secondary" />
           <View style={styles.topRowShell} testID="library.topRow.secondary">
             <ScrollView
               horizontal
@@ -1986,8 +2001,8 @@ export default function LibraryScreen() {
   const renderUpgradeGate = () => (
     <View style={[styles.stateCard, { backgroundColor: theme.card, gap: 16 }]}>
       <PremiumFeatureGate
-        title="Biblioteket kræver Premium"
-        description="Se FootballCoach øvelser, gem favorittræning og få fuld adgang ved at opgradere til Premium Spiller."
+        title="The library requires Premium"
+        description="Watch FootballCoach drills, save favorite training and get full access by upgrading to Premium Player."
         onPress={() => router.push({ pathname: '/(tabs)/profile', params: { upgradeTarget: 'library' } })}
         icon={{ ios: 'book.fill', android: 'menu_book' }}
       />
@@ -2001,7 +2016,7 @@ export default function LibraryScreen() {
         numberOfLines={1}
         ellipsizeMode="tail"
       >
-        Bibliotek
+        Library
       </Text>
       <View style={styles.topBarRight}>
         {canCreateExercise ? (
@@ -2012,7 +2027,7 @@ export default function LibraryScreen() {
             testID="library.createExerciseButton"
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>Opret øvelse</Text>
+            <Text style={styles.createButtonText}>Create exercise</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity activeOpacity={0.8} style={styles.iconButton} onPress={handleToggleSearch}>
@@ -2036,7 +2051,7 @@ export default function LibraryScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Søg øvelser..."
+            placeholder="Search exercises..."
             placeholderTextColor={theme.textSecondary}
             style={[styles.searchInput, { color: theme.text }]}
             autoCorrect={false}
@@ -2088,7 +2103,7 @@ export default function LibraryScreen() {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Søg øvelser..."
+              placeholder="Search exercises..."
               placeholderTextColor={theme.textSecondary}
               style={[styles.searchInput, { color: theme.text }]}
               autoCorrect={false}
@@ -2101,7 +2116,7 @@ export default function LibraryScreen() {
           </View>
         ) : null}
         <View style={[styles.stateCard, { backgroundColor: theme.card }]} testID="library.errorState">
-          <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke hente bibliotek</Text>
+          <Text style={[styles.stateTitle, { color: theme.error }]}>Failed to download library</Text>
           <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
           <TouchableOpacity
             onPress={handleRetry}
@@ -2109,7 +2124,7 @@ export default function LibraryScreen() {
             style={[styles.retryButton, { backgroundColor: theme.primary }]}
             testID="library.error.retryButton"
           >
-            <Text style={styles.retryButtonText}>Prøv igen</Text>
+            <Text style={styles.retryButtonText}>Try again</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2125,7 +2140,7 @@ export default function LibraryScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Søg øvelser..."
+            placeholder="Search exercises..."
             placeholderTextColor={theme.textSecondary}
             style={[styles.searchInput, { color: theme.text }]}
             autoCorrect={false}
@@ -2142,7 +2157,7 @@ export default function LibraryScreen() {
       {renderTopNavigation()}
       {showExercisesHeader ? (
         <View style={styles.exerciseHeaderWrap}>
-          <SectionDivider title="Øvelser" testID="library.exerciseHeader" />
+          <SectionDivider title="Exercises" testID="library.exerciseHeader" />
         </View>
       ) : null}
       <SectionList
@@ -2162,30 +2177,30 @@ export default function LibraryScreen() {
           showFocusSelectionState ? (
             <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
               <Text style={[styles.stateTitle, { color: theme.text }]}>
-                {nav.root === 'personal' ? 'Vælg en position' : 'Vælg et fokusområde'}
+                {nav.root === 'personal' ? 'Choose a position' : 'Choose a focus area'}
               </Text>
               <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>
-                Vælg en position i rækken ovenfor for at se øvelserne.
+                Select a position in the row above to view the exercises.
               </Text>
             </View>
           ) : isAtExerciseLevel ? (
             <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
               {searchOpen && searchQuery.trim().length > 0 ? (
                 <>
-                  <Text style={[styles.stateTitle, { color: theme.text }]}>Ingen resultater</Text>
-                  <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>Prøv en anden søgning.</Text>
+                  <Text style={[styles.stateTitle, { color: theme.text }]}>No results</Text>
+                  <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>Try another search.</Text>
                 </>
               ) : (
                 <>
                   <Text style={[styles.stateTitle, { color: theme.text }]}>Denne mappe er tom</Text>
-                  <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>Der er ingen øvelser i denne mappe endnu.</Text>
+                  <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>There are no exercises in this folder yet.</Text>
                   {canCreateExercise ? (
                     <TouchableOpacity
                       activeOpacity={0.9}
                       style={[styles.retryButton, { backgroundColor: theme.primary }]}
                       onPress={handleCreateExercise}
                     >
-                      <Text style={styles.retryButtonText}>Opret øvelse</Text>
+                      <Text style={styles.retryButtonText}>Create exercise</Text>
                     </TouchableOpacity>
                   ) : null}
                 </>
@@ -2209,7 +2224,7 @@ export default function LibraryScreen() {
         <Pressable style={styles.modalBackdrop} onPress={isAddModalSaving ? undefined : handleCloseAddModal}>
           <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Tilføj til opgaver</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Add to tasks</Text>
               <TouchableOpacity onPress={handleCloseAddModal} style={styles.iconButton} disabled={isAddModalSaving}>
                 <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={theme.text} />
               </TouchableOpacity>
@@ -2220,7 +2235,7 @@ export default function LibraryScreen() {
                   {addModalExercise.title}
                 </Text>
                 <Text style={[styles.modalBodyText, { color: theme.textSecondary }]}>
-                  Øvelsen tilføjes som opgave og vises straks under Tasks. Du kan redigere den senere fra Opgaver-fanen.
+                  The exercise is added as a task and is immediately displayed under Tasks. You can edit it later from the Tasks tab.
                 </Text>
                 <View style={styles.modalActions}>
                   <TouchableOpacity
@@ -2233,7 +2248,7 @@ export default function LibraryScreen() {
                     {isAddModalSaving ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={styles.modalActionPrimaryText}>Tilføj</Text>
+                      <Text style={styles.modalActionPrimaryText}>Add</Text>
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -2242,7 +2257,7 @@ export default function LibraryScreen() {
                     onPress={handleCloseAddModal}
                     disabled={isAddModalSaving}
                   >
-                    <Text style={[styles.modalActionSecondaryText, { color: theme.textSecondary }]}>Annuller</Text>
+                    <Text style={[styles.modalActionSecondaryText, { color: theme.textSecondary }]}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
               </>

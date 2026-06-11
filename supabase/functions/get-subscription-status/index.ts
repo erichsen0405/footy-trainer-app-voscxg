@@ -152,11 +152,11 @@ serve(async (req) => {
         const planName =
           complimentaryTier === 'trainer_premium'
             ? hasClubTrainer
-              ? 'Træner Premium - Klub-adgang'
-              : 'Træner Premium'
+              ? 'Premium coach - Club access'
+              : 'Premium coach'
             : hasClubPlayer
-              ? 'Premium spiller - Klub-adgang'
-              : 'Premium spiller';
+              ? 'Premium player - Club access'
+              : 'Premium player';
         const maxPlayers = complimentaryTier === 'trainer_premium' ? 50 : 1;
         const currentPlayers = complimentaryTier === 'trainer_premium' ? await getTrainerPlayerCount(user.id) : 1;
 

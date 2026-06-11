@@ -54,6 +54,13 @@ type ClubInviteDeliveryContext = {
   landingUrl: string;
 };
 
+type AuthUserInviteState = {
+  id: string;
+  emailConfirmedAt: string | null;
+  confirmedAt: string | null;
+  invitedAt: string | null;
+};
+
 type ClubInviteEmailContent = {
   subject: string;
   html: string;
@@ -72,9 +79,9 @@ export type ClubInviteEmailDeliveryResult = {
 function getInviteRoleLabel(role: ClubInvite['role']): string {
   switch (role) {
     case 'coach':
-      return 'træner';
+      return 'coach';
     case 'player':
-      return 'spiller';
+      return 'player';
     case 'admin':
       return 'admin';
     default:
@@ -230,17 +237,45 @@ async function resolveClubName(client: RpcClient, clubId: string): Promise<strin
   return clubName.trim();
 }
 
+function normalizeAuthUserInviteState(payload: unknown): AuthUserInviteState | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  if (typeof record.id !== 'string' || !record.id.trim()) {
+    return null;
+  }
+
+  return {
+    id: record.id.trim(),
+    emailConfirmedAt: typeof record.emailConfirmedAt === 'string' ? record.emailConfirmedAt : null,
+    confirmedAt: typeof record.confirmedAt === 'string' ? record.confirmedAt : null,
+    invitedAt: typeof record.invitedAt === 'string' ? record.invitedAt : null,
+  };
+}
+
+async function resolveAuthUserInviteState(
+  client: RpcClient,
+  email: string
+): Promise<AuthUserInviteState | null> {
+  const payload = await callNullableRpc<Record<string, unknown>>(client, 'get_auth_user_invite_state_by_email', {
+    p_email: email,
+  });
+
+  return normalizeAuthUserInviteState(payload);
+}
+
 export async function resolveClubInviteDeliveryContext(
   client: ClubInviteDeliveryClient,
   invite: ClubInvite,
   config: ClubInviteEmailConfig,
   clubName?: string
 ): Promise<ClubInviteDeliveryContext> {
-  const existingAuthUserId = await callNullableRpc<string>(client, 'get_auth_user_id_by_email', {
-    p_email: invite.email,
-  });
+  const authUserState = await resolveAuthUserInviteState(client, invite.email);
+  const isConfirmedUser = Boolean(authUserState?.emailConfirmedAt ?? authUserState?.confirmedAt);
 
-  const authLinkType: AuthLinkType = existingAuthUserId ? 'magiclink' : 'invite';
+  const authLinkType: AuthLinkType = isConfirmedUser ? 'magiclink' : 'invite';
   const redirectTo = buildClubInviteAuthRedirectUrl(config.authRedirectUrl, invite, authLinkType);
   const {
     data,
@@ -276,11 +311,11 @@ export function buildClubInviteEmailContent(
   config: Pick<ClubInviteEmailConfig, 'appName'>
 ): ClubInviteEmailContent {
   const roleLabel = getInviteRoleLabel(invite.role);
-  const subject = `${context.clubName}: invitation som ${roleLabel}`;
+  const subject = `${context.clubName}: invitation as ${roleLabel}`;
   const primaryActionLabel =
     context.authLinkType === 'invite'
-      ? 'Opret konto og vælg adgangskode'
-      : 'Log ind og accepter invitation';
+      ? 'Create account and choose password'
+      : 'Log in and accept invitation';
   const safeClubName = escapeHtml(context.clubName);
   const safeRole = escapeHtml(roleLabel);
   const safeEmail = escapeHtml(invite.email);
@@ -292,10 +327,10 @@ export function buildClubInviteEmailContent(
     subject,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111827;">
-        <p>Hej,</p>
-        <p>Du er inviteret til klubben <strong>${safeClubName}</strong> som <strong>${safeRole}</strong> i ${safeAppName}.</p>
-        <p>Du er blevet inviteret og skal først oprette din konto.</p>
-        <p>Denne invitation er sendt til <strong>${safeEmail}</strong>.</p>
+        <p>Hello,</p>
+        <p>You have been invited to <strong>${safeClubName}</strong> as a <strong>${safeRole}</strong> in ${safeAppName}.</p>
+        <p>You need to create your account before you can accept the invitation.</p>
+        <p>This invitation was sent to <strong>${safeEmail}</strong>.</p>
         <p style="margin: 24px 0;">
           <a
             href="${safeActionLink}"
@@ -304,18 +339,18 @@ export function buildClubInviteEmailContent(
             ${escapeHtml(primaryActionLabel)}
           </a>
         </p>
-        <p>Hvis knappen ikke virker, kan du åbne invitationen direkte her:</p>
+        <p>If the button does not work, open the invitation directly here:</p>
         <p><a href="${safeLandingUrl}">${safeLandingUrl}</a></p>
       </div>
     `.trim(),
     text: [
-      `Du er inviteret til ${context.clubName} som ${roleLabel} i ${config.appName}.`,
-      'Du er blevet inviteret og skal først oprette din konto.',
-      `Denne invitation er sendt til ${invite.email}.`,
+      `You have been invited to ${context.clubName} as a ${roleLabel} in ${config.appName}.`,
+      'You need to create your account before you can accept the invitation.',
+      `This invitation was sent to ${invite.email}.`,
       '',
       `${primaryActionLabel}: ${context.actionLink}`,
       '',
-      `Fallback invite-link: ${context.landingUrl}`,
+      `Fallback invite link: ${context.landingUrl}`,
     ].join('\n'),
   };
 }

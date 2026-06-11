@@ -172,7 +172,7 @@ export default function RecoveryCallbackScreen() {
   const incomingUrl = Linking.useURL();
   const routeParams = useLocalSearchParams<Record<string, string | string[]>>();
   const [status, setStatus] = useState<CallbackStatus>('loading');
-  const [message, setMessage] = useState('Klargør nulstilling af adgangskode...');
+  const [message, setMessage] = useState('Preparing password reset...');
 
   const parsedParams = useMemo(
     () => parseParams(incomingUrl, routeParams),
@@ -243,7 +243,7 @@ export default function RecoveryCallbackScreen() {
               router.replace('/update-password');
             } else {
               throw new Error(
-                'Linket kunne ikke valideres i appen. Prøv at åbne nulstillingslinket igen fra den nyeste e-mail.'
+                'The link could not be validated in the app. Try opening the reset link again from the most recent email.'
               );
             }
           }
@@ -256,7 +256,7 @@ export default function RecoveryCallbackScreen() {
       } catch (error: any) {
         if (!cancelled) {
           setStatus('error');
-          setMessage(error?.message ?? 'Kunne ikke gennemføre nulstilling af adgangskode.');
+          setMessage(error?.message ?? 'Failed to complete password reset.');
         }
       }
     };
@@ -279,7 +279,7 @@ export default function RecoveryCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.errorTitle}>Kunne ikke nulstille adgangskode</Text>
+      <Text style={styles.errorTitle}>Failed to reset password</Text>
       <Text style={styles.text}>{message}</Text>
       <Pressable
         style={styles.button}

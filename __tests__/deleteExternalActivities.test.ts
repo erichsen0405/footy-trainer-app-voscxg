@@ -121,7 +121,7 @@ describe('deleteSingleExternalActivity', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'Kunne ikke soft-delete ekstern aktivitet (ingen rækker blev opdateret)',
+      error: 'Failed to soft-delete external activity (no rows were updated)',
     });
   });
 

@@ -121,16 +121,35 @@ const normalizeUpgradeTarget = (value: string | string[] | undefined): UpgradeTa
 
 const extractFirstParamValue = (value?: string | string[]) => (Array.isArray(value) ? value[0] : value);
 
-const DELETE_ACCOUNT_CONFIRMATION_PHRASE = 'SLET';
-const ACCOUNT_DELETION_REVIEW_PATH = 'Profil -> Indstillinger -> Konto -> Slet konto';
-const PROFILE_EDIT_COLLAPSE_MESSAGE = 'Tryk på Annuller eller Gem, før du kan lukke sektionen.';
+const DELETE_ACCOUNT_CONFIRMATION_PHRASE = 'DELETE';
+const ACCOUNT_DELETION_REVIEW_PATH = 'Profile -> Settings -> Account -> Delete Account';
+const PROFILE_EDIT_COLLAPSE_MESSAGE = 'Press Cancel or Save before you can close the section.';
+
+const getFunctionErrorMessage = async (error: any, fallback: string) => {
+  const response = error?.context;
+  if (response && typeof response.clone === 'function') {
+    try {
+      const payload = await response.clone().json();
+      if (typeof payload?.error === 'string' && payload.error.trim()) {
+        return payload.error;
+      }
+      if (typeof payload?.message === 'string' && payload.message.trim()) {
+        return payload.message;
+      }
+    } catch {
+      // Fall back to the Supabase error message below.
+    }
+  }
+
+  return error?.message ?? fallback;
+};
 
 const authRedirectUrl = 'footballcoach://auth/callback';
 const OVERDUE_TIME_OPTIONS = buildHalfHourTimeOptions();
 const OVERDUE_INTERVAL_OPTIONS = Array.from({ length: 24 }, (_, index) => {
   const hour = index + 1;
   return {
-    label: `${hour}t`,
+    label: `${hour}h`,
     value: hour * 60,
   };
 });
@@ -345,6 +364,26 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   signOutButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  subscriptionBlockerSignOutButton: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    bottom: Platform.OS === 'ios' ? 116 : 32,
+    minHeight: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  subscriptionBlockerSignOutButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
   authCard: { borderRadius: 24, padding: 24, marginHorizontal: 16, marginTop: 24 },
   loginNoticeBanner: {
     marginHorizontal: 16,
@@ -725,12 +764,12 @@ export default function ProfileScreen() {
           await requestNotificationPermissions();
         } else {
           Alert.alert(
-            'Notifikationer',
-            'For at deaktivere notifikationer skal du bruge systemindstillinger.',
+            'Notifications',
+            'To turn off notifications, use system settings.',
             [
-              { text: 'Annuller', style: 'cancel' },
+              { text: 'Cancel', style: 'cancel' },
               {
-                text: 'Åbn indstillinger',
+                text: 'Open settings',
                 onPress: () => {
                   void openNotificationSettings();
                 },
@@ -799,14 +838,14 @@ export default function ProfileScreen() {
     if (!showOverdueIntervalPicker || Platform.OS !== 'ios') return;
 
     const targetIndex = selectedOverdueIntervalHours - 1;
-    const timer = setTimeout(() => {
+    const hours = setTimeout(() => {
       overdueIntervalListRef.current?.scrollTo({
         y: targetIndex * OVERDUE_INTERVAL_WHEEL_ITEM_HEIGHT,
         animated: false,
       });
     }, 0);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(hours);
   }, [showOverdueIntervalPicker, selectedOverdueIntervalHours]);
 
   const colorScheme = useColorScheme();
@@ -979,7 +1018,7 @@ export default function ProfileScreen() {
         setEditAvatarUrl(uploadedImage.publicUrl);
       }
     } catch (error: any) {
-      Alert.alert('Fejl', error?.message || 'Kunne ikke gemme profilbillede');
+      Alert.alert('Error', error?.message || 'Failed to save profile picture');
     } finally {
       setIsUploadingProfileImage(false);
     }
@@ -992,7 +1031,7 @@ export default function ProfileScreen() {
       }
 
       if (current.length >= MAX_PLAYER_PROFILE_POSITIONS) {
-        Alert.alert('Maks fem positioner', 'Du kan vælge op til fem positioner.');
+        Alert.alert('Maks fem positioner', 'You can select up to five positions.');
         return current;
       }
 
@@ -1003,7 +1042,7 @@ export default function ProfileScreen() {
   const warnProfileSchemaFallback = useCallback(() => {
     if (!__DEV__ || profileSchemaWarningShownRef.current) return;
     profileSchemaWarningShownRef.current = true;
-    console.warn('[PROFILE] Nye spillerprofilfelter mangler i databasen. Kører midlertidigt med legacy profilfelter.');
+    console.warn('[PROFILE] New player profile fields are missing from the database. Temporarily running with legacy profile fields.');
   }, []);
 
   const fetchUserProfile = useCallback(async (userId: string) => {
@@ -1112,7 +1151,7 @@ export default function ProfileScreen() {
 
       setAdminInfo({
         admin_id: adminId,
-        full_name: adminProfile?.full_name || 'Din træner',
+        full_name: adminProfile?.full_name || 'Your coach',
         phone_number: adminProfile?.phone_number || '',
         email: '',
         link_status: linkStatus,
@@ -1138,16 +1177,16 @@ export default function ProfileScreen() {
       });
 
       if (error || !data?.success) {
-        const message = data?.error || error?.message || 'Kunne ikke acceptere anmodningen';
-        Alert.alert('Fejl', message);
+        const message = data?.error || error?.message || 'Could not accept the request';
+        Alert.alert('Error', message);
         return;
       }
 
-      Alert.alert('Succes', 'Anmodningen er accepteret.');
+      Alert.alert('Success', 'The request has been accepted.');
       await fetchAdminInfo(user.id);
       setPlayersRefreshTrigger(prev => prev + 1);
     } catch (acceptError: any) {
-      Alert.alert('Fejl', acceptError?.message || 'Kunne ikke acceptere anmodningen');
+      Alert.alert('Error', acceptError?.message || 'Could not accept the request');
     } finally {
       setIsAcceptingTrainerRequest(false);
     }
@@ -1271,8 +1310,8 @@ export default function ProfileScreen() {
         const settled = await waitForPurchaseSettled();
         if (!settled) {
           Alert.alert(
-            'Abonnement opdateres stadig',
-            'Status kan være forsinket. Åbn profilen igen om et øjeblik, hvis den ikke opdaterer med det samme.'
+            'Subscription is still updating',
+            'Status may be delayed. If it doesn\'t update right away, open the profile again in a moment.'
           );
         }
       } finally {
@@ -1336,10 +1375,10 @@ export default function ProfileScreen() {
     if (!shouldHighlightPremiumPlan || subscriptionSectionY === null) {
       return;
     }
-    const timer = setTimeout(() => {
+    const hours = setTimeout(() => {
       scrollToSubscription();
     }, 300);
-    return () => clearTimeout(timer);
+    return () => clearTimeout(hours);
   }, [shouldHighlightPremiumPlan, subscriptionSectionY, scrollToSubscription]);
 
   useEffect(() => {
@@ -1412,14 +1451,14 @@ export default function ProfileScreen() {
       await fetchUserProfile(user.id);
       setIsEditingProfile(false);
       Alert.alert(
-        'Succes',
+        'Success',
         savedLegacyOnly
-          ? 'Navn og telefon er opdateret. De nye spillerprofilfelter kræver, at database-migrationen bliver kørt.'
-          : 'Din profil er opdateret'
+          ? 'Name and phone are updated. The new player profile fields require the database migration to be run.'
+          : 'Your profile has been updated'
       );
     } catch (error: any) {
       console.error('Error saving profile:', error);
-      Alert.alert('Fejl', 'Kunne ikke gemme profil');
+      Alert.alert('Error', 'Failed to save profile');
     } finally {
       setLoading(false);
     }
@@ -1427,18 +1466,18 @@ export default function ProfileScreen() {
 
   const handleSignup = async () => {
     if (!email || !password) {
-      Alert.alert('Fejl', 'Udfyld venligst baade email og adgangskode');
+      Alert.alert('Error', 'Udfyld venligst baade email og adgangskode');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Fejl', 'Indtast venligst en gyldig email-adresse');
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Fejl', 'Adgangskoden skal vaere mindst 6 tegn lang');
+      Alert.alert('Error', 'The password must be at least 6 characters long');
       return;
     }
 
@@ -1467,7 +1506,7 @@ export default function ProfileScreen() {
           });
           return;
         }
-        Alert.alert('Kunne ikke oprette konto', error.message || 'Der opstod en fejl. Proev venligst igen.');
+        Alert.alert('Could not create account', error.message || 'An error occurred. Please try again.');
         return;
       }
 
@@ -1475,8 +1514,8 @@ export default function ProfileScreen() {
       const isExistingUserResponse = Boolean(data.user && identities && identities.length === 0);
       if (isExistingUserResponse) {
         Alert.alert(
-          'Konto findes allerede',
-          'Denne e-mail har sandsynligvis allerede en konto. Derfor sendes der ikke altid en ny bekræftelsesmail. Proev at logge ind i stedet.'
+          'Account already exists',
+          'This email probably already has an account. Therefore, a new confirmation email is not always sent. Try logging in instead.'
         );
         router.replace({
           pathname: '/(tabs)/profile',
@@ -1489,7 +1528,7 @@ export default function ProfileScreen() {
         if (__DEV__) {
           console.log('[PROFILE] No user returned from signup');
         }
-        Alert.alert('Fejl', 'Kunne ikke oprette bruger. Proev venligst igen.');
+        Alert.alert('Error', 'Could not create user. Please try again.');
         return;
       }
 
@@ -1506,7 +1545,7 @@ export default function ProfileScreen() {
         console.log(`[PROFILE] Unexpected error: ${error.message}`);
       }
       console.error('Signup error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Proev venligst igen.');
+      Alert.alert('Error', error.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1514,7 +1553,7 @@ export default function ProfileScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Fejl', 'Udfyld venligst baade email og adgangskode');
+      Alert.alert('Error', 'Udfyld venligst baade email og adgangskode');
       return;
     }
 
@@ -1545,11 +1584,11 @@ export default function ProfileScreen() {
           });
         } else if (error.message.includes('Invalid login credentials')) {
           Alert.alert(
-            'Login fejlede',
-            'Email eller adgangskode er forkert.\n\nHusk:\n- Har du bekraeftet din email?\n- Er du sikker paa at du har oprettet en konto?\n- Proev at nulstille din adgangskode hvis du har glemt den.'
+            'Login failed',
+            'Email or password is incorrect.\n\nRemember:\n- Have you confirmed your email?\n- Are you sure you have created an account?\n- Try to reset your password if you have forgotten it.'
           );
         } else {
-          Alert.alert('Login fejlede', error.message || 'Der opstod en fejl. Proev venligst igen.');
+          Alert.alert('Login failed', error.message || 'An error occurred. Please try again.');
         }
         return;
       }
@@ -1567,7 +1606,7 @@ export default function ProfileScreen() {
       }
     } catch (error: any) {
       console.error('Login error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en uventet fejl. Proev venligst igen.');
+      Alert.alert('Error', error.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1583,7 +1622,7 @@ export default function ProfileScreen() {
       });
     } catch (error: any) {
       console.error('[PROFILE] Failed to open forgot-password screen', error);
-      Alert.alert('Fejl', 'Kunne ikke aabne nulstilling af adgangskode.');
+      Alert.alert('Error', 'Failed to open password reset.');
     }
   }, [email, router]);
 
@@ -1602,7 +1641,7 @@ export default function ProfileScreen() {
       if (result.success) {
         Alert.alert(
           'Velkommen!',
-          'Dit abonnement er aktiveret med 14 dages gratis prøveperiode. Du kan nu oprette spillere og hold!',
+          'Your subscription is activated with a 14-day free trial period. You can now create players and teams!',
           [{ text: 'OK' }]
         );
         return;
@@ -1611,18 +1650,18 @@ export default function ProfileScreen() {
       if (result.alreadyHasSubscription) {
         Alert.alert(
           'Du har allerede et abonnement',
-          result.error || 'Dit nuværende abonnement er aktivt.',
+          result.error || 'Your current subscription is active.',
           [{ text: 'OK' }]
         );
         return;
       }
 
-      Alert.alert('Fejl', result.error || 'Kunne ikke oprette abonnement. Prøv venligst igen.');
+      Alert.alert('Error', result.error || 'Could not create subscription. Please try again.');
     } catch (error: any) {
       if (__DEV__) {
         console.log(`[PROFILE] Unexpected error: ${error.message}`);
       }
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl. Prøv venligst igen.');
+      Alert.alert('Error', error.message || 'An error occurred. Please try again.');
     } finally {
       setLoading(false);
       setPurchaseProcessing(false);
@@ -1633,29 +1672,49 @@ export default function ProfileScreen() {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      Alert.alert('Logget ud', 'Du er nu logget ud');
+      Alert.alert('Signed out', 'You are now signed out');
     } catch (error: any) {
       console.error('Sign out error:', error);
-      Alert.alert('Fejl', error.message || 'Der opstod en fejl');
+      Alert.alert('Error', error.message || 'An error occurred');
+    }
+  };
+
+  const handleSubscriptionBlockerSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+      setUser(null);
+      setUserRole(null);
+      setProfile(null);
+      setAdminInfo(null);
+      setManualUpgradeTarget(null);
+      setIsEditingProfile(false);
+      router.replace({
+        pathname: '/(tabs)/profile',
+        params: { authMode: 'login' },
+      } as any);
+    } catch (error: any) {
+      console.error('Subscription blocker sign out error:', error);
+      Alert.alert('Sign out failed', error.message || 'Could not sign out. Restart the app and try again.');
     }
   };
 
   const handleDeleteAllExternalActivities = async () => {
     if (!canUseCalendarSync) {
       Alert.alert(
-        'Premium påkrævet',
-        'Kalendersynk kræver et Premium-abonnement. Opgrader for at fortsætte.'
+        'Premium required',
+        'Calendar sync requires a Premium subscription. Upgrade to continue.'
       );
       return;
     }
 
     Alert.alert(
-      'Slet alle eksterne aktiviteter',
-      'Er du sikker på at du vil slette ALLE dine eksterne aktiviteter?\n\nDette vil slette alle aktiviteter importeret fra eksterne kalendere. Aktiviteterne vil blive importeret igen ved næste synkronisering, medmindre du fjerner kalenderne fra din profil.\n\nBemærk: Denne handling kan ikke fortrydes!',
+      'Delete all external activities',
+      'Are you sure you want to delete ALL your external activities?\n\nThis will delete all activities imported from external calendars. The activities will be imported again at the next sync unless you remove the calendars from your profile.\n\nNote: This action cannot be undone!',
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Slet alle',
+          text: 'Delete all',
           style: 'destructive',
           onPress: async () => {
             setIsDeletingExternalActivities(true);
@@ -1663,15 +1722,15 @@ export default function ProfileScreen() {
               const result = await deleteAllExternalActivities();
 
               if (!result.success) {
-                throw new Error(result.error || 'Kunne ikke slette aktiviteter');
+                throw new Error(result.error || 'Could not delete activities');
               }
 
               if (result.count === 0) {
-                Alert.alert('Ingen aktiviteter', 'Du har ingen eksterne aktiviteter at slette');
+                Alert.alert('No activities', 'You have no external activities to delete');
               } else {
                 Alert.alert(
-                  'Slettet',
-                  `${result.count} eksterne aktivitet${result.count === 1 ? '' : 'er'} er blevet slettet fra din app`
+                  'Deleted',
+                  `${result.count} external activit${result.count === 1 ? 'y' : 'ies'} have been deleted from your app`
                 );
               }
 
@@ -1684,7 +1743,7 @@ export default function ProfileScreen() {
               }
             } catch (error: any) {
               console.error('Error deleting external activities:', error);
-              Alert.alert('Fejl', error.message || 'Kunne ikke slette eksterne aktiviteter');
+              Alert.alert('Error', error.message || 'Could not delete external activities');
             } finally {
               setIsDeletingExternalActivities(false);
             }
@@ -1711,12 +1770,12 @@ export default function ProfileScreen() {
       return;
     }
     if (!user) {
-      setDeleteAccountError('Ingen bruger er logget ind.');
+      setDeleteAccountError('No user is logged in.');
       return;
     }
     const normalizedInput = deleteConfirmationInput.trim().toUpperCase();
     if (normalizedInput !== DELETE_ACCOUNT_CONFIRMATION_PHRASE) {
-      setDeleteAccountError(`Skriv ${DELETE_ACCOUNT_CONFIRMATION_PHRASE} for at bekræfte sletningen.`);
+      setDeleteAccountError(`Type ${DELETE_ACCOUNT_CONFIRMATION_PHRASE} to confirm deletion.`);
       return;
     }
 
@@ -1726,22 +1785,22 @@ export default function ProfileScreen() {
     try {
       const { data, error } = await supabase.functions.invoke('delete-account', { body: {} });
       if (error) {
-        throw new Error(error.message ?? 'Kunne ikke slette kontoen.');
+        throw new Error(await getFunctionErrorMessage(error, 'Could not delete account.'));
       }
       if (!data?.success) {
-        throw new Error(data?.error ?? 'Kunne ikke slette kontoen.');
+        throw new Error(data?.error ?? 'Could not delete account.');
       }
 
-      let signOutMessageSuffix = ' Du er nu logget ud.';
+      let signOutMessageSuffix = ' You are now logged out.';
       try {
-        const { error: signOutError } = await supabase.auth.signOut();
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
         if (signOutError) {
           console.warn('[PROFILE] Sign-out after deletion failed, continuing anyway:', signOutError);
-          signOutMessageSuffix = ' Din konto er slettet, men vi kunne ikke logge dig ud automatisk. Genstart appen for at bekræfte.';
+          signOutMessageSuffix = 'Your account has been deleted, but we couldn\'t log you out automatically. Restart the app to confirm.';
         }
       } catch (signOutUnexpected) {
         console.warn('[PROFILE] Unexpected sign-out failure after deletion, continuing anyway:', signOutUnexpected);
-        signOutMessageSuffix = ' Din konto er slettet, men vi kunne ikke logge dig ud automatisk. Genstart appen for at bekræfte.';
+        signOutMessageSuffix = 'Your account has been deleted, but we couldn\'t log you out automatically. Restart the app to confirm.';
       }
 
       setUser(null);
@@ -1752,10 +1811,10 @@ export default function ProfileScreen() {
       setIsEditingProfile(false);
       closeDeleteAccountDialog();
 
-      Alert.alert('Konto slettet', `Din konto og alle dine data er blevet slettet.${signOutMessageSuffix}`);
+      Alert.alert('Account deleted', `Your account and all your data have been deleted.${signOutMessageSuffix}`);
     } catch (error: any) {
       console.error('[PROFILE] Account deletion failed:', error);
-      setDeleteAccountError(error?.message ?? 'Der opstod en fejl under sletningen. Prøv igen.');
+      setDeleteAccountError(error?.message ?? 'An error occurred during deletion. Try again.');
     } finally {
       setIsDeletingAccount(false);
     }
@@ -1869,9 +1928,9 @@ export default function ProfileScreen() {
           ListHeaderComponent={
             <React.Fragment>
               <View style={Platform.OS !== 'ios' ? { paddingTop: 60 } : undefined}>
-                <Text style={[styles.title, { color: textColor }]}>Vælg dit abonnement</Text>
+                <Text style={[styles.title, { color: textColor }]}>Choose your subscription</Text>
                 <Text style={[styles.subtitle, { color: textSecondaryColor }]}>
-                  Som træner skal du vælge et abonnement for at administrere spillere
+                  As a coach, you must choose a subscription to manage players
                 </Text>
 
                 <CardWrapper
@@ -1900,6 +1959,19 @@ export default function ProfileScreen() {
           contentContainerStyle={[styles.contentContainer]}
           showsVerticalScrollIndicator={false}
         />
+        <TouchableOpacity
+          style={[
+            styles.subscriptionBlockerSignOutButton,
+            { backgroundColor: cardBgColor, borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)' },
+          ]}
+          onPress={handleSubscriptionBlockerSignOut}
+          activeOpacity={0.78}
+          testID="subscriptionBlocker.signOutButton"
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
+          <Text style={[styles.subscriptionBlockerSignOutButtonText, { color: colors.primary }]}>Sign out</Text>
+        </TouchableOpacity>
         {purchaseProcessingModal}
       </ContainerWrapper>
     );
@@ -1942,7 +2014,7 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-            <Text style={[styles.name, { color: textColor }]}>{profile?.full_name || user.email?.split('@')[0] || 'Bruger'}</Text>
+            <Text style={[styles.name, { color: textColor }]}>{profile?.full_name || user.email?.split('@')[0] || 'User'}</Text>
             <Text style={[styles.email, { color: textSecondaryColor }]}>{user.email}</Text>
             {/* Only show subscription badge if user has an active subscription */}
             {subscriptionStatus?.hasSubscription && subscriptionStatus.planName && (
@@ -1961,7 +2033,7 @@ export default function ProfileScreen() {
             {...cardWrapperProps}
           >
             <CollapsibleSection
-              title="Profil Information"
+              title="Profile Information"
               expanded={isProfileInfoExpanded}
               onToggle={handleToggleProfileInfoSection}
               titleColor={textColor}
@@ -2114,7 +2186,7 @@ export default function ProfileScreen() {
 	                        ]}
 	                        value={editPlayingLevel}
 	                        onChangeText={setEditPlayingLevel}
-	                        placeholder="Liga 1, Liga 2, Mesterrække..."
+	                        placeholder="League 1, League 2, Champions League..."
 	                        placeholderTextColor={textSecondaryColor}
 	                      />
 	                    </>
@@ -2131,10 +2203,10 @@ export default function ProfileScreen() {
 	                        resetProfileEditor(profile);
 	                      }}
 	                    >
-                      <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
+                      <Text style={[styles.buttonText, { color: textColor }]}>Cancel</Text>
                     </TouchableOpacity>
 	                    <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={loading || isUploadingProfileImage}>
-                      {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={[styles.buttonText, { color: '#fff' }]}>Gem</Text>}
+                      {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={[styles.buttonText, { color: '#fff' }]}>Save</Text>}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2178,7 +2250,7 @@ export default function ProfileScreen() {
 	                  )}
 	                  {!hasProfileInfo && (
 	                    <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-	                      Ingen profilinformation tilgængelig. Tryk på rediger for at tilføje.
+	                      No profile information available. Tap edit to add it.
 	                    </Text>
                   )}
                 </View>
@@ -2194,7 +2266,7 @@ export default function ProfileScreen() {
                 {...cardWrapperProps}
               >
                 <CollapsibleSection
-                  title="Din Træner"
+                  title="Your Coach"
                   expanded={isAdminInfoExpanded}
                   onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
                   titleColor={textColor}
@@ -2212,7 +2284,7 @@ export default function ProfileScreen() {
                 {...cardWrapperProps}
               >
                 <CollapsibleSection
-                  title="Din Træner"
+                  title="Your Coach"
                   expanded={isAdminInfoExpanded}
                   onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
                   titleColor={textColor}
@@ -2240,7 +2312,7 @@ export default function ProfileScreen() {
                       testID="profile.trainerRequest.statusBadge"
                     >
                       <Text style={styles.statusBadgeText}>
-                        {adminInfo.link_status === 'pending' ? 'Afventer accept' : 'Accepteret'}
+                        {adminInfo.link_status === 'pending' ? 'Awaiting acceptance' : 'Accepted'}
                       </Text>
                     </View>
                     {adminInfo.link_status === 'pending' && (
@@ -2259,7 +2331,7 @@ export default function ProfileScreen() {
                         {isAcceptingTrainerRequest ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
-                          <Text style={styles.acceptButtonText}>Accepter anmodning</Text>
+                          <Text style={styles.acceptButtonText}>Accept request</Text>
                         )}
                       </TouchableOpacity>
                     )}
@@ -2272,7 +2344,7 @@ export default function ProfileScreen() {
                 {...cardWrapperProps}
               >
                 <CollapsibleSection
-                  title="Din Træner"
+                  title="Your Coach"
                   expanded={isAdminInfoExpanded}
                   onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
                   titleColor={textColor}
@@ -2280,7 +2352,7 @@ export default function ProfileScreen() {
                   icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
                 >
                   <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                    Du har ingen aktive træneranmodninger endnu.
+                    You have no active trainer requests yet.
                   </Text>
                 </CollapsibleSection>
               </CardWrapper>
@@ -2290,7 +2362,7 @@ export default function ProfileScreen() {
                 {...cardWrapperProps}
               >
                 <CollapsibleSection
-                  title="Din Træner"
+                  title="Your Coach"
                   expanded={isAdminInfoExpanded}
                   onToggle={() => setIsAdminInfoExpanded(prev => !prev)}
                   titleColor={textColor}
@@ -2298,8 +2370,8 @@ export default function ProfileScreen() {
                   icon={<IconSymbol ios_icon_name="person.2.fill" android_material_icon_name="groups" size={24} color={colors.primary} />}
                 >
                   <PremiumFeatureGate
-                    title="Tilslut din træner med Premium"
-                    description="Opgrader for at give din træner adgang til dine aktiviteter og opgaver."
+                    title="Connect your trainer with Premium"
+                    description="Upgrade to give your trainer access to your activities and tasks."
                     onPress={() => openPaywallModal('trainerLinking')}
                     icon={{ ios: 'person.2.circle', android: 'groups' }}
                     align="left"
@@ -2314,7 +2386,7 @@ export default function ProfileScreen() {
               {...cardWrapperProps}
             >
               <CollapsibleSection
-                title="Hold & spillere"
+                title="Teams & players"
                 expanded={isTeamManagementExpanded}
                 onToggle={() => setIsTeamManagementExpanded(prev => !prev)}
                 titleColor={textColor}
@@ -2329,7 +2401,7 @@ export default function ProfileScreen() {
                   />
                 )}
               >
-                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dine teams og spillere direkte fra din profil.</Text>
+                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Manage your teams and players directly from your profile.</Text>
                 <TeamManagement />
                 <View style={{ marginTop: 16 }}>
                   <TouchableOpacity
@@ -2344,7 +2416,7 @@ export default function ProfileScreen() {
                       size={20}
                       color="#fff"
                     />
-                    <Text style={styles.addPlayerButtonText}>Tilføj spiller</Text>
+                    <Text style={styles.addPlayerButtonText}>Add player</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={{ marginTop: 16 }}>
@@ -2363,7 +2435,7 @@ export default function ProfileScreen() {
             {...cardWrapperProps}
           >
             <CollapsibleSection
-              title="Kalender Synkronisering"
+              title="Calendar Sync"
               expanded={isCalendarSyncExpanded}
               onToggle={() => setIsCalendarSyncExpanded(prev => !prev)}
               titleColor={textColor}
@@ -2377,7 +2449,7 @@ export default function ProfileScreen() {
               ) : canUseCalendarSync ? (
                 <>
                   <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>
-                    Tilknyt eksterne kalendere (iCal/webcal) for automatisk at importere aktiviteter
+                    Associate external calendars (iCal/webcal) to automatically import activities
                   </Text>
                   <ExternalCalendarManager />
 
@@ -2406,7 +2478,7 @@ export default function ProfileScreen() {
                       <React.Fragment>
                         <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color={Platform.OS === 'ios' ? '#ff3b30' : colors.error} />
                         <Text style={[styles.deleteExternalButtonText, { color: Platform.OS === 'ios' ? '#ff3b30' : colors.error }]}>
-                          Slet alle eksterne aktiviteter
+                          Delete all external activities
                         </Text>
                       </React.Fragment>
                     )}
@@ -2414,8 +2486,8 @@ export default function ProfileScreen() {
                 </>
               ) : (
                 <PremiumFeatureGate
-                  title="Kalendersynk er en Premium-fordel"
-                  description="Importer dine aktiviteter automatisk fra eksterne kalendere ved at opgradere."
+                  title="Calendar sync is a Premium benefit"
+                  description="Automatically import your activities from external calendars by upgrading."
                   onPress={() => openPaywallModal('calendarSync')}
                   icon={{ ios: 'calendar.badge.plus', android: 'event' }}
                   align="left"
@@ -2436,19 +2508,19 @@ export default function ProfileScreen() {
               {...subscriptionCardProps}
             >
               <CollapsibleSection
-                title="Abonnement"
+                title="Subscription"
                 expanded={isSubscriptionExpanded}
                 onToggle={() => setIsSubscriptionExpanded(prev => !prev)}
                 titleColor={textColor}
                 chevronColor={textSecondaryColor}
                 icon={<IconSymbol ios_icon_name="creditcard.fill" android_material_icon_name="payment" size={28} color={colors.primary} />}
               >
-                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer dit abonnement</Text>
+                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Manage your subscription</Text>
                 {subscriptionPlansLoading ? (
                   <View style={[styles.loadingContainer, { paddingVertical: 24 }]}>
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={[styles.loadingText, { color: textSecondaryColor }]}>
-                      Henter abonnementer...
+                      Fetching subscriptions...
                     </Text>
                   </View>
                 ) : Platform.OS === 'ios' ? (
@@ -2472,7 +2544,7 @@ export default function ProfileScreen() {
             {...cardWrapperProps}
           >
             <CollapsibleSection
-              title="Indstillinger"
+              title="Settings"
               expanded={isSettingsExpanded}
               onToggle={() => setIsSettingsExpanded(prev => !prev)}
               titleColor={textColor}
@@ -2480,9 +2552,9 @@ export default function ProfileScreen() {
               testID="profile.settingsSection.toggle"
               icon={<IconSymbol ios_icon_name="gearshape.fill" android_material_icon_name="settings" size={24} color={colors.primary} />}
             >
-              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Administrer din konto og sikkerhed.</Text>
+              <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Manage your account and security.</Text>
               <View style={styles.settingsGroup}>
-                <Text style={[styles.settingsGroupTitle, { color: textSecondaryColor }]}>Konto</Text>
+                <Text style={[styles.settingsGroupTitle, { color: textSecondaryColor }]}>Account</Text>
                 <View
                   style={[styles.settingsRow, { backgroundColor: nestedCardBgColor }]}
                   testID="profile.notificationsRow"
@@ -2494,9 +2566,9 @@ export default function ProfileScreen() {
                     color={colors.primary}
                   />
                   <View style={styles.settingsRowContent}>
-                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Notifikationer</Text>
+                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Notifications</Text>
                     <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
-                      {notificationsEnabled ? 'Aktiveret' : 'Deaktiveret'}
+                      {notificationsEnabled ? 'Enabled' : 'Disabled'}
                     </Text>
                   </View>
                   <Switch
@@ -2522,11 +2594,11 @@ export default function ProfileScreen() {
                     color={colors.primary}
                   />
                   <View style={styles.settingsRowContent}>
-                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Aktivitetskategorier</Text>
+                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Activity categories</Text>
                     <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
                       {categories.length > 0
-                        ? `${categories.length} kategori${categories.length === 1 ? '' : 'er'} på din profil`
-                        : 'Opret og administrer kategorier'}
+                        ? `${categories.length} categor${categories.length === 1 ? 'y' : 'ies'} on your profile`
+                        : 'Create and manage categories'}
                     </Text>
                   </View>
                   <IconSymbol
@@ -2547,14 +2619,14 @@ export default function ProfileScreen() {
                     color={colors.primary}
                   />
                   <View style={styles.settingsRowContent}>
-                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Påmindelser om forfaldne opgaver</Text>
+                    <Text style={[styles.settingsRowTitle, { color: textColor }]}>Reminders about overdue tasks</Text>
                     <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
-                      Modtag påmindelser om forfaldne opgaver efter valgt starttid og interval.
+                      Receive reminders about overdue tasks after the selected start time and interval.
                     </Text>
                     <View style={styles.overdueSettingsSection}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                         <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor, flex: 1 }]}>
-                          Aktivér påmindelser
+                          Enable reminders
                         </Text>
                         <Switch
                           testID="profile.overdueReminders.toggle"
@@ -2575,7 +2647,7 @@ export default function ProfileScreen() {
                                   testID="profile.overdueReminders.timeButton"
                                 >
                                   <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor, marginBottom: 2 }]}>
-                                    Starttidspunkt
+                                    Start time
                                   </Text>
                                   <Text style={[styles.pickerButtonText, { color: textColor }]}>
                                     {formatTimeFromMinutes(overdueReminderSettings.startTimeMinutes)}
@@ -2609,7 +2681,7 @@ export default function ProfileScreen() {
                                     activeOpacity={0.7}
                                     testID="profile.overdueReminders.timeDone"
                                   >
-                                    <Text style={styles.doneButtonText}>Færdig</Text>
+                                    <Text style={styles.doneButtonText}>Done</Text>
                                   </TouchableOpacity>
                                 ) : null}
                               </View>
@@ -2621,7 +2693,7 @@ export default function ProfileScreen() {
                                 onSelect={(value) => {
                                   handleOverdueStartTimeChange(Number(value));
                                 }}
-                                label="Starttidspunkt"
+                                label="Start time"
                               />
                             )}
                           </View>
@@ -2638,7 +2710,7 @@ export default function ProfileScreen() {
                                     Interval
                                   </Text>
                                   <Text style={[styles.pickerButtonText, { color: textColor }]}>
-                                    {selectedOverdueIntervalHours}t
+                                    {selectedOverdueIntervalHours}h
                                   </Text>
                                 </TouchableOpacity>
 
@@ -2692,7 +2764,7 @@ export default function ProfileScreen() {
                                     activeOpacity={0.7}
                                     testID="profile.overdueReminders.intervalDone"
                                   >
-                                    <Text style={styles.doneButtonText}>Færdig</Text>
+                                    <Text style={styles.doneButtonText}>Done</Text>
                                   </TouchableOpacity>
                                 ) : null}
                               </View>
@@ -2716,10 +2788,10 @@ export default function ProfileScreen() {
                           testID="profile.overdueReminders.deniedBanner"
                         >
                           <Text style={[styles.deniedBannerTitle, { color: isDark ? '#ffb3b3' : '#a12020' }]}>
-                            Notifikationstilladelse mangler
+                            Notification permission missing
                           </Text>
                           <Text style={[styles.deniedBannerText, { color: textSecondaryColor }]}>
-                            Aktivér notifikationer i systemindstillinger for at bruge påmindelser om forfaldne opgaver.
+                            To use reminders for overdue tasks, enable notifications in system settings.
                           </Text>
                           <TouchableOpacity
                             style={[styles.deniedBannerButton, { backgroundColor: colors.primary }]}
@@ -2728,14 +2800,14 @@ export default function ProfileScreen() {
                             }}
                             testID="profile.overdueReminders.openSettingsCta"
                           >
-                            <Text style={styles.deniedBannerButtonText}>Åbn indstillinger</Text>
+                            <Text style={styles.deniedBannerButtonText}>Open settings</Text>
                           </TouchableOpacity>
                         </View>
                       )}
                     </View>
                   </View>
                 </View>
-                {/* Review note (App Store): Indstillinger -> Konto -> Slet konto */}
+                {/* Review note (App Store): Settings -> Account -> Delete account */}
                 <TouchableOpacity
                   style={[styles.settingsRow, { backgroundColor: deleteRowBackground }]}
                   onPress={openDeleteAccountDialog}
@@ -2750,9 +2822,9 @@ export default function ProfileScreen() {
                     color={destructiveColor}
                   />
                   <View style={styles.settingsRowContent}>
-                    <Text style={[styles.settingsRowTitle, { color: destructiveColor }]}>Slet konto</Text>
+                    <Text style={[styles.settingsRowTitle, { color: destructiveColor }]}>Delete account</Text>
                     <Text style={[styles.settingsRowSubtitle, { color: textSecondaryColor }]}>
-                      Sletter din konto og alle data permanent
+                      Deletes your account and all data permanently
                     </Text>
                   </View>
                   <IconSymbol
@@ -2773,7 +2845,7 @@ export default function ProfileScreen() {
             testID="auth.signOutButton"
           >
             {Platform.OS !== 'ios' && <IconSymbol ios_icon_name="arrow.right.square" android_material_icon_name="logout" size={24} color="#fff" />}
-            <Text style={styles.signOutButtonText}>Log ud</Text>
+            <Text style={styles.signOutButtonText}>Sign out</Text>
           </TouchableOpacity>
         </>
       ) : (
@@ -2782,17 +2854,17 @@ export default function ProfileScreen() {
           {showSuccessMessage && (
             <View style={[styles.successMessage, { backgroundColor: colors.primary }]}>
               <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={Platform.OS === 'ios' ? 64 : 48} color="#fff" />
-              <Text style={styles.successTitle}>Konto oprettet!</Text>
+              <Text style={styles.successTitle}>Account created!</Text>
               <Text style={styles.successText}>
-                Din konto er blevet oprettet succesfuldt.{'\n'}
-                Tjek din email for at bekræfte din konto, og log derefter ind.
+                Your account has been created successfully.{'\n'}
+                Check your email to verify your account, then log in.
               </Text>
             </View>
           )}
 
           {!showSuccessMessage && (
             <>
-              {Platform.OS === 'ios' && <Text style={[styles.title, { color: textColor }]}>{isSignUp ? 'Opret konto' : 'Log ind'}</Text>}
+              {Platform.OS === 'ios' && <Text style={[styles.title, { color: textColor }]}>{isSignUp ? 'Create account' : 'Log ind'}</Text>}
 
               <View style={styles.authToggle}>
                 <TouchableOpacity
@@ -2838,7 +2910,7 @@ export default function ProfileScreen() {
                       isSignUp && styles.authToggleTextActive,
                     ]}
                   >
-                    Opret konto
+                    Create account
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -2898,15 +2970,15 @@ export default function ProfileScreen() {
                   disabled={loading}
                   activeOpacity={0.7}
                   testID="auth.login.submitButton"
-                  accessibilityLabel={isSignUp ? 'Opret konto' : 'Log ind'}
+                  accessibilityLabel={isSignUp ? 'Create account' : 'Log ind'}
                 >
                   {loading ? (
                     <View style={styles.loadingContainer}>
                       <ActivityIndicator color="#fff" size="small" />
-                      <Text style={[styles.authButtonText, { marginLeft: 12 }]}>{isSignUp ? 'Opretter konto...' : 'Logger ind...'}</Text>
+                      <Text style={[styles.authButtonText, { marginLeft: 12 }]}>{isSignUp ? 'Creating account...' : 'Logging in...'}</Text>
                     </View>
                   ) : (
-                    <Text style={styles.authButtonText}>{isSignUp ? 'Opret konto' : 'Log ind'}</Text>
+                    <Text style={styles.authButtonText}>{isSignUp ? 'Create account' : 'Log ind'}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -2943,7 +3015,7 @@ export default function ProfileScreen() {
                   )}
                   <Text style={[styles.infoBoxText, { color: textSecondaryColor }]}>
                     {isSignUp
-                      ? 'Bekræft din e-mail og log ind.\nVælg derefter abonnement som spiller eller træner.'
+                      ? 'Confirm your email and log in.\nThen choose subscription as player or coach.'
                       : 'Log ind for at bruge appen.'}
                   </Text>
                 </View>
@@ -2984,9 +3056,9 @@ export default function ProfileScreen() {
               size={42}
               color={destructiveColor}
             />
-            <Text style={[styles.deleteModalTitle, { color: textColor }]}>Vil du slette din konto?</Text>
+            <Text style={[styles.deleteModalTitle, { color: textColor }]}>Do you want to delete your account?</Text>
             <Text style={[styles.deleteModalDescription, { color: textSecondaryColor }]}>
-              Denne handling kan ikke fortrydes. Skriv {DELETE_ACCOUNT_CONFIRMATION_PHRASE} for at bekræfte, at du vil slette alle dine data permanent.
+              This action cannot be undone. Write {DELETE_ACCOUNT_CONFIRMATION_PHRASE} to confirm that you want to delete all your data permanently.
             </Text>
             <TextInput
               value={deleteConfirmationInput}
@@ -3028,7 +3100,7 @@ export default function ProfileScreen() {
                 activeOpacity={0.7}
                 disabled={isDeletingAccount}
               >
-                <Text style={[styles.buttonText, { color: textColor }]}>Annuller</Text>
+                <Text style={[styles.buttonText, { color: textColor }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -3045,7 +3117,7 @@ export default function ProfileScreen() {
                 {isDeletingAccount ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={[styles.buttonText, { color: '#fff' }]}>Slet</Text>
+                  <Text style={[styles.buttonText, { color: '#fff' }]}>Delete</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -3070,7 +3142,7 @@ export default function ProfileScreen() {
                 style={styles.paywallCloseButton}
                 activeOpacity={0.7}
                 testID="paywall.closeButton"
-                accessibilityLabel="Luk paywall"
+                accessibilityLabel="Close the paywall"
               >
                 <IconSymbol
                   ios_icon_name="xmark"
@@ -3082,7 +3154,7 @@ export default function ProfileScreen() {
             </View>
             <Text style={[styles.paywallTitle, { color: textColor }]}>Opgrader til Premium</Text>
             <Text style={[styles.paywallSubtitle, { color: textSecondaryColor }]}>
-              Få adgang til denne funktion ved at opgradere dit abonnement.
+              Access this feature by upgrading your subscription.
             </Text>
             <View style={styles.paywallBody}>
               {Platform.OS === 'ios' ? (

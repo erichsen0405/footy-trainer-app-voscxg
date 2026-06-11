@@ -179,7 +179,7 @@ describe('ActivityDetails trainer feedback UI', () => {
     );
 
     expect(await findByTestId('trainer-feedback-section')).toBeTruthy();
-    expect(await findByText('1 spiller er tilknyttet')).toBeTruthy();
+    expect(await findByText('1 player is linked')).toBeTruthy();
 
     fireEvent.press(getByTestId('trainer-feedback-add-button'));
 

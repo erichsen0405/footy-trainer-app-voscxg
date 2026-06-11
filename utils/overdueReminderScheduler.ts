@@ -183,7 +183,7 @@ export function buildIntervalOptions(): { label: string; value: number }[] {
     if (minutes % 60 === 0) {
       const hours = minutes / 60;
       return {
-        label: `${hours}t`,
+        label: `${hours}h`,
         value: minutes,
       };
     }

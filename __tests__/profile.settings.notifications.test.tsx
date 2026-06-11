@@ -326,7 +326,7 @@ describe('profile overdue reminder settings', () => {
     mockAppleIAPState.products = [];
 
     const screen = render(<ProfileScreen />);
-    fireEvent.press(await screen.findByText('Abonnement'));
+    fireEvent.press(await screen.findByText('Subscription'));
 
     await waitFor(() => {
       expect(screen.queryByText('Henter abonnementer...')).toBeNull();

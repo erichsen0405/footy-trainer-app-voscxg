@@ -357,7 +357,7 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
       });
       return {
         success: false,
-        error: 'Kunne ikke soft-delete ekstern aktivitet (ingen rækker blev opdateret)',
+        error: 'Failed to soft-delete external activity (no rows were updated)',
       };
     }
 
@@ -405,7 +405,7 @@ export async function deleteSingleExternalActivity(activityId: string): Promise<
       console.warn('⚠️ Skipping legacy external activity deletion to preserve completed history.');
       return {
         success: false,
-        error: 'Aktiviteten kan ikke slettes, fordi den indeholder gennemført data.',
+        error: 'The activity cannot be deleted because it contains completed data.',
       };
     }
 

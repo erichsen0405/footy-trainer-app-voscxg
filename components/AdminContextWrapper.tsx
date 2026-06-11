@@ -41,13 +41,13 @@ export function AdminContextWrapper({
         />
         <View style={styles.contextBannerText}>
           <Text style={styles.contextBannerTitle}>
-            ⚠️ DU ADMINISTRERER {contextType === 'player' ? 'SPILLER' : 'TEAM'}
+            ⚠️ YOU ARE MANAGING {contextType === 'player' ? 'PLAYER' : 'TEAM'}
           </Text>
           <Text style={styles.contextBannerSubtitle}>
             {contextName}
           </Text>
           <Text style={styles.contextBannerInfo}>
-            Alle ændringer påvirker denne {contextType === 'player' ? 'spillers' : 'teams'} data
+            All changes affect this {contextType === 'player' ? 'player' : 'team'} only
           </Text>
         </View>
       </View>

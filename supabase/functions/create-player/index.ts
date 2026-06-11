@@ -73,7 +73,7 @@ async function sendPushToUser(supabaseAdmin: any, userId: string, payload: PushP
   }
 }
 
-async function getDisplayName(supabaseAdmin: any, userId: string, fallback = 'Din træner') {
+async function getDisplayName(supabaseAdmin: any, userId: string, fallback = 'Your coach') {
   try {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
       if (playerId === user.id) {
         return jsonResponse(400, {
           success: false,
-          error: 'Du kan ikke tilføje dig selv som spiller',
+          error: 'You cannot add yourself as a player.',
         });
       }
 
@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
           return jsonResponse(200, {
             success: true,
             status: 'pending',
-            message: 'Afventer allerede accept fra spilleren',
+            message: 'Already waiting for the player to accept',
           });
         }
 
@@ -309,12 +309,12 @@ Deno.serve(async (req) => {
       const trainerName = await getDisplayName(
         supabaseAdmin,
         user.id,
-        user.email?.split('@')[0] ?? 'Din træner',
+        user.email?.split('@')[0] ?? 'Your coach',
       );
 
       await sendPushToUser(supabaseAdmin, playerId, {
-        title: 'Ny træneranmodning',
-        body: `${trainerName} har sendt dig en anmodning. Tryk for at åbne din profil.`,
+        title: 'New coach request',
+        body: `${trainerName} sent you a request. Tap to open your profile.`,
         data: {
           target: 'profile_trainer_requests',
           openTrainerRequests: '1',
@@ -327,7 +327,7 @@ Deno.serve(async (req) => {
         success: true,
         status: 'pending',
         requestId,
-        message: 'Spiller tilføjet. Afventer accept fra spilleren.',
+        message: 'Player added. Waiting for the player to accept.',
       });
     }
 

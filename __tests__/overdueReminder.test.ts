@@ -6,8 +6,8 @@ describe('overdueReminder', () => {
   it('builds fallback body when no overdue tasks exist', () => {
     const body = buildNotificationBody([]);
 
-    expect(body).toContain('Små skridt hver dag giver stor fremgang.');
-    expect(body).toContain('• Ingen forfaldne opgaver lige nu');
+    expect(body).toContain('Small steps every day create big progress.');
+    expect(body).toContain('• No overdue tasks right now');
   });
 
   it('builds body with a single overdue task line', () => {
@@ -20,7 +20,7 @@ describe('overdueReminder', () => {
     ]);
 
     expect(body).toContain('• Sprint-test');
-    expect(body).not.toContain('+1 flere');
+    expect(body).not.toContain('+1 more');
   });
 
   it('limits body to 5 tasks and appends +N line', () => {
@@ -35,7 +35,7 @@ describe('overdueReminder', () => {
     expect(body).toContain('• Opgave 1');
     expect(body).toContain('• Opgave 5');
     expect(body).not.toContain('• Opgave 6');
-    expect(body).toContain('• +2 flere');
+    expect(body).toContain('• +2 more');
   });
 
   it('selects and sorts overdue tasks by due time then title with stable tie-break', () => {

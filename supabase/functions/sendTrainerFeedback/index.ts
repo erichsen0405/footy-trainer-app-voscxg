@@ -84,7 +84,7 @@ async function resolveTrainerName(serviceClient: any, userId: string, fallbackEm
   }
 
   const emailPrefix = typeof fallbackEmail === 'string' ? fallbackEmail.split('@')[0]?.trim() : '';
-  return emailPrefix || 'Din træner';
+  return emailPrefix || 'Your coach';
 }
 
 async function resolvePlayerEmail(serviceClient: any, playerId: string): Promise<string> {

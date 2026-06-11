@@ -111,14 +111,14 @@ async function setupNotificationCategories() {
       await Notifications.setNotificationCategoryAsync('task-reminder', [
         {
           identifier: 'mark-complete',
-          buttonTitle: 'Marker som færdig',
+          buttonTitle: 'Mark as done',
           options: {
             opensAppToForeground: false,
           },
         },
         {
           identifier: 'view-task',
-          buttonTitle: 'Se opgave',
+          buttonTitle: 'View task',
           options: {
             opensAppToForeground: true,
           },
@@ -172,11 +172,11 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       
       // Show alert to user
       Alert.alert(
-        'Notifikationer deaktiveret',
-        'For at modtage påmindelser om dine opgaver skal du aktivere notifikationer i indstillingerne.',
+        'Notifications disabled',
+        'To receive reminders about your tasks, enable notifications in the settings.',
         [
-          { text: 'Senere', style: 'cancel' },
-          { text: 'Åbn indstillinger', onPress: openNotificationSettings }
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open settings', onPress: openNotificationSettings }
         ]
       );
       
@@ -191,7 +191,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     if (Platform.OS === 'android') {
       console.log('🔔 Setting up Android notification channel...');
       await Notifications.setNotificationChannelAsync('task-reminders', {
-        name: 'Opgave påmindelser',
+        name: 'Task reminders',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         sound: 'default',
@@ -377,10 +377,10 @@ export async function scheduleTaskReminder(
 
     const safeTaskTitle = sanitizeNotificationLabel(
       taskTitle,
-      sanitizeNotificationLabel(taskDescription, 'Opgave'),
+      sanitizeNotificationLabel(taskDescription, 'Task'),
     );
-    const safeActivityTitle = sanitizeNotificationLabel(activityTitle, 'Aktivitet');
-    const notificationTitle = 'Opgave snart';
+    const safeActivityTitle = sanitizeNotificationLabel(activityTitle, 'Activity');
+    const notificationTitle = 'Assignment soon';
     const notificationBody = `${safeTaskTitle} · ${safeActivityTitle}`;
 
     // iOS CRITICAL FIX: Build notification content with iOS-specific options and deep linking
@@ -606,19 +606,19 @@ export async function testNotification(): Promise<void> {
     const hasPermission = await checkNotificationPermissions();
     if (!hasPermission) {
       Alert.alert(
-        'Notifikationer deaktiveret',
-        'Du skal aktivere notifikationer for at teste dem.',
+        'Notifications disabled',
+        'You need to enable notifications to test them.',
         [
-          { text: 'Annuller', style: 'cancel' },
-          { text: 'Åbn indstillinger', onPress: openNotificationSettings }
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open settings', onPress: openNotificationSettings }
         ]
       );
       return;
     }
     
     const notificationContent: Notifications.NotificationContentInput = {
-      title: '⚽ Test Påmindelse',
-      body: 'Dette er en test notifikation. Hvis du ser denne, virker notifikationer!\n\nTryk på denne notifikation for at teste deep linking.',
+      title: '⚽ Test Reminder',
+      body: 'This is a test notification. If you see this, notifications are working!\n\nTap this notification to test deep linking.',
       sound: 'default',
       data: {
         type: 'test',
@@ -660,12 +660,12 @@ export async function testNotification(): Promise<void> {
     console.log('✅ Test notification scheduled for 2 seconds from now');
     console.log('========== TEST NOTIFICATION SCHEDULED ==========');
     
-    Alert.alert('Test notifikation', 'En test notifikation vil vises om 2 sekunder. Tryk på den for at teste deep linking!');
+    Alert.alert('Test notification', 'A test notification will appear in 2 seconds. Tap it to test deep linking!');
   } catch (error) {
     console.error('❌ Error sending test notification:', error);
     console.error('   Error details:', JSON.stringify(error, null, 2));
     console.log('========== TEST NOTIFICATION ERROR ==========');
-    Alert.alert('Fejl', 'Kunne ikke sende test notifikation: ' + (error as Error).message);
+    Alert.alert('Error', 'Failed to send test notification: ' + (error as Error).message);
   }
 }
 
@@ -684,7 +684,7 @@ export async function openNotificationSettings(): Promise<void> {
     console.log('✅ Settings opened');
   } catch (error) {
     console.error('❌ Error opening settings:', error);
-    Alert.alert('Fejl', 'Kunne ikke åbne indstillinger');
+    Alert.alert('Error', 'Could not open settings');
   }
 }
 

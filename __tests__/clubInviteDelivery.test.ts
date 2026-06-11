@@ -41,8 +41,18 @@ const config: ClubInviteEmailConfig = {
 function createClient(authUserId: string | null) {
   return {
     rpc: jest.fn().mockImplementation((fn: string) => {
-      if (fn === 'get_auth_user_id_by_email') {
-        return Promise.resolve({ data: authUserId, error: null });
+      if (fn === 'get_auth_user_invite_state_by_email') {
+        return Promise.resolve({
+          data: authUserId
+            ? {
+                id: authUserId,
+                emailConfirmedAt: '2026-03-10T12:00:00.000Z',
+                confirmedAt: '2026-03-10T12:00:00.000Z',
+                invitedAt: null,
+              }
+            : null,
+          error: null,
+        });
       }
 
       if (fn === 'get_club_payload') {
@@ -137,11 +147,11 @@ describe('club invite delivery helpers', () => {
       config
     );
 
-    expect(content.subject).toBe('FC Copenhagen: invitation som træner');
-    expect(content.html).toContain('som <strong>træner</strong>');
-    expect(content.html).toContain('Opret konto og vælg adgangskode');
-    expect(content.text).toContain('Du er inviteret til FC Copenhagen som træner i Footy Trainer.');
-    expect(content.text).toContain('Fallback invite-link: https://admin.example.com/invite?token=secure-token');
+    expect(content.subject).toBe('FC Copenhagen: invitation as coach');
+    expect(content.html).toContain('as a <strong>coach</strong>');
+    expect(content.html).toContain('Create account and choose password');
+    expect(content.text).toContain('You have been invited to FC Copenhagen as a coach in Footy Trainer.');
+    expect(content.text).toContain('Fallback invite link: https://admin.example.com/invite?token=secure-token');
   });
 
   it('sends aws ses payloads with the generated auth link', async () => {

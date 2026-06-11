@@ -187,7 +187,7 @@ export function AssignActivityModal({
             title: member.full_name,
             subtitle: member.phone_number || null,
           }))
-          .sort((a, b) => String(a.title).localeCompare(String(b.title), 'da-DK', { sensitivity: 'base' }));
+          .sort((a, b) => String(a.title).localeCompare(String(b.title), 'en-US', { sensitivity: 'base' }));
         return [team.id, rows] as const;
       }),
     );
@@ -216,7 +216,7 @@ export function AssignActivityModal({
 
     if (!activity?.id || !trainerId) {
       setLoadingState('error');
-      setErrorMessage('Mangler aktivitet eller brugeroplysninger.');
+      setErrorMessage('Missing activity or user information.');
       return;
     }
 
@@ -229,7 +229,7 @@ export function AssignActivityModal({
       })
       .catch((error: any) => {
         console.error('[AssignActivityModal] load failed', error);
-        setErrorMessage(error?.message || 'Kunne ikke hente tildelinger.');
+        setErrorMessage(error?.message || 'Could not retrieve allocations.');
         setLoadingState('error');
       });
   }, [activity?.id, ensureRosterLoaded, loadAssignments, loadTeamMembers, resetSelection, trainerId, visible]);
@@ -237,7 +237,7 @@ export function AssignActivityModal({
   const playerRows = useMemo<PlayerRow[]>(
     () =>
       [...players]
-        .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'da-DK', { sensitivity: 'base' }))
+        .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'en-US', { sensitivity: 'base' }))
         .map((player) => ({
           id: player.id,
           title: player.full_name,
@@ -249,7 +249,7 @@ export function AssignActivityModal({
   const teamRows = useMemo<TeamRow[]>(
     () =>
       [...teams]
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), 'da-DK', { sensitivity: 'base' }))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), 'en-US', { sensitivity: 'base' }))
         .map((team) => ({
           id: team.id,
           title: team.name,
@@ -484,17 +484,17 @@ export function AssignActivityModal({
         assignedTeamCount: result.assignment.teamIds.length,
       });
 
-      let message = 'Aktivitetstildelingen blev opdateret.';
+      let message = 'The activity assignment was updated.';
       if (result.createdCount && !result.removedCount && !result.updatedCount) {
-        message = `Aktiviteten blev tilføjet til ${result.createdCount} modtager${result.createdCount === 1 ? '' : 'e'}.`;
+        message = `The activity was added to ${result.createdCount} recipient${result.createdCount === 1 ? '' : 's'}.`;
       } else if (result.removedCount && !result.createdCount && !result.updatedCount) {
-        message = `Aktiviteten blev fjernet fra ${result.removedCount} modtager${result.removedCount === 1 ? '' : 'e'}.`;
+        message = `The activity was removed from ${result.removedCount} recipient${result.removedCount === 1 ? '' : 's'}.`;
       }
-      Alert.alert('Aktivitet opdateret', message);
+      Alert.alert('Activity updated', message);
       onClose();
     } catch (error: any) {
       console.error('[AssignActivityModal] assign failed', error);
-      Alert.alert('Kunne ikke opdatere', error?.message || 'Prøv igen senere.');
+      Alert.alert('Failed to update', error?.message || 'Please try again later.');
     } finally {
       setSaving(false);
     }
@@ -557,7 +557,7 @@ export function AssignActivityModal({
                 style={[styles.assignedLabel, { color: theme.primary }]}
                 testID={`activity.assign.row.assigned.player.${item.id}`}
               >
-                Tilknyttet
+                Assigned
               </Text>
             ) : null}
           </View>
@@ -617,14 +617,14 @@ export function AssignActivityModal({
                   {item.title}
                 </Text>
                 <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {members.length} spillere
+                  {members.length} players
                 </Text>
                 {isAssigned ? (
                   <Text
                     style={[styles.assignedLabel, { color: theme.primary }]}
                     testID={`activity.assign.row.assigned.team.${item.id}`}
                   >
-                    Tilknyttet
+                    Assigned
                   </Text>
                 ) : null}
               </View>
@@ -719,7 +719,7 @@ export function AssignActivityModal({
                         style={[styles.assignedLabel, { color: theme.primary }]}
                         testID={`activity.assign.team.member.assigned.${item.id}.${member.id}`}
                       >
-                        Tilknyttet
+                        Assigned
                       </Text>
                     ) : null}
                   </TouchableOpacity>
@@ -761,14 +761,14 @@ export function AssignActivityModal({
           >
             <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="close" size={24} color={theme.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Tilføj til aktivitet</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Add to activity</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <View style={[styles.activityCard, { backgroundColor: theme.card, borderColor: theme.highlight }]}>
-          <Text style={[styles.activityLabel, { color: theme.textSecondary }]}>Aktivitet</Text>
+          <Text style={[styles.activityLabel, { color: theme.textSecondary }]}>Activity</Text>
           <Text style={[styles.activityTitle, { color: theme.text }]} numberOfLines={2}>
-            {activity?.title || 'Ukendt aktivitet'}
+            {activity?.title || 'Unknown activity'}
           </Text>
         </View>
 
@@ -786,7 +786,7 @@ export function AssignActivityModal({
             testID="activity.assign.tab.players"
           >
             <Text style={[styles.tabText, { color: activeTab === 'players' ? '#fff' : theme.text }]}>
-              Spillere ({players.length})
+              Players ({players.length})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -802,7 +802,7 @@ export function AssignActivityModal({
             testID="activity.assign.tab.teams"
           >
             <Text style={[styles.tabText, { color: activeTab === 'teams' ? '#fff' : theme.text }]}>
-              Hold ({teams.length})
+              Keep ({teams.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -810,13 +810,13 @@ export function AssignActivityModal({
         {loadingState === 'loading' ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="small" color={theme.text} />
-            <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Henter data...</Text>
+            <Text style={[styles.loaderText, { color: theme.textSecondary }]}>Loading data...</Text>
           </View>
         ) : null}
 
         {loadingState === 'error' ? (
           <View style={[styles.errorCard, { backgroundColor: theme.card, borderColor: theme.error }]}>
-            <Text style={[styles.errorTitle, { color: theme.error }]}>Kunne ikke hente data</Text>
+            <Text style={[styles.errorTitle, { color: theme.error }]}>Could not load data</Text>
             <Text style={[styles.errorMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
           </View>
         ) : null}
@@ -835,7 +835,7 @@ export function AssignActivityModal({
           ListEmptyComponent={
             <View style={[styles.emptyState, { borderColor: theme.highlight }]}>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                Ingen {activeTab === 'players' ? 'spillere' : 'hold'}
+                No {activeTab === 'players' ? 'players' : 'teams'}
               </Text>
             </View>
           }
@@ -863,7 +863,7 @@ export function AssignActivityModal({
             {saving ? (
               <ActivityIndicator size="small" color={theme.text} />
             ) : (
-              <Text style={styles.saveButtonText}>Gem</Text>
+              <Text style={styles.saveButtonText}>Save</Text>
             )}
           </TouchableOpacity>
         </View>

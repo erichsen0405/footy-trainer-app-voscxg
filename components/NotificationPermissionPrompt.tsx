@@ -129,16 +129,16 @@ export default function NotificationPermissionPrompt() {
   const shouldRender = isIOS && loaded && show;
 
   const statusLabel = useMemo(() => {
-    if (status === 'denied') return 'Notifikationer er slået fra';
-    if (status === 'granted') return 'Notifikationer er aktiveret';
-    return 'Få påmindelser om dine opgaver';
+    if (status === 'denied') return 'Notifications are turned off';
+    if (status === 'granted') return 'Notifications are enabled';
+    return 'Get reminders about your tasks';
   }, [status]);
 
   if (shouldRender) {
     return (
       <Animated.View style={[styles.container, { opacity }]}>
         <View style={styles.card}>
-          <Text style={styles.title}>Tillad notifikationer</Text>
+          <Text style={styles.title}>Allow notifications</Text>
           <Text style={styles.subtitle}>{statusLabel}</Text>
 
           <View style={styles.buttons}>
@@ -147,18 +147,18 @@ export default function NotificationPermissionPrompt() {
                 style={[styles.button, styles.primary]}
                 onPress={handleOpenSettings}
                 testID="notifications.openSettingsButton"
-                accessibilityLabel="Åbn indstillinger"
+                accessibilityLabel="Open settings"
               >
-                <Text style={styles.primaryText}>Åbn indstillinger</Text>
+                <Text style={styles.primaryText}>Open settings</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 style={[styles.button, styles.primary]}
                 onPress={handleAllow}
                 testID="notifications.allowButton"
-                accessibilityLabel="Tillad notifikationer"
+                accessibilityLabel="Allow notifications"
               >
-                <Text style={styles.primaryText}>Tillad notifikationer</Text>
+                <Text style={styles.primaryText}>Allow notifications</Text>
               </TouchableOpacity>
             )}
 
@@ -166,9 +166,9 @@ export default function NotificationPermissionPrompt() {
               style={[styles.button, styles.secondary]}
               onPress={handleDeny}
               testID="notifications.denyButton"
-              accessibilityLabel="Tillad ikke"
+              accessibilityLabel="Not now"
             >
-              <Text style={styles.secondaryText}>Tillad ikke</Text>
+              <Text style={styles.secondaryText}>Not now</Text>
             </TouchableOpacity>
           </View>
         </View>

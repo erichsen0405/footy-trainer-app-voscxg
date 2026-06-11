@@ -157,7 +157,7 @@ function TaskDetailsModalComponent({
 
                 {hasDescription ? (
                   <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Beskrivelse</Text>
+                    <Text style={styles.sectionLabel}>Description</Text>
                     <TaskDescriptionRenderer description={descriptionForDisplay} textColor={SECTION_TEXT_COLOR} />
                   </View>
                 ) : null}
@@ -171,14 +171,14 @@ function TaskDetailsModalComponent({
                         size={16}
                         color={base}
                       />
-                      <Text style={styles.chipText}>{reminderMinutes} min før</Text>
+                      <Text style={styles.chipText}>{reminderMinutes} min before</Text>
                     </View>
                   </View>
                 ) : null}
 
                 {!hasBodyContent ? (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyStateText}>Ingen detaljer på denne opgave endnu.</Text>
+                    <Text style={styles.emptyStateText}>No details on this task yet.</Text>
                   </View>
                 ) : null}
               </ScrollView>
@@ -189,7 +189,7 @@ function TaskDetailsModalComponent({
                   disabled={disable}
                   style={[styles.primaryButtonShadow, { shadowColor: base }, disable && styles.primaryButtonDisabled]}
                   testID={completed ? 'activity.completeButton.markUndone' : 'activity.completeButton.markDone'}
-                  accessibilityLabel={completed ? 'Markér som ikke udført' : 'Markér som udført'}
+                  accessibilityLabel={completed ? 'Mark as not completed' : 'Mark as completed'}
                 >
                   <LinearGradient
                     colors={[base, lighten(base, 0.25)]}
@@ -201,7 +201,7 @@ function TaskDetailsModalComponent({
                       <ActivityIndicator color="#fff" />
                     ) : (
                       <Text style={styles.primaryButtonText}>
-                        {completed ? 'Markér som ikke udført' : 'Markér som udført'}
+                        {completed ? 'Mark as not completed' : 'Mark as completed'}
                       </Text>
                     )}
                   </LinearGradient>

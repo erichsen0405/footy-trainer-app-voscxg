@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { endOfWeek, format, getWeek, startOfWeek } from 'date-fns';
-import { da } from 'date-fns/locale';
+import { enUS } from 'date-fns/locale';
 
 import { IconSymbol } from '@/components/IconSymbol';
 import { formatHoursDa } from '@/utils/activityDuration';
@@ -26,7 +26,7 @@ function getWeekLabel(date: Date): string {
 
   const start = startOfWeek(date, { weekStartsOn: 1 });
   const end = endOfWeek(date, { weekStartsOn: 1 });
-  return `${format(start, 'd. MMM', { locale: da })} – ${format(end, 'd. MMM', { locale: da })}`;
+  return `${format(start, 'MMM d', { locale: enUS })} – ${format(end, 'MMM d', { locale: enUS })}`;
 }
 
 export function WeeklySummaryCard({
@@ -34,11 +34,11 @@ export function WeeklySummaryCard({
   isDark,
   isExpanded,
   onPress,
-  eyebrowText = 'KOMMENDE UGE',
+  eyebrowText = 'UPCOMING WEEK',
   activityCount,
   totalTasks,
   totalMinutes,
-  timeLabelPrefix = 'Planlagt',
+  timeLabelPrefix = 'Planned',
 }: WeeklySummaryCardProps) {
   const weekLabel = useMemo(() => getWeekLabel(weekStart), [weekStart]);
 
@@ -74,7 +74,7 @@ export function WeeklySummaryCard({
               <View>
                 <Text style={[styles.eyebrow, { color: isDark ? '#BFDCCB' : '#3B6A4D' }]}>{eyebrowText}</Text>
                 <Text style={[styles.title, { color: isDark ? '#E6F5EC' : '#1D3A2A' }]}>
-                  Uge {getWeek(weekStart, { weekStartsOn: 1, locale: da })}
+                  Week {getWeek(weekStart, { weekStartsOn: 1, locale: enUS })}
                 </Text>
               </View>
 
@@ -118,7 +118,7 @@ export function WeeklySummaryCard({
                   color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
                 />
                 <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.chipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
-                  Aktiviteter · {activityCount}
+                  Activities · {activityCount}
                 </Text>
               </View>
 
@@ -135,7 +135,7 @@ export function WeeklySummaryCard({
                   color={isDark ? 'rgba(216, 239, 225, 0.95)' : 'rgba(29, 58, 42, 0.9)'}
                 />
                 <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.chipText, { color: isDark ? '#D8EFE1' : '#1D3A2A' }]}>
-                  Opgaver · {totalTasks}
+                  Tasks · {totalTasks}
                 </Text>
               </View>
 

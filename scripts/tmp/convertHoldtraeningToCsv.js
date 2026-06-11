@@ -11,14 +11,23 @@ function normalizeCategoryPath(category) {
 
   const overrides = {
     'Holdtræning': 'holdtraening_root',
+    'Team Training': 'holdtraening_root',
     'Fælles (alle positioner)': 'holdtraening_faelles',
+    'Common (all positions)': 'holdtraening_faelles',
     'Målmand': 'holdtraening_maalmand',
+    'Goalkeeper': 'holdtraening_maalmand',
     'Back': 'holdtraening_back',
+    'Fullback': 'holdtraening_back',
     'Midterforsvarer': 'holdtraening_midterforsvarer',
+    'Center Back': 'holdtraening_midterforsvarer',
     'Central midtbane (6/8)': 'holdtraening_central_midtbane',
+    'Central Midfield (6/8)': 'holdtraening_central_midtbane',
     'Offensiv midtbane (10)': 'holdtraening_offensiv_midtbane',
+    'Attacking Midfield (10)': 'holdtraening_offensiv_midtbane',
     'Kant': 'holdtraening_kant',
+    'Winger': 'holdtraening_kant',
     'Angriber': 'holdtraening_angriber',
+    'Striker': 'holdtraening_angriber',
   };
 
   if (overrides[category]) {
@@ -89,12 +98,12 @@ function parseCsv(raw) {
       }
 
       const lower = inner.toLowerCase();
-      if (lower.startsWith('sådan gør du')) {
+      if (lower.startsWith('sådan gør du') || lower.startsWith('how to')) {
         mode = 'how_to';
         continue;
       }
 
-      if (lower.startsWith('hvorfor værdifuldt')) {
+      if (lower.startsWith('hvorfor værdifuldt') || lower.startsWith('why it matters') || lower.startsWith('why valuable')) {
         mode = 'why';
         continue;
       }
@@ -116,11 +125,11 @@ function parseCsv(raw) {
     }
 
     if (!howTo.length) {
-      warnings.push(`Missing "Sådan gør du" for "${focusArea}" (line ${i + 1})`);
+      warnings.push(`Missing "How to" for "${focusArea}" (line ${i + 1})`);
     }
 
     if (!why.length) {
-      warnings.push(`Missing "Hvorfor værdifuldt" for "${focusArea}" (line ${i + 1})`);
+      warnings.push(`Missing "Why it matters" for "${focusArea}" (line ${i + 1})`);
     }
 
     rows.push({

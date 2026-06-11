@@ -50,7 +50,7 @@ const teamPlayerMockTeams = [
   {
     id: 'team-1',
     name: 'Hold Test',
-    description: 'Beskrivelse',
+    description: 'Description',
   },
 ];
 
@@ -259,8 +259,8 @@ describe('ActivityDetails add-task flow', () => {
             activity_tasks: [
               {
                 id: 'task-1',
-                title: 'Ny opgave',
-                description: 'Beskrivelse',
+                title: 'New task',
+                description: 'Description',
                 completed: false,
                 reminder_minutes: null,
                 task_template_id: null,
@@ -278,7 +278,7 @@ describe('ActivityDetails add-task flow', () => {
   it('shows add CTA and updates task list after task-created refetch', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       const manualButton = Array.isArray(buttons)
-        ? (buttons as any[]).find((button) => button?.text === 'Opret manuelt')
+        ? (buttons as any[]).find((button) => button?.text === 'Create manually')
         : null;
       manualButton?.onPress?.();
     });
@@ -339,7 +339,7 @@ describe('ActivityDetails add-task flow', () => {
         {
           id: 'task-feedback-chain-1',
           title: 'Feedback task',
-          description: 'Beskrivelse',
+          description: 'Description',
           completed: false,
           reminder_minutes: null,
           task_template_id: null,
@@ -454,7 +454,7 @@ describe('ActivityDetails add-task flow', () => {
     );
 
     expect(await findByTestId('activity.details.latestFeedback.empty')).toBeTruthy();
-    expect(await findByText('Ingen feedback endnu i denne kategori.')).toBeTruthy();
+    expect(await findByText('No feedback yet in this category.')).toBeTruthy();
   });
 
   it('shows latest feedback item with both score and note when data is loaded', async () => {
@@ -956,8 +956,8 @@ describe('ActivityDetails add-task flow', () => {
       .spyOn(Alert, 'alert')
       .mockImplementation((...args: any[]) => {
         const [title, _msg, buttons] = args;
-        if (title === 'Rediger serie') {
-          const seriesButton = (buttons || []).find((button: any) => button?.text === 'Hele serien');
+        if (title === 'Edit series') {
+          const seriesButton = (buttons || []).find((button: any) => button?.text === 'Whole series');
           seriesButton?.onPress?.();
         }
       });
@@ -1003,7 +1003,7 @@ describe('ActivityDetails add-task flow', () => {
       tasks: [
         {
           id: 'feedback-task-details-1',
-          title: 'Feedback på Demo',
+          title: 'Feedback on Demo',
           completed: false,
           feedback_template_id: feedbackTemplateId,
         },
@@ -1031,7 +1031,7 @@ describe('ActivityDetails add-task flow', () => {
       params: {
         activityId: 'activity-feedback-route-1',
         templateId: feedbackTemplateId,
-        title: 'Feedback på Demo',
+        title: 'Feedback on Demo',
         taskInstanceId: 'feedback-task-details-1',
       },
     });
@@ -1346,13 +1346,13 @@ describe('ActivityDetails add-task flow', () => {
 
     fireEvent.press(getByTestId('activity.addTaskButton'));
     expect(alertSpy).toHaveBeenCalledWith(
-      'Tilføj opgave',
-      'Vælg hvordan du vil oprette opgaven.',
+      'Add task',
+      'Choose how you want to create the task.',
       expect.any(Array),
     );
 
     const buttons = alertSpy.mock.calls[0]?.[2] as any[];
-    const manualButton = buttons.find((button) => button?.text === 'Opret manuelt');
+    const manualButton = buttons.find((button) => button?.text === 'Create manually');
     manualButton?.onPress?.();
 
     expect(await findByTestId('mock.createActivityTaskModal')).toBeTruthy();
@@ -1379,7 +1379,7 @@ describe('ActivityDetails add-task flow', () => {
 
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       const templateButton = Array.isArray(buttons)
-        ? (buttons as any[]).find((button) => button?.text === 'Opret fra skabelon')
+        ? (buttons as any[]).find((button) => button?.text === 'Create from template')
         : null;
       templateButton?.onPress?.();
     });
@@ -1399,7 +1399,7 @@ describe('ActivityDetails add-task flow', () => {
 
     fireEvent.press(getByTestId('activity.addTaskButton'));
 
-    expect(await findByText('Vælg opgaveskabelon')).toBeTruthy();
+    expect(await findByText('Select assignment template')).toBeTruthy();
     expect(queryByTestId('mock.createActivityTaskModal')).toBeNull();
 
     alertSpy.mockRestore();
@@ -1542,7 +1542,7 @@ describe('ActivityDetails add-task flow', () => {
 
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       const templateButton = Array.isArray(buttons)
-        ? (buttons as any[]).find((button) => button?.text === 'Opret fra skabelon')
+        ? (buttons as any[]).find((button) => button?.text === 'Create from template')
         : null;
       templateButton?.onPress?.();
     });
@@ -1559,7 +1559,7 @@ describe('ActivityDetails add-task flow', () => {
     );
 
     fireEvent.press(getByTestId('activity.addTaskButton'));
-    expect(await findByText('Vælg opgaveskabelon')).toBeTruthy();
+    expect(await findByText('Select assignment template')).toBeTruthy();
 
     await act(async () => {
       fireEvent.press(getByText('Instagram Reel'));

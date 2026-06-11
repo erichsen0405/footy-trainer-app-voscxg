@@ -135,7 +135,7 @@ export function AppleIAPProvider({
     },
     iapReady: true,
     ensureIapReady: async () => true,
-    iapUnavailableReason: 'Apple In-App Purchases er ikke tilgængelige på web.',
+    iapUnavailableReason: 'Apple In-App Purchases are not available on the web.',
     iapDiagnostics: defaultDiagnostics,
     pendingProductId: null,
     pendingEffectiveDate: null,

@@ -150,19 +150,19 @@ describe('PerformanceScreen', () => {
     jest.useRealTimers();
   });
 
-  it('shows collapsible pokaler and udvikling sections', () => {
+  it('shows collapsible trophies and udvikling sections', () => {
     const { getByTestId, getByText, queryByTestId, queryByText } = render(<PerformanceScreen />);
 
-    expect(getByText('Pokaler')).toBeTruthy();
-    expect(getByText('Udvikling')).toBeTruthy();
-    expect(getByText('Guld pokaler')).toBeTruthy();
+    expect(getByText('Trophies')).toBeTruthy();
+    expect(getByText('Development')).toBeTruthy();
+    expect(getByText('Gold trophies')).toBeTruthy();
     expect(getByTestId('mock.progressionSection')).toBeTruthy();
 
     fireEvent.press(getByTestId('performance.trophies.toggle'));
-    expect(queryByText('Guld pokaler')).toBeNull();
+    expect(queryByText('Gold trophies')).toBeNull();
 
     fireEvent.press(getByTestId('performance.trophies.toggle'));
-    expect(getByText('Guld pokaler')).toBeTruthy();
+    expect(getByText('Gold trophies')).toBeTruthy();
 
     fireEvent.press(getByTestId('performance.progression.toggle'));
     expect(queryByTestId('mock.progressionSection')).toBeNull();
@@ -187,16 +187,16 @@ describe('PerformanceScreen', () => {
   it('only renders trainer-linked players in the dropdown', () => {
     mockUserRoleState.userRole = 'trainer';
     mockTeamPlayerState.players = [
-      { id: 'player-1', email: '', full_name: 'Alma Angriber' },
-      { id: 'player-2', email: '', full_name: 'Birk Back' },
+      { id: 'player-1', email: '', full_name: 'Alma Striker' },
+      { id: 'player-2', email: '', full_name: 'Birk Fullback' },
     ];
 
     const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
 
     fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
 
-    expect(getByText('Alma Angriber')).toBeTruthy();
-    expect(getByText('Birk Back')).toBeTruthy();
+    expect(getByText('Alma Striker')).toBeTruthy();
+    expect(getByText('Birk Fullback')).toBeTruthy();
     expect(queryByTestId('performance.playerDropdown.option.player-3')).toBeNull();
   });
 
@@ -243,7 +243,7 @@ describe('PerformanceScreen', () => {
   it('selects a linked player and updates the performance target', async () => {
     mockUserRoleState.userRole = 'trainer';
     mockTeamPlayerState.players = [
-      { id: 'player-1', email: '', full_name: 'Alma Angriber' },
+      { id: 'player-1', email: '', full_name: 'Alma Striker' },
     ];
 
     const screen = render(<PerformanceScreen />);
@@ -255,7 +255,7 @@ describe('PerformanceScreen', () => {
       expect(mockSetSelectedContext).toHaveBeenCalledWith({
         type: 'player',
         id: 'player-1',
-        name: 'Alma Angriber',
+        name: 'Alma Striker',
       });
       expect(mockStartAdminPlayer).toHaveBeenCalledWith('player-1');
     });
@@ -284,7 +284,7 @@ describe('PerformanceScreen', () => {
 
     screen.rerender(<PerformanceScreen />);
 
-    expect(screen.getByText('Viser performance for Alma Angriber')).toBeTruthy();
+    expect(screen.getByText('Showing performance for Alma Striker')).toBeTruthy();
     expect(screen.getByTestId('mock.progressionTarget').props.children).toBe('player-1');
     expect(screen.getByTestId('performance.trophies.count.gold').props.children).toBe(1);
   });
@@ -295,7 +295,7 @@ describe('PerformanceScreen', () => {
     mockAdminState.adminTargetId = 'player-1';
     mockAdminState.adminTargetType = 'player';
     mockTeamPlayerState.players = [
-      { id: 'player-1', email: '', full_name: 'Alma Angriber' },
+      { id: 'player-1', email: '', full_name: 'Alma Striker' },
     ];
     mockUseFootball.mockReturnValue({
       trophies: [
@@ -319,7 +319,7 @@ describe('PerformanceScreen', () => {
     const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
 
     expect(getByTestId('performance.selectedPlayer')).toBeTruthy();
-    expect(getByText('Indlæser pokaler og kalendere...')).toBeTruthy();
+    expect(getByText('Loading trophies and calendars...')).toBeTruthy();
     expect(queryByTestId('performance.trophies.count.gold')).toBeNull();
   });
 
@@ -351,7 +351,7 @@ describe('PerformanceScreen', () => {
 
     const { getByText, getAllByTestId, getByTestId, queryByText } = render(<PerformanceScreen />);
 
-    expect(getByText('Historik')).toBeTruthy();
+    expect(getByText('History')).toBeTruthy();
     fireEvent.press(getByTestId('performance.history.toggle'));
     expect(getAllByTestId('mock.weeklySummaryCard')).toHaveLength(1);
 
@@ -392,9 +392,9 @@ describe('PerformanceScreen', () => {
 
     const { getByText } = render(<PerformanceScreen />);
 
-    fireEvent.press(getByText('Bronze pokaler'));
+    fireEvent.press(getByText('Bronze trophies'));
 
-    expect(getByText('Uge 6, 2026')).toBeTruthy();
+    expect(getByText('Week 6, 2026')).toBeTruthy();
     expect(getByText('1 / 4')).toBeTruthy();
   });
 
@@ -420,11 +420,11 @@ describe('PerformanceScreen', () => {
 
     const { getByText, queryByText } = render(<PerformanceScreen />);
 
-    expect(getByText('Bronze pokaler')).toBeTruthy();
-    fireEvent.press(getByText('Bronze pokaler'));
+    expect(getByText('Bronze trophies')).toBeTruthy();
+    fireEvent.press(getByText('Bronze trophies'));
 
-    expect(getByText('Uge 7, 2026')).toBeTruthy();
-    expect(queryByText('Uge 10, 2026')).toBeNull();
+    expect(getByText('Week 7, 2026')).toBeTruthy();
+    expect(queryByText('Week 10, 2026')).toBeNull();
     expect(queryByText('0 / 0')).toBeNull();
   });
 
@@ -458,7 +458,7 @@ describe('PerformanceScreen', () => {
 
     const { getByText, queryByTestId } = render(<PerformanceScreen />);
 
-    expect(getByText('Indlæser pokaler og kalendere...')).toBeTruthy();
+    expect(getByText('Loading trophies and calendars...')).toBeTruthy();
     expect(queryByTestId('performance.trophies.count.gold')).toBeNull();
     expect(queryByTestId('performance.trophies.count.silver')).toBeNull();
     expect(queryByTestId('performance.trophies.count.bronze')).toBeNull();
@@ -479,7 +479,7 @@ describe('PerformanceScreen', () => {
 
     fireEvent.press(getByTestId('performance.history.toggle'));
 
-    expect(getByText('Indlæser fuld historik...')).toBeTruthy();
+    expect(getByText('Loading full history...')).toBeTruthy();
     expect(loadFullWindow).toHaveBeenCalled();
   });
 });

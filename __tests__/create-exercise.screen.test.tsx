@@ -97,16 +97,16 @@ describe('create-exercise position dropdown', () => {
     const { findByTestId, getByPlaceholderText, getByText } = render(<CreateExerciseScreen />);
 
     fireEvent.press(await findByTestId('exercise-position-select'));
-    fireEvent.press(await findByTestId('exercise-position-option-back'));
+    fireEvent.press(await findByTestId('exercise-position-option-fullback'));
 
-    fireEvent.changeText(getByPlaceholderText('Eks. Aflevering på førsteberøring'), 'Ny øvelse');
-    fireEvent.press(getByText('Gem'));
+    fireEvent.changeText(getByPlaceholderText('Ex. Delivery at first touch'), 'Ny øvelse');
+    fireEvent.press(getByText('Save'));
 
     await waitFor(() => {
       expect(mockInsert).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Ny øvelse',
-          position: 'Back',
+          position: 'Fullback',
         })
       );
     });
@@ -124,12 +124,12 @@ describe('create-exercise position dropdown', () => {
         video_url: null,
         category_path: null,
         difficulty: 3,
-        position: 'Kant',
+        position: 'Winger',
       },
       error: null,
     });
 
     const { findByText } = render(<CreateExerciseScreen />);
-    expect(await findByText('Kant')).toBeTruthy();
+    expect(await findByText('Winger')).toBeTruthy();
   });
 });

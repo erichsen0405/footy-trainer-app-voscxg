@@ -30,7 +30,7 @@ const APPLE_STANDARD_EULA_URL = 'https://www.apple.com/legal/internet-services/i
 type SubscriptionStatusType = ReturnType<typeof useSubscription>['subscriptionStatus'];
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const copenhagenDateFormatter = new Intl.DateTimeFormat('da-DK', {
+const copenhagenDateFormatter = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
   month: 'long',
   year: 'numeric',
@@ -131,7 +131,7 @@ const openLegalLink = async (url: string) => {
     if (!supported) throw new Error('unsupported');
     await Linking.openURL(url);
   } catch {
-    Alert.alert('Kunne ikke åbne linket', 'Prøv igen senere.');
+    Alert.alert('Could not open the link', 'Please try again later.');
   }
 };
 
@@ -209,7 +209,7 @@ export default function SubscriptionManager({
     if (!url) {
       Alert.alert(
         'Administrer abonnement',
-        'Plan-skift skal håndteres via “Administrer abonnement”.'
+        'Plan changes must be handled via "Manage subscription".'
       );
       return false;
     }
@@ -218,8 +218,8 @@ export default function SubscriptionManager({
       const canOpen = await Linking.canOpenURL(url);
       if (!canOpen) {
         Alert.alert(
-          'Kunne ikke åbne abonnements-administration',
-          'Plan-skift skal håndteres via “Administrer abonnement”.'
+          'Could not open subscription administration',
+          'Plan changes must be handled via "Manage subscription".'
         );
         return false;
       }
@@ -227,8 +227,8 @@ export default function SubscriptionManager({
       return true;
     } catch {
       Alert.alert(
-        'Kunne ikke åbne abonnements-administration',
-        'Plan-skift skal håndteres via “Administrer abonnement”.'
+        'Could not open subscription administration',
+        'Plan changes must be handled via "Manage subscription".'
       );
       return false;
     }
@@ -253,13 +253,13 @@ export default function SubscriptionManager({
       }
 
       if (result.alreadyOnPlan) {
-        Alert.alert('Ingen ændring', 'Du bruger allerede denne plan.');
+        Alert.alert('No change', 'You are already using this plan.');
         return;
       }
 
-      Alert.alert('Plan-skift fejlede', result.error || 'Kunne ikke skifte plan. Prøv igen.');
+      Alert.alert('Plan change failed', result.error || 'Couldn\'t change plan. Try again.');
     } catch (error: any) {
-      Alert.alert('Plan-skift fejlede', error?.message || 'Der opstod en uventet fejl.');
+      Alert.alert('Plan change failed', error?.message || 'An unexpected error occurred.');
     } finally {
       setCreatingPlanId(null);
     }
@@ -276,7 +276,7 @@ export default function SubscriptionManager({
       const normalizedSelected = (planName ?? '').trim().toLowerCase();
 
       if (normalizedCurrent.length > 0 && normalizedCurrent === normalizedSelected) {
-        Alert.alert('Allerede aktiv', 'Du er allerede på denne plan.');
+        Alert.alert('Allerede aktiv', 'You are already on this plane.');
         return;
       }
 
@@ -285,12 +285,12 @@ export default function SubscriptionManager({
     }
 
     Alert.alert(
-      'Start prøveperiode',
-      `Vil du starte en 14-dages gratis prøveperiode med ${planName} planen?\n\nDu kan oprette op til ${maxPlayers} spiller${maxPlayers > 1 ? 'e' : ''}.`,
+      'Start trial period',
+      `Do you want to start a 14-day free trial with the ${planName} plan?\n\nYou can create up to ${maxPlayers} player${maxPlayers > 1 ? 's' : ''}.`,
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Start prøveperiode',
+          text: 'Start trial period',
           onPress: async () => {
             await attemptCreateSubscription(planId, planName);
           },
@@ -317,8 +317,8 @@ export default function SubscriptionManager({
         setRetryCount(0);
         
         Alert.alert(
-          'Succes! 🎉',
-          'Din 14-dages gratis prøveperiode er startet. Du kan nu oprette spillere.',
+          'Success! 🎉',
+          'Your 14-day free trial has started. You can now create players.',
           [{ text: 'OK' }]
         );
       } else if (result.alreadyHasSubscription) {
@@ -329,12 +329,12 @@ export default function SubscriptionManager({
         
         // Show error with retry option
         Alert.alert(
-          'Fejl ved oprettelse af abonnement',
-          result.error || 'Kunne ikke oprette abonnement',
+          'Error creating subscription',
+          result.error || 'Could not create subscription',
           [
-            { text: 'Annuller', style: 'cancel', onPress: () => setRetryCount(0) },
+            { text: 'Cancel', style: 'cancel', onPress: () => setRetryCount(0) },
             {
-              text: 'Prøv igen',
+              text: 'Try again',
               onPress: () => {
                 const newRetryCount = retryCount + 1;
                 setRetryCount(newRetryCount);
@@ -342,14 +342,14 @@ export default function SubscriptionManager({
                 if (newRetryCount >= 3) {
                   Alert.alert(
                     'Vedvarende fejl',
-                    'Der er problemer med at oprette dit abonnement. Dette kan skyldes:\n\n' +
-                    '• Dårlig internetforbindelse\n' +
-                    '• Server problemer\n\n' +
-                    'Prøv venligst:\n' +
-                    '1. Tjek din internetforbindelse\n' +
-                    '2. Log ud og ind igen\n' +
+                    'There are problems creating your subscription. This may be due to:\n\n' +
+                    '• Bad internet connection' +
+                    '• Server issues\n\n' +
+                    'Please try:' +
+                    '1. Check your internet connection\n' +
+                    '2. Log out and back in\n' +
                     '3. Genstart appen\n\n' +
-                    'Hvis problemet fortsætter, kontakt support.',
+                    'If the problem persists, contact support.',
                     [{ text: 'OK', onPress: () => setRetryCount(0) }]
                   );
                 } else {
@@ -364,7 +364,7 @@ export default function SubscriptionManager({
       console.error('[SubscriptionManager] Unexpected error:', error);
       Alert.alert(
         'Uventet fejl',
-        'Der opstod en uventet fejl. Prøv venligst igen.',
+        'An unexpected error occurred. Please try again.',
         [
           { text: 'OK', onPress: () => setRetryCount(0) }
         ]
@@ -386,21 +386,21 @@ export default function SubscriptionManager({
 
   const normalizedStatus = isLifetime ? 'lifetime' : (subscriptionStatus?.status ?? '').toLowerCase();
   const statusLabel = useMemo(() => {
-    if (isLifetime) return 'Uendeligt';
+    if (isLifetime) return 'Unlimited';
     switch (normalizedStatus) {
       case 'trial':
-        return 'Prøveperiode';
+        return 'Trial period';
       case 'active':
         return 'Aktiv';
       case 'past_due':
         return 'Betaling afventer';
       case 'canceled':
       case 'cancelled':
-        return 'Annulleret';
+        return 'Cancelet';
       case 'incomplete':
-        return 'Ufuldstændig betaling';
+        return 'Incomplete payment';
       default:
-        return subscriptionStatus?.hasSubscription ? 'Aktivt abonnement' : 'Ingen abonnement';
+        return subscriptionStatus?.hasSubscription ? 'Aktivt abonnement' : 'No subscription';
     }
   }, [isLifetime, normalizedStatus, subscriptionStatus?.hasSubscription]);
 
@@ -441,7 +441,7 @@ const statusTone = useMemo(() => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: textColor }]}>Henter abonnement...</Text>
+        <Text style={[styles.loadingText, { color: textColor }]}>Loading subscription...</Text>
       </View>
     );
   }
@@ -453,9 +453,9 @@ const statusTone = useMemo(() => {
       {/* Header - Only show when user doesn't have a subscription */}
       {!isSignupFlow && !subscriptionStatus?.hasSubscription && (
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: textColor }]}>Vælg din plan</Text>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Choose your plan</Text>
           <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
-            Start med 14 dages gratis prøveperiode
+            Start with a 14-day free trial
           </Text>
         </View>
       )}
@@ -480,7 +480,7 @@ const statusTone = useMemo(() => {
                 color={colors.primary}
               />
               <View style={styles.currentPlanTextGroup}>
-                <Text style={[styles.currentPlanLabel, { color: textSecondaryColor }]}>Nuværende plan</Text>
+                <Text style={[styles.currentPlanLabel, { color: textSecondaryColor }]}>Current plan</Text>
                 <Text style={[styles.currentPlanName, { color: textColor }]}>
                   {subscriptionStatus.planName ?? 'Aktivt abonnement'}
                 </Text>
@@ -504,7 +504,7 @@ const statusTone = useMemo(() => {
                 <Text style={[styles.metaLabel, { color: textSecondaryColor }]}>Spillerforbrug</Text>
                 <Text style={[styles.metaValue, { color: textColor }]}>{playerUsageLabel}</Text>
                 {subscriptionStatus?.maxPlayers ? (
-                  <Text style={[styles.metaHint, { color: textSecondaryColor }]}>Opgrader for flere spillere</Text>
+                  <Text style={[styles.metaHint, { color: textSecondaryColor }]}>Upgrade for more players</Text>
                 ) : null}
               </View>
             </View>
@@ -518,25 +518,25 @@ const statusTone = useMemo(() => {
               />
               <View style={styles.metaTextGroup}>
                 <Text style={[styles.metaLabel, { color: textSecondaryColor }]}>
-                  {renewalSummary.isLifetime ? 'Varighed' : renewalSummary.isTrial ? 'Prøveperiode til' : 'Fornyes'}
+                  {renewalSummary.isLifetime ? 'Duration' : renewalSummary.isTrial ? 'Trial period until' : 'Renews'}
                 </Text>
                 <Text style={[styles.metaValue, { color: textColor }]}>
                   {renewalSummary.isLifetime
-                    ? 'Uendeligt'
+                    ? 'Unlimited'
                     : renewalSummary.primaryDate
                       ? formatDate(renewalSummary.primaryDate)
-                      : 'Dato ikke tilgængelig'}
+                      : 'Date not available'}
                 </Text>
                 {!renewalSummary.isLifetime && renewalSummary.daysRemaining !== null && (
                   <Text style={[styles.metaHint, { color: textSecondaryColor }]}>
                     {renewalSummary.isTrial
-                      ? `${renewalSummary.daysRemaining} dage tilbage af prøveperioden`
-                      : `${renewalSummary.daysRemaining} dage til næste fornyelse`}
+                      ? `${renewalSummary.daysRemaining} days left in the trial`
+                      : `${renewalSummary.daysRemaining} days until next renewal`}
                   </Text>
                 )}
                 {!renewalSummary.isLifetime && shouldShowRenewalAfterTrial && renewalSummary.renewalDate ? (
                   <Text style={[styles.metaHint, { color: textSecondaryColor }]}>
-                    Herefter fornyes {formatDate(renewalSummary.renewalDate)}
+                    Then renews on {formatDate(renewalSummary.renewalDate)}
                   </Text>
                 ) : null}
               </View>
@@ -561,7 +561,7 @@ const statusTone = useMemo(() => {
               color={colors.primary}
             />
             <Text style={[styles.expandButtonText, { color: textColor }]}>
-              {showPlans ? 'Skjul abonnementer' : 'Se tilgængelige abonnementer'}
+              {showPlans ? 'Hide subscriptions' : 'See available subscriptions'}
             </Text>
           </View>
           <IconSymbol
@@ -587,7 +587,7 @@ const statusTone = useMemo(() => {
           activeOpacity={0.6}
           onPress={() => openLegalLink(APPLE_STANDARD_EULA_URL)}
         >
-          <Text style={[styles.legalLinkText, { color: colors.primary }]}>Vilkår (EULA)</Text>
+          <Text style={[styles.legalLinkText, { color: colors.primary }]}>Terms (EULA)</Text>
         </TouchableOpacity>
       </View>
 
@@ -612,11 +612,11 @@ const statusTone = useMemo(() => {
                 disabled={isCreating || isPlanCurrent}
                 activeOpacity={0.7}
                 testID={`paywall.planCard.${plan.id}`}
-                accessibilityLabel={`Abonnement ${plan.name}`}
+                accessibilityLabel={`Subscription ${plan.name}`}
               >
                 {isPopular && !isPlanCurrent && (
                   <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
-                    <Text style={styles.popularBadgeText}>Mest populær</Text>
+                    <Text style={styles.popularBadgeText}>Most popular</Text>
                   </View>
                 )}
 
@@ -628,7 +628,7 @@ const statusTone = useMemo(() => {
                       size={16}
                       color="#fff"
                     />
-                    <Text style={styles.currentBadgeText}>Din nuværende plan</Text>
+                    <Text style={styles.currentBadgeText}>Your current plan</Text>
                   </View>
                 )}
 
@@ -650,7 +650,7 @@ const statusTone = useMemo(() => {
                   <Text style={[styles.price, { color: isPlanCurrent ? colors.success : colors.primary }]}>
                     {getPlanPriceLabel(plan)}
                   </Text>
-                  <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ måned</Text>
+                  <Text style={[styles.priceUnit, { color: textSecondaryColor }]}>/ month</Text>
                 </View>
 
                 <View style={styles.featuresContainer}>
@@ -663,8 +663,8 @@ const statusTone = useMemo(() => {
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
                       {plan.max_players === 1 
-                        ? 'Personlig spiller konto'
-                        : `Op til ${plan.max_players} spillere`
+                        ? 'Personal player account'
+                        : `Up to ${plan.max_players} players`
                       }
                     </Text>
                   </View>
@@ -677,7 +677,7 @@ const statusTone = useMemo(() => {
                       color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
-                      14 dages gratis prøveperiode
+                      14-day free trial
                     </Text>
                   </View>
 
@@ -701,7 +701,7 @@ const statusTone = useMemo(() => {
                       color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
-                      Opsig når som helst
+                      Terminate at any time
                     </Text>
                   </View>
                 </View>
@@ -716,7 +716,7 @@ const statusTone = useMemo(() => {
                     onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                     disabled={isCreating}
                     testID="paywall.primaryCtaButton"
-                    accessibilityLabel={isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+                    accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
                   >
                     {isCreating ? (
                       <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -727,7 +727,7 @@ const statusTone = useMemo(() => {
                           { color: isPopular ? '#fff' : colors.primary },
                         ]}
                       >
-                        {isSignupFlow ? 'Vælg denne plan' : 'Skift til denne plan'}
+                        {isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -761,8 +761,8 @@ const statusTone = useMemo(() => {
           />
           <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
             {isSignupFlow 
-              ? 'Du får 14 dages gratis prøveperiode. Ingen binding - du kan opsige når som helst.'
-              : 'Du kan opsige dit abonnement når som helst. Ingen binding.'
+              ? 'You get a 14-day free trial. No obligation - you can cancel at any time.'
+              : 'You can cancel your subscription at any time. No binding.'
             }
           </Text>
         </View>

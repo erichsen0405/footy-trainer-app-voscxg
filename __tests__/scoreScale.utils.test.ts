@@ -21,19 +21,19 @@ describe('scoreScale utils', () => {
   });
 
   it('maps feedback labels on the new 1-5 scale', () => {
-    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 1)).toBe('Meget svært i dag');
-    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 2)).toBe('Lidt svært i dag');
-    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 3)).toBe('Okay i dag');
-    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 4)).toBe('Godt i dag');
-    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 5)).toBe('Rigtig godt i dag');
+    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 1)).toBe('Very difficult today');
+    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 2)).toBe('A little difficult today');
+    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 3)).toBe('Okay today');
+    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 4)).toBe('Good today');
+    expect(findScoreOptionLabel(FEEDBACK_SCORE_OPTIONS, 5)).toBe('Very good today');
   });
 
   it('maps intensity labels on the new 1-5 scale', () => {
-    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 1)).toBe('Jeg kunne ikke holde tempo i dag');
-    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 2)).toBe('Jeg havde svært ved tempoet i dag');
-    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 3)).toBe('Jeg holdt et okay tempo i dag');
-    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 4)).toBe('Jeg holdt et højt tempo i dag');
-    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 5)).toBe('Jeg var helt i top på tempo i dag');
+    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 1)).toBe('I could not keep the pace today');
+    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 2)).toBe('I struggled with the pace today');
+    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 3)).toBe('I kept an okay pace today');
+    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 4)).toBe('I kept a high pace today');
+    expect(findScoreOptionLabel(INTENSITY_SCORE_OPTIONS, 5)).toBe('My pace was excellent today');
   });
 
   it('handles normalization edge cases deterministically', () => {

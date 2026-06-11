@@ -62,8 +62,8 @@ export default function ExternalCalendarManager() {
 
   const showCalendarUpgradeAlert = () => {
     Alert.alert(
-      'Premium påkrævet',
-      'Kalendersynk er kun tilgængelig for Premium spillere og trænere. Opgrader under Abonnement for at fortsætte.'
+      'Premium required',
+      'Calendar sync is only available to Premium players and coaches. Upgrade under Subscription to continue.'
     );
   };
 
@@ -114,7 +114,7 @@ export default function ExternalCalendarManager() {
       setCalendars(data || []);
     } catch (error: any) {
       console.error('Error in fetchCalendars:', error);
-      Alert.alert('Fejl', 'Kunne ikke hente kalendere');
+      Alert.alert('Error', 'Failed to retrieve calendars');
     } finally {
       setLoading(false);
     }
@@ -185,15 +185,15 @@ export default function ExternalCalendarManager() {
     }
 
     if (!newCalendarName.trim() || !newCalendarUrl.trim()) {
-      Alert.alert('Fejl', 'Udfyld venligst både navn og URL');
+      Alert.alert('Error', 'Please fill in both name and URL');
       return;
     }
 
     const urlPattern = /^(https?:\/\/|webcal:\/\/)/i;
     if (!urlPattern.test(newCalendarUrl)) {
       Alert.alert(
-        'Ugyldig URL',
-        'URL skal starte med http://, https:// eller webcal://'
+        'Invalid URL',
+        'URL must start with http://, https://, or webcal://'
       );
       return;
     }
@@ -203,7 +203,7 @@ export default function ExternalCalendarManager() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        throw new Error('Ikke logget ind');
+        throw new Error('Not logged in');
       }
 
       // Only add calendar for the current user - no team_id or player_id
@@ -226,8 +226,8 @@ export default function ExternalCalendarManager() {
       }
 
       Alert.alert(
-        'Succes',
-        'Kalender tilføjet til din profil! Klik på "Synkroniser" for at importere aktiviteter. Aktiviteter tildeles automatisk kategorier baseret på deres navne, eller "Ukendt" hvis ingen match findes. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.'
+        'Success',
+        'Calendar added to your profile! Click "Sync" to import activities. Activities are automatically assigned categories based on their names, or "Unknown" if no match is found. Manually assigned categories are preserved on subsequent synchronizations.'
       );
 
       setNewCalendarName('');
@@ -236,7 +236,7 @@ export default function ExternalCalendarManager() {
       await fetchCalendars();
     } catch (error: any) {
       console.error('Error in handleAddCalendar:', error);
-      Alert.alert('Fejl', error.message || 'Kunne ikke tilføje kalender');
+      Alert.alert('Error', error.message || 'Could not add calendar');
     } finally {
       setAdding(false);
     }
@@ -269,46 +269,48 @@ export default function ExternalCalendarManager() {
 
       console.log('Sync response:', data);
 
-      let message = `${data.eventCount} aktiviteter blev synkroniseret fra "${calendarName}".\n\n`;
+      let message = `${data.eventCount} activities were synced from "${calendarName}".\n\n`;
       
       if (data.eventsCreated > 0) {
-        message += `✨ ${data.eventsCreated} nye aktivitet${data.eventsCreated === 1 ? '' : 'er'} oprettet\n`;
+        message += `✨ ${data.eventsCreated} new activit${data.eventsCreated === 1 ? 'y' : 'ies'} created\n`;
       }
       if (data.eventsUpdated > 0) {
-        message += `🔄 ${data.eventsUpdated} aktivitet${data.eventsUpdated === 1 ? '' : 'er'} opdateret\n`;
+        message += `🔄 ${data.eventsUpdated} activit${data.eventsUpdated === 1 ? 'y' : 'ies'} updated\n`;
       }
       if (data.eventsRestored > 0) {
-        message += `♻️ ${data.eventsRestored} aktivitet${data.eventsRestored === 1 ? '' : 'er'} gendannet\n`;
+        message += `♻️ ${data.eventsRestored} activit${data.eventsRestored === 1 ? 'y' : 'ies'} restored\n`;
       }
       if (data.eventsSoftDeleted > 0) {
-        message += `🗑️ ${data.eventsSoftDeleted} aktivitet${data.eventsSoftDeleted === 1 ? '' : 'er'} soft-slettet (mangler i feed)\n`;
+        message += `🗑️ ${data.eventsSoftDeleted} activit${data.eventsSoftDeleted === 1 ? 'y' : 'ies'} soft-deleted (missing in feed)\n`;
       }
       if (data.eventsImmediatelyDeleted > 0) {
-        message += `❌ ${data.eventsImmediatelyDeleted} aktivitet${data.eventsImmediatelyDeleted === 1 ? '' : 'er'} slettet (annulleret)\n`;
+        message += `❌ ${data.eventsImmediatelyDeleted} activit${data.eventsImmediatelyDeleted === 1 ? 'y' : 'ies'} deleted (cancelled)\n`;
       }
       
       if (data.eventsFailed && data.eventsFailed > 0) {
-        message += `\n⚠️ ADVARSEL: ${data.eventsFailed} aktivitet${data.eventsFailed === 1 ? '' : 'er'} kunne ikke importeres\n`;
+        message += `\n⚠️ WARNING: ${data.eventsFailed} activit${data.eventsFailed === 1 ? 'y' : 'ies'} could not be imported\n`;
         
         if (data.failedEvents && data.failedEvents.length > 0) {
-          message += `\nFejlede aktiviteter:\n`;
+          message += `
+Failed activities:
+`;
           data.failedEvents.forEach((failed: any, index: number) => {
             message += `${index + 1}. "${failed.title}": ${failed.error}\n`;
           });
         }
       }
       
-      message += `\n📊 Kategori-tildeling:\n`;
+      message += `\n📊 Category assignment:\n`;
       
       if (data.metadataPreserved > 0) {
-        message += `• ${data.metadataPreserved} manuelt tildelte kategorier bevaret\n`;
+        message += `• ${data.metadataPreserved} manually assigned categories preserved\n`;
       }
       if (data.metadataCreated > 0) {
-        message += `• ${data.metadataCreated} nye kategorier tildelt automatisk\n`;
+        message += `• ${data.metadataCreated} new categories assigned automatically\n`;
       }
 
       Alert.alert(
-        data.eventsFailed > 0 ? 'Synkronisering delvist fuldført' : 'Succes',
+        data.eventsFailed > 0 ? 'Synchronization partially completed' : 'Success',
         message
       );
 
@@ -317,8 +319,8 @@ export default function ExternalCalendarManager() {
     } catch (error: any) {
       console.error('Error in handleSyncCalendar:', error);
       Alert.alert(
-        'Fejl',
-        error.message || 'Kunne ikke synkronisere kalender. Tjek at URL\'en er korrekt.'
+        'Error',
+        error.message || 'Failed to sync calendar. Check that the URL is correct.'
       );
     } finally {
       setSyncing(null);
@@ -336,15 +338,15 @@ export default function ExternalCalendarManager() {
       const result = await triggerManualSync();
       
       Alert.alert(
-        'Auto-synkronisering fuldført',
-        `${result.syncedCount} kalender(e) blev synkroniseret${result.failedCount > 0 ? `, ${result.failedCount} fejlede` : ''}. Manuelt tildelte kategorier er bevaret.`
+        'Auto-sync completed',
+        `${result.syncedCount} calendar(s) were synced${result.failedCount > 0 ? `, ${result.failedCount} failed` : ''}. Manually assigned categories have been preserved.`
       );
 
       await fetchCalendars();
       await fetchCategoryMappings();
     } catch (error: any) {
       console.error('Error in handleAutoSyncAll:', error);
-      Alert.alert('Fejl', 'Kunne ikke auto-synkronisere kalendere');
+      Alert.alert('Error', 'Failed to auto-sync calendars');
     } finally {
       setAutoSyncing(false);
     }
@@ -369,7 +371,7 @@ export default function ExternalCalendarManager() {
       await fetchCalendars();
     } catch (error: any) {
       console.error('Error in handleToggleCalendar:', error);
-      Alert.alert('Fejl', 'Kunne ikke opdatere kalender');
+      Alert.alert('Error', 'Failed to update calendar');
     }
   };
 
@@ -392,7 +394,7 @@ export default function ExternalCalendarManager() {
       await fetchCalendars();
     } catch (error: any) {
       console.error('Error in handleToggleAutoSync:', error);
-      Alert.alert('Fejl', 'Kunne ikke opdatere auto-synkronisering');
+      Alert.alert('Error', 'Failed to update auto sync');
     }
   };
 
@@ -404,7 +406,7 @@ export default function ExternalCalendarManager() {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
-      Alert.alert('Fejl', 'Ikke logget ind');
+      Alert.alert('Error', 'Ikke logget ind');
       return;
     }
 
@@ -417,7 +419,7 @@ export default function ExternalCalendarManager() {
 
     if (countError) {
       console.error('Error counting activities:', countError);
-      Alert.alert('Fejl', 'Kunne ikke tælle aktiviteter');
+      Alert.alert('Error', 'Could not count activities');
       return;
     }
 
@@ -426,21 +428,21 @@ export default function ExternalCalendarManager() {
     if (activityCount && activityCount > 0) {
       // Calendar has activities - ask user what to do
       Alert.alert(
-        'Slet kalender',
-        `Vil du slette kalenderen "${calendarName}"?\n\nDer er ${activityCount} aktivitet${activityCount === 1 ? '' : 'er'} tilknyttet denne kalender.\n\n⚠️ Hvad vil du gøre med aktiviteterne?`,
+        'Delete calendar',
+        `Do you want to delete the calendar "${calendarName}"?\n\nThere ${activityCount === 1 ? 'is' : 'are'} ${activityCount} activit${activityCount === 1 ? 'y' : 'ies'} linked to this calendar.\n\n⚠️ What do you want to do with the activities?`,
         [
           { 
-            text: 'Annuller', 
-            style: 'cancel' 
+            text: 'Cancel',
+            style: 'cancel'
           },
           {
-            text: 'Behold aktiviteter',
+            text: 'Keep activities',
             onPress: async () => {
               await deleteCalendarOnly(calendarId, calendarName, activityCount);
             },
           },
           {
-            text: 'Slet alt',
+            text: 'Delete all',
             style: 'destructive',
             onPress: async () => {
               await deleteCalendarWithActivities(calendarId, calendarName);
@@ -452,12 +454,12 @@ export default function ExternalCalendarManager() {
     } else {
       // No activities - just confirm deletion
       Alert.alert(
-        'Slet kalender',
-        `Er du sikker på at du vil slette kalenderen "${calendarName}"?\n\nDer er ingen aktiviteter tilknyttet denne kalender.`,
+        'Delete calendar',
+        `Are you sure you want to delete the calendar "${calendarName}"?\n\nThere are no activities linked to this calendar.`,
         [
-          { text: 'Annuller', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Slet',
+            text: 'Delete',
             style: 'destructive',
             onPress: async () => {
               await deleteCalendarOnly(calendarId, calendarName, 0);
@@ -515,17 +517,17 @@ export default function ExternalCalendarManager() {
       console.log(`Calendar "${calendarName}" deleted successfully`);
 
       Alert.alert(
-        'Succes', 
+        'Success',
         activityCount > 0 
-          ? `Kalender "${calendarName}" er slettet.\n\n${activityCount} aktivitet${activityCount === 1 ? '' : 'er'} er bevaret i din app som almindelige aktiviteter.`
-          : `Kalender "${calendarName}" er slettet.`
+          ? `Calendar "${calendarName}" has been deleted.\n\n${activityCount} activit${activityCount === 1 ? 'y' : 'ies'} have been kept in your app as regular activities.`
+          : `Calendar "${calendarName}" has been deleted.`
       );
       
       await fetchCalendars();
       await fetchCategoryMappings();
     } catch (error: any) {
       console.error('Error in deleteCalendarOnly:', error);
-      Alert.alert('Fejl', error.message || 'Kunne ikke slette kalender');
+      Alert.alert('Error', error.message || 'Could not delete calendar');
     }
   };
 
@@ -538,7 +540,7 @@ export default function ExternalCalendarManager() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        throw new Error('Ikke logget ind');
+        throw new Error('Not logged in');
       }
 
       console.log(`Deleting calendar "${calendarName}" and all its activities`);
@@ -547,7 +549,7 @@ export default function ExternalCalendarManager() {
       const deleteResult = await deleteExternalActivitiesForCalendar(calendarId);
 
       if (!deleteResult.success) {
-        throw new Error(deleteResult.error || 'Kunne ikke slette aktiviteter');
+        throw new Error(deleteResult.error || 'Could not delete activities');
       }
 
       console.log(`Deleted ${deleteResult.count} activities`);
@@ -567,15 +569,15 @@ export default function ExternalCalendarManager() {
       console.log(`Calendar "${calendarName}" deleted successfully`);
 
       Alert.alert(
-        'Succes', 
-        `Kalender "${calendarName}" og ${deleteResult.count} aktivitet${deleteResult.count === 1 ? '' : 'er'} er slettet permanent fra din app.`
+        'Success',
+        `Calendar "${calendarName}" and ${deleteResult.count} activit${deleteResult.count === 1 ? 'y' : 'ies'} have been permanently deleted from your app.`
       );
       
       await fetchCalendars();
       await fetchCategoryMappings();
     } catch (error: any) {
       console.error('Error in deleteCalendarWithActivities:', error);
-      Alert.alert('Fejl', error.message || 'Kunne ikke slette kalender og aktiviteter');
+      Alert.alert('Error', error.message || 'Could not delete calendar and activities');
     }
   };
 
@@ -592,8 +594,8 @@ export default function ExternalCalendarManager() {
     return (
       <View style={{ paddingVertical: 12 }}>
         <PremiumFeatureGate
-          title="Kalendersynk kræver Premium"
-          description="Opgrader for at importere eksterne kalendere og holde aktiviteterne automatisk opdateret."
+          title="Calendar sync requires Premium"
+          description="Upgrade to import external calendars and keep activities updated automatically."
           onPress={showCalendarUpgradeAlert}
           icon={{ ios: 'calendar.badge.plus', android: 'event' }}
           align="left"
@@ -606,7 +608,7 @@ export default function ExternalCalendarManager() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: textColor }]}>Indlæser kalendere...</Text>
+        <Text style={[styles.loadingText, { color: textColor }]}>Loading calendars...</Text>
       </View>
     );
   }
@@ -650,7 +652,7 @@ export default function ExternalCalendarManager() {
               color={colors.primary}
             />
             <Text style={[styles.mappingsToggleText, { color: textColor }]}>
-              Kategori-tildelinger ({categoryMappings.length})
+              Category-tildelinger ({categoryMappings.length})
             </Text>
           </View>
           <IconSymbol
@@ -665,10 +667,10 @@ export default function ExternalCalendarManager() {
       {showMappings && categoryMappings.length > 0 && (
         <View style={[styles.mappingsList, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}>
           <Text style={[styles.mappingsTitle, { color: textColor }]}>
-            Automatiske kategori-tildelinger
+            Automatic category assignments
           </Text>
           <Text style={[styles.mappingsSubtitle, { color: textSecondaryColor }]}>
-            Disse kategorier tildeles automatisk baseret på aktiviteternes navne og nøgleord. Aktiviteter uden match tildeles Ukendt. Manuelt tildelte kategorier bevares ved synkronisering.
+            These categories are automatically assigned based on the activities' names and keywords. Activities without a match are assigned Unknown. Manually assigned categories are preserved when synchronizing.
           </Text>
           {categoryMappings.map((mapping, index) => (
             <View key={index} style={[styles.mappingItem, { borderBottomColor: isDark ? '#444' : '#e0e0e0' }]}>
@@ -704,14 +706,14 @@ export default function ExternalCalendarManager() {
             size={24}
             color="#fff"
           />
-          <Text style={styles.addButtonText}>Tilføj ekstern kalender</Text>
+          <Text style={styles.addButtonText}>Add external calendar</Text>
         </TouchableOpacity>
       )}
 
       {showAddForm && (
         <View style={[styles.addForm, { backgroundColor: isDark ? '#2a2a2a' : colors.card }]}>
           <View style={styles.formHeader}>
-            <Text style={[styles.formTitle, { color: textColor }]}>Tilføj ekstern kalender</Text>
+            <Text style={[styles.formTitle, { color: textColor }]}>Add external calendar</Text>
             <TouchableOpacity onPress={() => setShowAddForm(false)}>
               <IconSymbol
                 ios_icon_name="xmark.circle.fill"
@@ -722,17 +724,17 @@ export default function ExternalCalendarManager() {
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.label, { color: textColor }]}>Kalender navn</Text>
+          <Text style={[styles.label, { color: textColor }]}>Calendar name</Text>
           <TextInput
             style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
             value={newCalendarName}
             onChangeText={setNewCalendarName}
-            placeholder="F.eks. Træningskalender"
+            placeholder="For example Training calendar"
             placeholderTextColor={textSecondaryColor}
             editable={!adding}
           />
 
-          <Text style={[styles.label, { color: textColor }]}>iCal URL (webcal:// eller https://)</Text>
+          <Text style={[styles.label, { color: textColor }]}>iCal URL (webcal:// or https://)</Text>
           <TextInput
             style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
             value={newCalendarUrl}
@@ -754,7 +756,7 @@ export default function ExternalCalendarManager() {
               }}
               disabled={adding}
             >
-              <Text style={[styles.formButtonText, { color: textColor }]}>Annuller</Text>
+              <Text style={[styles.formButtonText, { color: textColor }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.formButton, { backgroundColor: colors.primary }]}
@@ -764,7 +766,7 @@ export default function ExternalCalendarManager() {
               {adding ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={[styles.formButtonText, { color: '#fff' }]}>Tilføj</Text>
+                <Text style={[styles.formButtonText, { color: '#fff' }]}>Add</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -777,7 +779,7 @@ export default function ExternalCalendarManager() {
               color={colors.success}
             />
             <Text style={[styles.infoText, { color: isDark ? '#90caf9' : '#1976d2' }]}>
-              Kalenderen tilføjes til din egen profil og vil automatisk synkronisere hver time. Aktiviteter tildeles kategorier baseret på deres navne og nøgleord. Manuelt tildelte kategorier bevares ved efterfølgende synkroniseringer.
+              The calendar is added to your own profile and will automatically sync every hour. Activities are assigned categories based on their names and keywords. Manually assigned categories are preserved on subsequent synchronizations.
             </Text>
           </View>
         </View>
@@ -791,9 +793,9 @@ export default function ExternalCalendarManager() {
             size={64}
             color={textSecondaryColor}
           />
-          <Text style={[styles.emptyTitle, { color: textColor }]}>Ingen eksterne kalendere</Text>
+          <Text style={[styles.emptyTitle, { color: textColor }]}>No external calendars</Text>
           <Text style={[styles.emptyText, { color: textSecondaryColor }]}>
-            Tilføj en ekstern kalender til din profil for at importere aktiviteter automatisk med intelligent kategori-tildeling. Aktiviteter uden match tildeles Ukendt. Manuelt tildelte kategorier bevares ved synkronisering.
+            Add an external calendar to your profile to import activities automatically with intelligent category assignment. Activities without a match are assigned Unknown. Manually assigned categories are preserved when synchronizing.
           </Text>
         </View>
       ) : (
@@ -821,12 +823,12 @@ export default function ExternalCalendarManager() {
                     </Text>
                     <View style={styles.calendarStats}>
                       <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
-                        {calendar.event_count} aktiviteter
+                        {calendar.event_count} activities
                       </Text>
                       {calendar.last_fetched && (
                         <Text style={[styles.calendarStat, { color: textSecondaryColor }]}>
                           {' • Sidst synkroniseret: '}
-                          {new Date(calendar.last_fetched).toLocaleDateString('da-DK')}
+                          {new Date(calendar.last_fetched).toLocaleDateString('en-US')}
                         </Text>
                       )}
                     </View>
@@ -892,7 +894,7 @@ export default function ExternalCalendarManager() {
                         { color: calendar.enabled ? colors.error : colors.success },
                       ]}
                     >
-                      {calendar.enabled ? 'Deaktiver' : 'Aktiver'}
+                      {calendar.enabled ? 'Disable' : 'Enable'}
                     </Text>
                   </TouchableOpacity>
 
@@ -910,7 +912,7 @@ export default function ExternalCalendarManager() {
                       size={20}
                       color={colors.error}
                     />
-                    <Text style={[styles.actionButtonText, { color: colors.error }]}>Slet</Text>
+                    <Text style={[styles.actionButtonText, { color: colors.error }]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
               </View>

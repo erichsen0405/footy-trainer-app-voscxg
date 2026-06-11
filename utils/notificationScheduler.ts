@@ -52,8 +52,8 @@ function buildReminderNotificationText(args: {
   taskTitle: string;
   activityTitle: string;
 }): { title: string; body: string } {
-  const taskTitle = cleanNotificationLabel(args.taskTitle, 'Opgave');
-  const activityTitle = cleanNotificationLabel(args.activityTitle, 'Aktivitet');
+  const taskTitle = cleanNotificationLabel(args.taskTitle, 'Task');
+  const activityTitle = cleanNotificationLabel(args.activityTitle, 'Activity');
 
   if (args.kind === 'after-training-feedback') {
     return {
@@ -63,7 +63,7 @@ function buildReminderNotificationText(args: {
   }
 
   return {
-    title: 'Opgave snart',
+    title: 'Assignment soon',
     body: `${taskTitle} · ${activityTitle}`,
   };
 }
@@ -678,7 +678,7 @@ export async function scheduleTaskReminderImmediate(
     
     const notificationText = buildReminderNotificationText({
       kind: 'task-reminder',
-      taskTitle: cleanNotificationLabel(taskTitle, cleanNotificationLabel(taskDescription, 'Opgave')),
+      taskTitle: cleanNotificationLabel(taskTitle, cleanNotificationLabel(taskDescription, 'Task')),
       activityTitle,
     });
 

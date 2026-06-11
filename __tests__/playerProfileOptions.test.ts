@@ -10,24 +10,24 @@ describe('player profile position options', () => {
   it('normalizes known positions and caps selections at five', () => {
     expect(
       normalizePlayerProfilePositions([
-        'Back',
-        'Back',
+        'Fullback',
+        'Fullback',
         'Ukendt',
-        'Kant',
-        'Angriber',
-        'Målmand',
-        'Midterforsvarer',
-        'Central midtbane',
+        'Winger',
+        'Striker',
+        'Goalkeeper',
+        'Center back',
+        'Central midfielder',
       ])
-    ).toEqual(['Back', 'Kant', 'Angriber', 'Målmand', 'Midterforsvarer']);
-    expect(normalizePlayerProfilePositions(['Back', 'Kant', 'Angriber', 'Målmand', 'Midterforsvarer', 'Midtbane'])).toHaveLength(
+    ).toEqual(['Fullback', 'Winger', 'Striker', 'Goalkeeper', 'Center back']);
+    expect(normalizePlayerProfilePositions(['Fullback', 'Winger', 'Striker', 'Goalkeeper', 'Center back', 'Midtbane'])).toHaveLength(
       MAX_PLAYER_PROFILE_POSITIONS
     );
   });
 
   it('compares saved position arrays in order', () => {
-    expect(arePlayerProfilePositionsEqual(['Back', 'Kant'], ['Back', 'Kant'])).toBe(true);
-    expect(arePlayerProfilePositionsEqual(['Kant', 'Back'], ['Back', 'Kant'])).toBe(false);
+    expect(arePlayerProfilePositionsEqual(['Fullback', 'Winger'], ['Fullback', 'Winger'])).toBe(true);
+    expect(arePlayerProfilePositionsEqual(['Winger', 'Fullback'], ['Fullback', 'Winger'])).toBe(false);
   });
 
   it('detects missing migrated profile fields and applies legacy defaults', () => {

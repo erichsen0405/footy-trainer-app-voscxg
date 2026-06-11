@@ -34,7 +34,7 @@ export default function RecoveryRedirectScreen() {
     try {
       await Linking.openURL(deepLink);
     } catch (openError: any) {
-      setError(openError?.message ?? 'Kunne ikke åbne appen automatisk.');
+      setError(openError?.message ?? 'Could not open the app automatically.');
     } finally {
       setAutoOpenFinished(true);
       setOpening(false);
@@ -51,21 +51,21 @@ export default function RecoveryRedirectScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Åbn Football Coach</Text>
-      <Text style={styles.text}>Vi sender dig videre til appen, så du kan nulstille din adgangskode.</Text>
+      <Text style={styles.title}>Open Football Coach</Text>
+      <Text style={styles.text}>We'll forward you to the app so you can reset your password.</Text>
 
       <Pressable style={[styles.button, opening && styles.buttonDisabled]} onPress={openApp} disabled={opening}>
         {opening ? (
           <ActivityIndicator size="small" color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Åbn app nu</Text>
+          <Text style={styles.buttonText}>Open app now</Text>
         )}
       </Pressable>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {autoOpenFinished && !error ? (
-        <Text style={styles.hint}>Hvis appen ikke åbnede, tryk på knappen igen.</Text>
+        <Text style={styles.hint}>If the app didn't open, press the button again.</Text>
       ) : null}
 
       <Pressable

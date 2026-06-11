@@ -49,9 +49,9 @@ const clampDifficulty = (value: any): number => {
 const formatMetaLine = (lastScore?: number | null, executionCount?: number | null) => {
   const scorePart =
     normalizeFivePointScore(lastScore) !== null
-      ? `Senest: ${formatScoreOutOfFive(lastScore)}`
-      : 'Senest: –/5';
-  const countPart = typeof executionCount === 'number' && executionCount > 0 ? `Udført: ${executionCount}x` : 'Udført: –x';
+      ? `Latest: ${formatScoreOutOfFive(lastScore)}`
+      : 'Latest: -/5';
+  const countPart = typeof executionCount === 'number' && executionCount > 0 ? `Completed: ${executionCount}x` : 'Completed: -x';
   return `${scorePart}  |  ${countPart}`;
 };
 
@@ -231,7 +231,7 @@ export default function ExerciseDetailsScreen() {
         .maybeSingle();
 
       if (error) throw error;
-      if (!data) throw new Error('Øvelsen blev ikke fundet.');
+      if (!data) throw new Error('The exercise was not found.');
 
       const normalized: Exercise = {
         id: String((data as any)?.id ?? ''),
@@ -270,7 +270,7 @@ export default function ExerciseDetailsScreen() {
       setStatus('success');
     } catch (e: any) {
       setStatus('error');
-      setErrorMessage(e?.message || 'Kunne ikke hente øvelse.');
+      setErrorMessage(e?.message || 'Failed to download exercise.');
     }
   }, []);
 
@@ -365,7 +365,7 @@ export default function ExerciseDetailsScreen() {
       if (error) throw error;
       router.back();
     } catch (err: any) {
-      Alert.alert('Fejl', err?.message || 'Kunne ikke slette øvelsen.');
+      Alert.alert('Error', err?.message || 'Could not delete exercise.');
     } finally {
       setIsDeleting(false);
     }
@@ -374,11 +374,11 @@ export default function ExerciseDetailsScreen() {
   const handleDeleteExercise = useCallback(() => {
     if (!exercise || !canManageExercise) return;
     Alert.alert(
-      'Slet øvelse',
-      `Er du sikker på at du vil slette "${exercise.title}"?`,
+      'Delete exercise',
+      `Are you sure you want to delete "${exercise.title}"?`,
       [
-        { text: 'Annuller', style: 'cancel' },
-        { text: 'Slet', style: 'destructive', onPress: executeDeleteExercise },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: executeDeleteExercise },
       ],
       { cancelable: true }
     );
@@ -387,7 +387,7 @@ export default function ExerciseDetailsScreen() {
   // --- JSX render ---
   return (
     <>
-      <Stack.Screen options={{ headerShown: false, title: 'Øvelse' }} />
+      <Stack.Screen options={{ headerShown: false, title: 'Exercise' }} />
       {!exerciseId ? (
         <View style={[styles.screen, { backgroundColor: theme.background }]}>
           <View style={styles.topBar}>
@@ -395,14 +395,14 @@ export default function ExerciseDetailsScreen() {
               <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
             </TouchableOpacity>
             <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
-              Øvelse
+              Exercise
             </Text>
             <View style={{ width: 34 }} />
           </View>
           <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
-            <Text style={[styles.stateTitle, { color: theme.text }]}>Mangler øvelse-id</Text>
+            <Text style={[styles.stateTitle, { color: theme.text }]}>Missing exercise ID</Text>
             <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>
-              Prøv at gå tilbage til biblioteket og åbne øvelsen igen.
+              Try going back to the library and opening the exercise again.
             </Text>
             <TouchableOpacity onPress={handleBack} activeOpacity={0.9} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
               <Text style={styles.primaryButtonText}>Tilbage</Text>
@@ -416,7 +416,7 @@ export default function ExerciseDetailsScreen() {
               <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="chevron_left" size={22} color={theme.text} />
             </TouchableOpacity>
             <Text style={[styles.topTitle, { color: theme.text }]} numberOfLines={1}>
-              Øvelse
+              Exercise
             </Text>
             <View style={{ width: 34 }} />
           </View>
@@ -435,10 +435,10 @@ export default function ExerciseDetailsScreen() {
 
             {status === 'error' ? (
               <View style={[styles.stateCard, { backgroundColor: theme.card }]}>
-                <Text style={[styles.stateTitle, { color: theme.error }]}>Kunne ikke åbne øvelse</Text>
+                <Text style={[styles.stateTitle, { color: theme.error }]}>Could not open exercise</Text>
                 <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>{errorMessage}</Text>
                 <TouchableOpacity onPress={() => load(exerciseId)} activeOpacity={0.9} style={[styles.primaryButton, { backgroundColor: theme.primary }]}>
-                  <Text style={styles.primaryButtonText}>Prøv igen</Text>
+                  <Text style={styles.primaryButtonText}>Try again</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -510,7 +510,7 @@ export default function ExerciseDetailsScreen() {
                   {exercise.description ? (
                     <Text style={[styles.description, { color: theme.textSecondary }]}>{exercise.description}</Text>
                   ) : (
-                    <Text style={[styles.descriptionMuted, { color: theme.textSecondary }]}>Ingen beskrivelse endnu.</Text>
+                    <Text style={[styles.descriptionMuted, { color: theme.textSecondary }]}>No description yet.</Text>
                   )}
 
                   {canShowAssignButton ? (
@@ -532,7 +532,7 @@ export default function ExerciseDetailsScreen() {
                         style={[styles.manageButton, { backgroundColor: theme.highlight }]}
                       >
                         <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={16} color={theme.text} />
-                        <Text style={[styles.manageButtonText, { color: theme.text }]}>Rediger</Text>
+                        <Text style={[styles.manageButtonText, { color: theme.text }]}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={handleDeleteExercise}
@@ -545,7 +545,7 @@ export default function ExerciseDetailsScreen() {
                         ) : (
                           <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={16} color={colors.error} />
                         )}
-                        <Text style={[styles.manageButtonText, { color: colors.error }]}>{isDeleting ? 'Sletter...' : 'Slet'}</Text>
+                        <Text style={[styles.manageButtonText, { color: colors.error }]}>{isDeleting ? 'Deleting...' : 'Delete'}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}

@@ -22,7 +22,7 @@ describe('SwipeVideoPlayer', () => {
     );
 
     expect(getAllByTestId('mock.smartVideoPlayer')).toHaveLength(2);
-    expect(getByText('Swipe for næste video')).toBeTruthy();
+    expect(getByText('Swipe for next file')).toBeTruthy();
     expect(getByText('1/2')).toBeTruthy();
   });
 
@@ -30,6 +30,6 @@ describe('SwipeVideoPlayer', () => {
     const { queryByText, getAllByTestId } = render(<SwipeVideoPlayer urls={['focus/one.mp4']} />);
 
     expect(getAllByTestId('mock.smartVideoPlayer')).toHaveLength(1);
-    expect(queryByText('Swipe for næste video')).toBeNull();
+    expect(queryByText('Swipe for next file')).toBeNull();
   });
 });

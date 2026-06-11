@@ -126,13 +126,13 @@ export default function TaskScoreNoteScreen() {
         }
 
         if (!intensityCarrier) {
-          Alert.alert('Intensitet ikke tilgængelig', 'Aktiviteten blev ikke fundet.');
+          Alert.alert('Intensity unavailable', 'The activity was not found.');
           safeDismiss();
           return;
         }
 
         if (!intensityCarrier.intensity_enabled) {
-          Alert.alert('Intensitet ikke tilgængelig', 'Intensitet er ikke aktiveret for denne aktivitet.');
+          Alert.alert('Intensity unavailable', 'Intensity is not enabled for this activity.');
           safeDismiss();
           return;
         }
@@ -168,7 +168,7 @@ export default function TaskScoreNoteScreen() {
   const handleSave = useCallback(
     async ({ score, note }: TaskScoreNoteModalPayload) => {
       if (!activityId) {
-        setErrorSafe('Aktivitet mangler ID.');
+        setErrorSafe('Activity missing ID.');
         return;
       }
 
@@ -213,7 +213,7 @@ export default function TaskScoreNoteScreen() {
             }
           });
       } catch (e) {
-        setErrorSafe('Kunne ikke gemme intensitet. Prøv igen.');
+        setErrorSafe('Couldn\'t save intensity. Try again.');
       } finally {
         setIsSavingSafe(false);
       }
@@ -233,7 +233,7 @@ export default function TaskScoreNoteScreen() {
 
   const handleClear = useCallback(async () => {
     if (!activityId) {
-      setErrorSafe('Aktivitet mangler ID.');
+      setErrorSafe('Activity missing ID.');
       return;
     }
 
@@ -251,8 +251,8 @@ export default function TaskScoreNoteScreen() {
       Promise.resolve(refreshData()).catch(() => {});
       safeDismiss();
     } catch (e) {
-      setErrorSafe('Kunne ikke fjerne intensitet. Prøv igen.');
-      Alert.alert('Kunne ikke fjerne', 'Intensitet kunne ikke fjernes. Prøv igen.');
+      setErrorSafe('Could not remove intensity. Try again.');
+      Alert.alert('Could not remove', 'Intensity could not be removed. Try again.');
     } finally {
       setIsSavingSafe(false);
     }
@@ -264,29 +264,29 @@ export default function TaskScoreNoteScreen() {
     <TaskScoreNoteModal
       key={`intensity-${activityId}`}
       visible
-      title="Feedback på Intensitet"
-      introText="Hvordan gik det?"
-      helperText="Vælg det tempo du faktisk kunne holde i dag."
+      title="Intensity feedback"
+      introText="How did it go?"
+      helperText="Choose the pace you could actually keep today."
       initialScore={initialScore}
       initialNote={initialNote}
       enableScore
       enableNote
       scoreOptions={INTENSITY_SCORE_OPTIONS}
-      scorePlaceholder="Vælg intensitet"
+      scorePlaceholder="Choose intensity"
       isSaving={isSaving}
       error={error}
       onSave={handleSave}
       onClear={handleClear}
-      clearLabel="Markér som ikke udført"
-      missingScoreTitle="Manglende intensitet"
-      missingScoreMessage="Vælg en intensitet før du kan markere som udført."
-      infoButtonAccessibilityLabel="Vis info om intensitet"
-      infoModalTitle="Sådan bruger du Intensitet"
+      clearLabel="Mark as not completed"
+      missingScoreTitle="Missing intensity"
+      missingScoreMessage="Select an intensity before you can mark as done."
+      infoButtonAccessibilityLabel="Show intensity info"
+      infoModalTitle="How to use intensity"
       infoModalLines={[
-        'Intensitet handler om det tempo og den synlige intensitet du faktisk kunne holde udefra set.',
-        'Det handler ikke om hvor hårdt du følte, at du prøvede.',
-        'Vælg den beskrivelse der bedst passer på dit tempo i dag.',
-        'Det gør det lettere at sammenligne dine dage på en ens måde over tid.',
+        'Intensity is about the pace and the visible intensity you could actually maintain from the outside.',
+        'It\'s not about how hard you felt you tried.',
+        'Choose the description that best fits your pace today.',
+        'This makes it easier to compare your days in a similar way over time.',
       ]}
       onClose={handleClose}
     />

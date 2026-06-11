@@ -63,30 +63,30 @@ export default function SubscriptionDiagnostic() {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.text}>Henter diagnostik...</Text>
+        <Text style={styles.text}>Downloading diagnostics...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>🔍 Abonnement Diagnostik (DEV)</Text>
+      <Text style={styles.title}>🔍 Subscription Diagnostics (DEV)</Text>
       
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Nuværende bruger:</Text>
-        <Text style={styles.text}>Email: {currentUser?.email || 'Ikke logget ind'}</Text>
+        <Text style={styles.sectionTitle}>Current user:</Text>
+        <Text style={styles.text}>Email: {currentUser?.email || 'Not logged in'}</Text>
         <Text style={styles.text}>ID: {currentUser?.id || 'N/A'}</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Abonnementer i databasen:</Text>
+        <Text style={styles.sectionTitle}>Subscriptions in the database:</Text>
         {subscriptions.length === 0 ? (
-          <Text style={styles.text}>Ingen abonnementer fundet</Text>
+          <Text style={styles.text}>No subscriptions found</Text>
         ) : (
           subscriptions.map((sub, index) => (
             <View key={index} style={styles.subscriptionCard}>
               <Text style={styles.text}>
-                Plan: {sub.subscription_plans?.name || 'Ukendt'}
+                Plan: {sub.subscription_plans?.name || 'Unknown'}
               </Text>
               <Text style={styles.text}>
                 Status: {sub.status}
@@ -95,7 +95,7 @@ export default function SubscriptionDiagnostic() {
                 Admin ID: {sub.admin_id}
               </Text>
               <Text style={[styles.text, { fontWeight: 'bold', color: sub.admin_id === currentUser?.id ? colors.success : colors.error }]}>
-                {sub.admin_id === currentUser?.id ? '✅ Dette er DIT abonnement' : '❌ Dette abonnement tilhører en anden bruger'}
+                {sub.admin_id === currentUser?.id ? '✅ Dette er DIT abonnement' : '❌ This subscription belongs to another user'}
               </Text>
             </View>
           ))
@@ -106,15 +106,15 @@ export default function SubscriptionDiagnostic() {
         <Text style={styles.sectionTitle}>Diagnose:</Text>
         {subscriptions.some(sub => sub.admin_id === currentUser?.id) ? (
           <Text style={[styles.text, { color: colors.success }]}>
-            ✅ Du har et abonnement! Hvis det ikke vises, prøv at genindlæse siden.
+            ✅ You have a subscription! If it doesn't appear, try reloading the page.
           </Text>
         ) : (
           <Text style={[styles.text, { color: colors.error }]}>
-            ❌ Du har IKKE et abonnement på denne konto.
+            ❌ You do NOT have a subscription to this account.
             {subscriptions.length > 0 && (
               <Text>
-                {'\n\n'}Der findes abonnementer i systemet, men de tilhører en anden bruger.
-                {'\n\n'}Løsning: Log ud og log ind med den korrekte konto, eller opret et nyt abonnement på denne konto.
+                {'\n\n'}There are subscriptions in the system, but they belong to another user.
+                {'\n\n'}Solution: Sign out and sign in with the correct account or create a new subscription for this account.
               </Text>
             )}
           </Text>
@@ -128,10 +128,10 @@ export default function SubscriptionDiagnostic() {
         {iapUnavailableReason && (
           <Text style={[styles.text, { color: colors.warning }]}>{iapUnavailableReason}</Text>
         )}
-        <Text style={styles.text}>Requested SKUs: {iapDiagnostics.requestedSkus.join(', ') || 'Ingen'}</Text>
+        <Text style={styles.text}>Requested SKUs: {iapDiagnostics.requestedSkus.join(', ') || 'No'}</Text>
         <Text style={styles.text}>Returned products: {iapDiagnostics.lastFetchCount}</Text>
         {iapDiagnostics.returnedProductsDetailed.length === 0 ? (
-          <Text style={[styles.text, { color: colors.error }]}>Ingen produkter returneret fra Apple</Text>
+          <Text style={[styles.text, { color: colors.error }]}>No products returned from Apple</Text>
         ) : (
           iapDiagnostics.returnedProductsDetailed.map((p) => (
             <View key={p.productId} style={styles.subscriptionCard}>
@@ -155,7 +155,7 @@ export default function SubscriptionDiagnostic() {
       </View>
 
       <TouchableOpacity style={styles.button} onPress={handleLogout}>
-        <Text style={styles.buttonText}>Log ud og prøv igen</Text>
+        <Text style={styles.buttonText}>Log out and try again</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={[styles.button, { backgroundColor: colors.secondary }]} onPress={fetchDiagnosticInfo}>

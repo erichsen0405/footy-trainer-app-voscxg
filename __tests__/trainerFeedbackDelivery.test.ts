@@ -53,8 +53,8 @@ describe('trainer feedback delivery helpers', () => {
         feedbackText: 'Hold fokus på orienteringen.',
       }),
     ).toEqual({
-      title: 'Ny feedback fra træner',
-      body: 'Coach Kim har sendt feedback på Mandagstræning.',
+      title: 'New feedback from your coach',
+      body: 'Coach Kim sent feedback on Mandagstræning.',
       data: {
         type: 'trainer-feedback',
         activityId: 'activity-1',
@@ -75,11 +75,11 @@ describe('trainer feedback delivery helpers', () => {
       config,
     );
 
-    expect(content.subject).toBe('Ny feedback fra din træner');
+    expect(content.subject).toBe('New feedback from your coach');
     expect(content.html).toContain('Coach Kim');
     expect(content.html).toContain('Vær tidligere i din orientering.');
     expect(content.html).toContain('footballcoach:///activity-details?id=activity-1&amp;activityId=activity-1');
-    expect(content.text).toContain('Aktivitet: Mandagstræning');
+    expect(content.text).toContain('Activity: Mandagstræning');
   });
 
   it('skips trainer feedback emails when config is missing', async () => {

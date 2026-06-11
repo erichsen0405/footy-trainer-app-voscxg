@@ -148,7 +148,7 @@ const isTransientProgressionFetchError = (error: unknown) => {
 
 const getProgressionFetchErrorMessage = (error: unknown) => {
   if (isTransientProgressionFetchError(error)) {
-    return 'Progression kunne ikke hentes lige nu. Prøv igen om et øjeblik.';
+    return 'Progression could not be loaded right now. Please try again in a moment.';
   }
 
   return (error as any)?.message ?? 'Kunne ikke hente progression';
@@ -249,10 +249,10 @@ export const normalizeEventId = (value?: string | null) => {
   if (!trimmed) return null;
   return isUuid(trimmed) ? trimmed : null;
 };
-const feedbackTitlePrefixRegex = /^\s*feedback\s+p(?:å|a\u030a|a)\s*[:\s-]*/i;
+const feedbackTitlePrefixRegex = /^\s*feedback\s+(?:on|p(?:å|a\u030a|a))\s*[:\s-]*/i;
 export const resolveProgressionFeedbackName = (value?: string | null) => {
   const trimmed = String(value ?? '').trim();
-  if (!trimmed) return 'Feedback opgaver';
+  if (!trimmed) return 'Feedback tasks';
   const stripped = trimmed.replace(feedbackTitlePrefixRegex, '').trim();
   return stripped || trimmed;
 };
@@ -600,7 +600,7 @@ export function useProgressionData({
         note: typeof row.intensity_note === 'string' ? row.intensity_note : null,
         dateKey,
         focusCategoryId: categoryId,
-        focusName: categoryMeta?.name ?? 'Ukendt kategori',
+        focusName: categoryMeta?.name ?? 'Unknown category',
         focusColor: categoryMeta?.color,
         sessionKey: buildSessionKey({
           eventId,
@@ -865,7 +865,7 @@ export function useProgressionData({
         return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
       };
       const isFeedbackTitle = (value?: string | null): boolean => {
-        return normalizeFeedbackTitle(value).startsWith('feedback pa');
+        return (normalizeFeedbackTitle(value).startsWith('feedback pa') || normalizeFeedbackTitle(value).startsWith('feedback on'));
       };
       const feedbackAnswered = (row: any): boolean => {
         const hasScore = typeof row?.rating === 'number';
@@ -1227,7 +1227,7 @@ export function useProgressionData({
           note: typeof row.intensity_note === 'string' ? row.intensity_note : null,
           dateKey,
           focusCategoryId: categoryId,
-          focusName: categoryMeta?.name ?? 'Ukendt kategori',
+          focusName: categoryMeta?.name ?? 'Unknown category',
           focusColor: categoryMeta?.color,
           sessionKey: buildSessionKey({
             eventId,

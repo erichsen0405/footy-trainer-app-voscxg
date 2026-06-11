@@ -336,7 +336,7 @@ export const taskService = {
     const sourceTask = isP8Payload ? rawData.task ?? ({} as Task) : (rawData as CreateTaskData);
     const title = String((sourceTask as any).title ?? '').trim();
     if (!title) {
-      throw new Error('Titel mangler');
+      throw new Error('Title mangler');
     }
     if (__DEV__) {
       console.log('[taskService.createTask] title=', title);
@@ -477,7 +477,7 @@ export const taskService = {
         throw existingTemplateError;
       }
       if (!existingTemplate) {
-        throw new Error('Kunne ikke hente eksisterende opgave for biblioteksøvelse');
+        throw new Error('Could not retrieve existing assignment for library exercise');
       }
 
       return existingTemplate;
@@ -821,7 +821,7 @@ export const taskService = {
       }
 
       if (toggled !== true) {
-        throw new Error('Du kan kun arkivere eller gendanne opgaver, du har adgang til');
+        throw new Error('You can only archive or restore tasks that you have access to');
       }
     }
 
@@ -1064,7 +1064,7 @@ export const taskService = {
     }
 
     if (removedByActor !== true) {
-      throw new Error('Du har ikke adgang til at slette denne opgaveskabelon');
+      throw new Error('You do not have access to delete this assignment template');
     }
 
   },

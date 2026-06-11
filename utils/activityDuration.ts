@@ -9,7 +9,7 @@ const TASK_DURATION_MINUTES_KEYS = [
   'duration_minutes',
   'duration',
 ] as const;
-const FEEDBACK_TITLE_PREFIX = /^feedback\s+p(?:å|a\u030a|a)(?:\s*[:\s-]|$)/i;
+const FEEDBACK_TITLE_PREFIX = /^feedback\s+(?:on|p(?:å|a\u030a|a))(?:\s*[:\s-]|$)/i;
 
 const toFiniteNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -181,13 +181,13 @@ export function getActivityEffectiveDurationMinutes(activity: any): number {
 
 export function formatHoursDa(minutes: number): string {
   if (!Number.isFinite(minutes) || minutes <= 0) {
-    return '0 t';
+    return '0 h';
   }
 
   const roundedTenths = Math.round((minutes / 60) * 10) / 10;
   if (roundedTenths <= 0) {
-    return '0 t';
+    return '0 h';
   }
 
-  return `${new Intl.NumberFormat('da-DK', { maximumFractionDigits: 1 }).format(roundedTenths)} t`;
+  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(roundedTenths)} h`;
 }

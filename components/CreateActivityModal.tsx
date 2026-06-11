@@ -56,21 +56,21 @@ type IntensityScopeModalState = {
 type ActivityCreationMode = 'title' | 'category';
 
 const DAYS_OF_WEEK = [
-  { label: 'Søn', value: 0 },
-  { label: 'Man', value: 1 },
-  { label: 'Tir', value: 2 },
-  { label: 'Ons', value: 3 },
-  { label: 'Tor', value: 4 },
-  { label: 'Fre', value: 5 },
-  { label: 'Lør', value: 6 },
+  { label: 'Son', value: 0 },
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
 ];
 
 const RECURRENCE_TYPES = [
-  { label: 'Daglig', value: 'daily' as const },
-  { label: 'Ugentlig', value: 'weekly' as const },
-  { label: 'Hver 2. uge', value: 'biweekly' as const },
-  { label: 'Hver 3. uge', value: 'triweekly' as const },
-  { label: 'Månedlig', value: 'monthly' as const },
+  { label: 'Daily', value: 'daily' as const },
+  { label: 'Weekly', value: 'weekly' as const },
+  { label: 'Every 2 weeks', value: 'biweekly' as const },
+  { label: 'Every 3 weeks', value: 'triweekly' as const },
+  { label: 'Monthly', value: 'monthly' as const },
 ];
 
 const timeToMinutes = (timeStr: string | null | undefined): number | null => {
@@ -161,7 +161,7 @@ export default function CreateActivityModal({
     }
 
     if (endMinutes <= startMinutes) {
-      setEndTimeError('Sluttidspunkt skal være efter starttidspunktet');
+      setEndTimeError('End time must be after the start time');
     } else {
       setEndTimeError(null);
     }
@@ -262,24 +262,24 @@ export default function CreateActivityModal({
 
   const handleCreate = useCallback(async () => {
     if (!effectiveTitle) {
-      Alert.alert('Fejl', 'Indtast venligst en titel');
+      Alert.alert('Error', 'Please enter a title');
       return;
     }
 
     if (safeCategories.length === 0) {
-      Alert.alert('Ingen kategorier', 'Opret en kategori først', [{ text: 'OK', style: 'default' }]);
+      Alert.alert('No categories', 'Create a category first', [{ text: 'OK', style: 'default' }]);
       return;
     }
 
     const effectiveCategoryId = selectedCategory || safeCategories[0]?.id || '';
 
     if (!effectiveCategoryId) {
-      Alert.alert('Fejl', 'Vælg venligst en kategori');
+      Alert.alert('Error', 'Please select a category');
       return;
     }
 
     if (endTimeError) {
-      Alert.alert('Fejl', endTimeError);
+      Alert.alert('Error', endTimeError);
       return;
     }
 
@@ -288,7 +288,7 @@ export default function CreateActivityModal({
       ['weekly', 'biweekly', 'triweekly'].includes(recurrenceType) &&
       selectedDays.length === 0
     ) {
-      Alert.alert('Fejl', 'Vælg mindst én dag');
+      Alert.alert('Error', 'Select at least one day');
       return;
     }
 
@@ -299,11 +299,11 @@ export default function CreateActivityModal({
     try {
       await onCreateActivity({
         title: effectiveTitle,
-        location: location.trim() || 'Ingen lokation',
+        location: location.trim() || 'No location',
         categoryId: effectiveCategoryId,
         date,
         time,
-        // gør sluttid valgfri – hvis tom/whitespace, send undefined
+    // Make end time optional: if blank/whitespace, send undefined.
         endTime: endTime?.trim() ? endTime.trim() : undefined,
         intensity: normalizedIntensity,
         intensityEnabled,
@@ -318,10 +318,10 @@ export default function CreateActivityModal({
       });
 
       handleClose();
-      Alert.alert('Succes', 'Aktivitet oprettet');
+      Alert.alert('Success', 'Activity created');
     } catch (error) {
       console.error('Error creating activity:', error);
-      Alert.alert('Fejl', 'Kunne ikke oprette aktivitet');
+      Alert.alert('Error', 'Could not create activity');
     } finally {
       setIsCreating(false);
     }
@@ -379,7 +379,7 @@ export default function CreateActivityModal({
   );
 
   const formatDate = useCallback((d: Date) => {
-    return d.toLocaleDateString('da-DK', {
+    return d.toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -549,7 +549,7 @@ export default function CreateActivityModal({
           <View style={[styles.modalContent, { backgroundColor: cardBgColor }]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleGroup}>
-                <Text style={[styles.modalTitle, { color: textColor }]}>Opret aktivitet</Text>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Create activity</Text>
                 {!showModeSelection ? (
                   <TouchableOpacity onPress={handleBack} activeOpacity={0.7} style={styles.backButton}>
                     <IconSymbol
@@ -559,7 +559,7 @@ export default function CreateActivityModal({
                       color={colors.primary}
                     />
                     <Text style={styles.backButtonText}>
-                      {showCategorySelection ? 'Valg' : isCategoryMode ? 'Skift kategori' : 'Valg'}
+                      {showCategorySelection ? 'Valg' : isCategoryMode ? 'Change category' : 'Valg'}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -582,7 +582,7 @@ export default function CreateActivityModal({
               {showModeSelection ? (
                 <View style={styles.creationModeContainer}>
                   <Text style={[styles.creationModeIntro, { color: textSecondaryColor }]}>
-                    Vælg hvordan du vil oprette aktiviteten.
+                    Choose how you want to create the activity.
                   </Text>
 
                   <TouchableOpacity
@@ -601,10 +601,10 @@ export default function CreateActivityModal({
                     </View>
                     <View style={styles.creationModeCardContent}>
                       <Text style={[styles.creationModeCardTitle, { color: textColor }]}>
-                        Opret med titel
+                        Create with title
                       </Text>
                       <Text style={[styles.creationModeCardDescription, { color: textSecondaryColor }]}>
-                        Samme flow som nu, hvor du selv navngiver aktiviteten og vælger kategori bagefter.
+                        Same flow as now, where you name the activity yourself and choose the category afterwards.
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -625,10 +625,10 @@ export default function CreateActivityModal({
                     </View>
                     <View style={styles.creationModeCardContent}>
                       <Text style={[styles.creationModeCardTitle, { color: textColor }]}>
-                        Opret fra kategori
+                        Create from category
                       </Text>
                       <Text style={[styles.creationModeCardDescription, { color: textSecondaryColor }]}>
-                        Vælg en eksisterende kategori. Aktiviteten får automatisk kategoriens navn og kategori.
+                        Select an existing category. The activity automatically gets the category name and category.
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -639,7 +639,7 @@ export default function CreateActivityModal({
                 <View>
                   <View style={styles.categoryHeaderRow}>
                     <Text style={[styles.categoryHeaderText, { color: textColor }]}>
-                      Vælg kategori
+                      Select category
                     </Text>
 
                     <TouchableOpacity
@@ -649,12 +649,12 @@ export default function CreateActivityModal({
                       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                       testID="activity.create.openCategoryButton"
                     >
-                      <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
+                      <Text style={styles.createCategoryTopRightText}>+ Create category</Text>
                     </TouchableOpacity>
                   </View>
 
                   <Text style={[styles.categorySelectionHelper, { color: textSecondaryColor }]}>
-                    Aktiviteten får automatisk samme navn som den valgte kategori.
+                    The activity is automatically given the same name as the selected category.
                   </Text>
 
                   {safeCategories.length === 0 ? (
@@ -667,7 +667,7 @@ export default function CreateActivityModal({
                           color={textSecondaryColor}
                         />
                         <Text style={[styles.emptyCategoryText, { color: textColor }]}>
-                          Opret en kategori først
+                          Create a category first
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -703,7 +703,7 @@ export default function CreateActivityModal({
                   {isCategoryMode ? (
                     <View style={[styles.lockedSelectionCard, { backgroundColor: bgColor }]}>
                       <Text style={[styles.lockedSelectionLabel, { color: textSecondaryColor }]}>
-                        Aktivitet oprettes fra kategori
+                        Activity will be created from category
                       </Text>
                       <View style={styles.lockedSelectionRow}>
                         <View
@@ -718,12 +718,12 @@ export default function CreateActivityModal({
                             {selectedCategoryDetails?.emoji ?? '🏷️'}
                           </Text>
                           <Text style={styles.lockedCategoryBadgeText}>
-                            {selectedCategoryDetails?.name ?? 'Kategori'}
+                            {selectedCategoryDetails?.name ?? 'Category'}
                           </Text>
                         </View>
                       </View>
                       <Text style={[styles.lockedSelectionValue, { color: textColor }]}>
-                        Titel: {effectiveTitle}
+                        Title: {effectiveTitle}
                       </Text>
                     </View>
                   ) : (
@@ -732,14 +732,14 @@ export default function CreateActivityModal({
                         style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                         value={title}
                         onChangeText={setTitle}
-                        placeholder="Titel *"
+                        placeholder="Title *"
                         placeholderTextColor={textSecondaryColor}
                         testID="activity.create.titleInput"
                       />
 
                       <View>
                         <View style={styles.categoryHeaderRow}>
-                          <Text style={[styles.categoryHeaderText, { color: textColor }]}>Kategori</Text>
+                          <Text style={[styles.categoryHeaderText, { color: textColor }]}>Category</Text>
 
                           <TouchableOpacity
                             onPress={openCategoryManagement}
@@ -748,7 +748,7 @@ export default function CreateActivityModal({
                             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                             testID="activity.create.openCategoryButton"
                           >
-                            <Text style={styles.createCategoryTopRightText}>+ Opret kategori</Text>
+                            <Text style={styles.createCategoryTopRightText}>+ Create category</Text>
                           </TouchableOpacity>
                         </View>
 
@@ -762,7 +762,7 @@ export default function CreateActivityModal({
                                 color={textSecondaryColor}
                               />
                               <Text style={[styles.emptyCategoryText, { color: textColor }]}>
-                                Opret en kategori først
+                                Create a category first
                               </Text>
                             </View>
                           </TouchableOpacity>
@@ -806,7 +806,7 @@ export default function CreateActivityModal({
                     style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                     value={location}
                     onChangeText={setLocation}
-                    placeholder="Lokation"
+                    placeholder="Location"
                     placeholderTextColor={textSecondaryColor}
                     testID="activity.create.locationInput"
                   />
@@ -853,7 +853,7 @@ export default function CreateActivityModal({
                       onPress={() => setShowDatePicker(false)}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.doneButtonText}>Færdig</Text>
+                      <Text style={styles.doneButtonText}>Done</Text>
                     </TouchableOpacity>
                   ) : null}
 
@@ -899,7 +899,7 @@ export default function CreateActivityModal({
                       activeOpacity={0.7}
                       testID="activity.create.startTimeDone"
                     >
-                      <Text style={styles.doneButtonText}>Færdig</Text>
+                      <Text style={styles.doneButtonText}>Done</Text>
                     </TouchableOpacity>
                   ) : null}
 
@@ -916,7 +916,7 @@ export default function CreateActivityModal({
                       color={textColor}
                     />
                     <Text style={[styles.pickerButtonText, { color: textColor }]}>
-                      {endTime || 'Vælg sluttidspunkt'}
+                      {endTime || 'Select end time'}
                     </Text>
                   </TouchableOpacity>
 
@@ -947,7 +947,7 @@ export default function CreateActivityModal({
                       activeOpacity={0.7}
                       testID="activity.create.endTimeDone"
                     >
-                      <Text style={styles.doneButtonText}>Færdig</Text>
+                      <Text style={styles.doneButtonText}>Done</Text>
                     </TouchableOpacity>
                   ) : null}
 
@@ -966,7 +966,7 @@ export default function CreateActivityModal({
                         color={textColor}
                       />
                       <Text style={[styles.switchLabel, { color: textColor }]}>
-                        Tilføj intensitet
+                        Add intensity
                       </Text>
                     </View>
                     <Switch
@@ -986,7 +986,7 @@ export default function CreateActivityModal({
                         size={20}
                         color={textColor}
                       />
-                      <Text style={[styles.switchLabel, { color: textColor }]}>Opret som serie</Text>
+                      <Text style={[styles.switchLabel, { color: textColor }]}>Create as series</Text>
                     </View>
                     <Switch
                       value={isRecurring}
@@ -1110,7 +1110,7 @@ export default function CreateActivityModal({
                               onPress={() => setShowEndDatePicker(false)}
                               activeOpacity={0.7}
                             >
-                              <Text style={styles.doneButtonText}>Færdig</Text>
+                              <Text style={styles.doneButtonText}>Done</Text>
                             </TouchableOpacity>
                           ) : null}
                         </>
@@ -1128,7 +1128,7 @@ export default function CreateActivityModal({
                 disabled={isCreating}
                 activeOpacity={0.7}
               >
-                <Text>Annuller</Text>
+                <Text>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1146,7 +1146,7 @@ export default function CreateActivityModal({
                 {isCreating ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={{ color: '#fff' }}>Opret</Text>
+                  <Text style={{ color: '#fff' }}>Create</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1175,8 +1175,8 @@ export default function CreateActivityModal({
           >
             <Text style={[styles.intensityScopeModalTitle, { color: textColor }]}>
               {intensityScopeModal.nextEnabled
-                ? 'Vil du tilføje intensitet til alle aktiviteter med samme kategori?'
-                : 'Vil du fjerne intensitet fra alle aktiviteter med samme kategori?'}
+                ? 'Want to add intensity to all activities with the same category?'
+                : 'Do you want to remove intensity from all activities with the same category?'}
             </Text>
 
             <TouchableOpacity
@@ -1186,7 +1186,7 @@ export default function CreateActivityModal({
               testID="activity.create.intensityScopeModal.all"
             >
               <Text style={styles.intensityScopeModalPrimaryText}>
-                {intensityScopeModal.nextEnabled ? 'Ja, tilføj til alle' : 'Ja, fjern fra alle'}
+                {intensityScopeModal.nextEnabled ? 'Yes, add to all' : 'Yes, remove from all'}
               </Text>
             </TouchableOpacity>
 
@@ -1205,7 +1205,7 @@ export default function CreateActivityModal({
               activeOpacity={0.85}
               testID="activity.create.intensityScopeModal.cancel"
             >
-              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Annuller</Text>
+              <Text style={[styles.intensityScopeModalCancelText, { color: textSecondaryColor }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>

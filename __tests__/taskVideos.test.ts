@@ -1,7 +1,9 @@
 import {
   buildTaskVideoPayload,
+  getTaskMediaType,
   getTaskVideoUrls,
   mergeTaskVideoUrls,
+  normalizeTaskVideoUrls,
 } from '@/utils/taskVideos';
 
 describe('taskVideos', () => {
@@ -23,7 +25,7 @@ describe('taskVideos', () => {
       getTaskVideoUrls({
         video_urls: ['focus/one.mp4', 'focus/two.mp4'],
         video_url: 'focus/one.mp4',
-        description: 'Se også https://www.instagram.com/reel/C7N2KQ2uV9x/',
+        description: 'See also https://www.instagram.com/reel/C7N2KQ2uV9x/',
       })
     ).toEqual(['focus/one.mp4', 'focus/two.mp4', 'https://www.instagram.com/reel/C7N2KQ2uV9x/']);
   });
@@ -33,5 +35,30 @@ describe('taskVideos', () => {
       'focus/one.mp4',
       'focus/two.mp4',
     ]);
+  });
+
+  it('keeps videos, images, and PDFs in the task media payload', () => {
+    const videoUrl = 'https://www.youtube.com/watch?v=abc123';
+    const imageUrl = 'https://example.com/drill-photo.JPG?download=1';
+    const pdfUrl = 'https://example.com/session-plan.pdf';
+
+    expect(normalizeTaskVideoUrls([videoUrl, imageUrl, pdfUrl, imageUrl])).toEqual([
+      videoUrl,
+      imageUrl,
+      pdfUrl,
+    ]);
+
+    expect(buildTaskVideoPayload([imageUrl, pdfUrl])).toEqual({
+      videoUrl: imageUrl,
+      videoUrls: [imageUrl, pdfUrl],
+      video_url: imageUrl,
+      video_urls: [imageUrl, pdfUrl],
+    });
+  });
+
+  it('detects task media types and rejects loose file paths', () => {
+    expect(getTaskMediaType('https://example.com/file.png')).toBe('image');
+    expect(getTaskMediaType('https://example.com/file.pdf')).toBe('pdf');
+    expect(getTaskMediaType('file.pdf')).toBe('unknown');
   });
 });

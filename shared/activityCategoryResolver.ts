@@ -38,48 +38,67 @@ export interface CategoryKeywords {
 
 const DEFAULT_CATEGORY_KEYWORDS: CategoryKeywords[] = [
   {
-    categoryName: 'Kamp',
+    categoryName: 'Match',
     keywords: ['kamp', 'match', 'game', 'turnering', 'tournament', 'finale', 'semifinale', 'kvartfinale', 'vs', '-'],
     priority: 10,
   },
   {
-    categoryName: 'Træning',
+    categoryName: 'Training',
     keywords: ['træning', 'training', 'practice', 'øvelse', 'drill', 'session'],
     priority: 9,
   },
   {
-    categoryName: 'Fysisk træning',
+    categoryName: 'Physical training',
     keywords: ['fysisk', 'fitness', 'kondition', 'styrke', 'cardio', 'løb', 'gym', 'vægt'],
     priority: 8,
   },
   {
-    categoryName: 'Taktik',
+    categoryName: 'Tactics',
     keywords: ['taktik', 'tactics', 'strategi', 'strategy', 'analyse', 'video', 'gennemgang', 'videomøde', 'videomode'],
     priority: 8,
   },
   {
-    categoryName: 'Møde',
+    categoryName: 'Meeting',
     keywords: ['møde', 'mode', 'meeting', 'samtale', 'briefing', 'debriefing', 'evaluering', 'forældremøde', 'spillermøde', 'videomøde'],
     priority: 7,
   },
   {
-    categoryName: 'Holdsamling',
+    categoryName: 'Team gathering',
     keywords: ['holdsamling', 'team building', 'social', 'sammenkomst', 'event', 'fest'],
     priority: 7,
   },
   {
-    categoryName: 'Lægebesøg',
+    categoryName: 'Medical appointment',
     keywords: ['læge', 'doctor', 'fysioterapi', 'physio', 'behandling', 'skade', 'injury', 'sundhed'],
     priority: 6,
   },
   {
-    categoryName: 'Rejse',
+    categoryName: 'Travel',
     keywords: ['rejse', 'travel', 'transport', 'bus', 'fly', 'flight', 'afgang', 'departure'],
     priority: 6,
   },
 ];
 
-const SOURCE_SUFFIX_PATTERN = /\s*\((?:klub|fra træner)\)\s*$/i;
+const SOURCE_SUFFIX_PATTERN = /\s*\((?:club|from coach|klub|fra træner)\)\s*$/i;
+
+const CATEGORY_NAME_ALIASES: Record<string, string[]> = {
+  kamp: ['match'],
+  match: ['kamp'],
+  'træning': ['training'],
+  training: ['træning'],
+  'fysisk træning': ['physical training'],
+  'physical training': ['fysisk træning'],
+  taktik: ['tactics'],
+  tactics: ['taktik'],
+  'møde': ['meeting'],
+  meeting: ['møde'],
+  holdsamling: ['team gathering'],
+  'team gathering': ['holdsamling'],
+  'lægebesøg': ['medical appointment'],
+  'medical appointment': ['lægebesøg'],
+  rejse: ['travel'],
+  travel: ['rejse'],
+};
 
 export function stripCategorySourceSuffix(name: string | null | undefined): string {
   return (name ?? '').replace(SOURCE_SUFFIX_PATTERN, '').trim();
@@ -97,6 +116,12 @@ function getCategoryNameAliases(category: ActivityCategoryCandidate): string[] {
   if (normalizedBaseName) {
     aliases.add(normalizedBaseName);
   }
+
+  [...aliases].forEach((alias) => {
+    CATEGORY_NAME_ALIASES[alias]?.forEach((translatedAlias) => {
+      aliases.add(normalizeString(translatedAlias));
+    });
+  });
 
   return Array.from(aliases);
 }

@@ -19,7 +19,7 @@ export default function NotFound() {
         onPress={() => router.replace('/(tabs)')}
         style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#4CAF50', borderRadius: 10 }}
       >
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Gå til forsiden</Text>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>Go to the front page</Text>
       </TouchableOpacity>
     </View>
   );

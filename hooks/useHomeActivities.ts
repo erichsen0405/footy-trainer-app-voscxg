@@ -200,14 +200,14 @@ const normalizeTitle = (value?: string | null): string => {
 const stripLeadingFeedbackPrefix = (title: string): string => {
   if (typeof title !== 'string') return title;
   const trimmed = title.trim();
-  const stripped = trimmed.replace(/^feedback\s+p[\u00e5a]\s*/i, '');
+  const stripped = trimmed.replace(/^feedback\s+(?:on|p[\u00e5a])\s*[:\s-]*/i, '');
   return stripped.length ? stripped : title;
 };
 
 const isFeedbackTitle = (title?: string | null): boolean => {
   if (typeof title !== 'string') return false;
   const normalized = normalizeTitle(title);
-  return normalized.startsWith('feedback pa');
+  return normalized.startsWith('feedback pa') || normalized.startsWith('feedback on');
 };
 
 const getMarkerTemplateId = (task: ActivityTask | null | undefined): string | null => {
