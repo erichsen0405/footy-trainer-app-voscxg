@@ -15,6 +15,44 @@ export type PerformanceHistoryWeek = {
   totalMinutes: number;
 };
 
+export type PerformanceHistoryOptions = {
+  categoryIds?: readonly string[] | Set<string> | null;
+};
+
+function normalizeCategoryId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function resolvePerformanceHistoryActivityCategoryId(activity: any): string | null {
+  return (
+    normalizeCategoryId(activity?.category_id) ??
+    normalizeCategoryId(activity?.categoryId) ??
+    normalizeCategoryId(activity?.category?.id) ??
+    normalizeCategoryId(activity?.activity_category?.id) ??
+    normalizeCategoryId(activity?.activity_categories?.id) ??
+    null
+  );
+}
+
+function normalizeCategoryFilterSet(categoryIds: PerformanceHistoryOptions['categoryIds']): Set<string> | null {
+  if (!categoryIds) return null;
+
+  const values = categoryIds instanceof Set ? Array.from(categoryIds) : Array.from(categoryIds);
+  const normalized = values
+    .map(normalizeCategoryId)
+    .filter((value): value is string => value !== null);
+
+  return normalized.length > 0 ? new Set(normalized) : null;
+}
+
+function shouldIncludeActivityForCategoryFilter(activity: any, categoryFilter: Set<string> | null): boolean {
+  if (!categoryFilter) return true;
+  const categoryId = resolvePerformanceHistoryActivityCategoryId(activity);
+  return categoryId !== null && categoryFilter.has(categoryId);
+}
+
 export function resolveActivityDateTime(activity: any): Date | null {
   if (!activity) return null;
 
@@ -50,13 +88,17 @@ function getActivityTasks(activity: any): any[] {
 export function buildPerformanceHistoryWeeks(
   activities: any[] | null | undefined,
   now: Date = new Date(),
+  options: PerformanceHistoryOptions = {},
 ): PerformanceHistoryWeek[] {
   const safeActivities = Array.isArray(activities) ? activities : [];
   const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const categoryFilter = normalizeCategoryFilterSet(options.categoryIds);
 
   const weeksByKey = new Map<string, PerformanceHistoryWeek>();
 
   safeActivities.forEach((activity) => {
+    if (!shouldIncludeActivityForCategoryFilter(activity, categoryFilter)) return;
+
     const resolvedDateTime = resolveActivityDateTime(activity);
     if (!resolvedDateTime) return;
 

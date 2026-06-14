@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import PerformanceScreen from '../app/(tabs)/performance';
 
@@ -95,9 +96,22 @@ jest.mock('@/components/WeeklySummaryCard', () => {
   const React = jest.requireActual('react');
   const { Pressable, Text } = jest.requireActual('react-native');
   return {
-    WeeklySummaryCard: ({ onPress }: { onPress: () => void }) => (
+    WeeklySummaryCard: ({
+      onPress,
+      activityCount,
+      totalTasks,
+      totalMinutes,
+    }: {
+      onPress: () => void;
+      activityCount: number;
+      totalTasks: number;
+      totalMinutes: number;
+    }) => (
       <Pressable testID="mock.weeklySummaryCard" onPress={onPress}>
         <Text>mock.weeklySummaryCard</Text>
+        <Text testID="mock.weeklySummaryCard.activityCount">{activityCount}</Text>
+        <Text testID="mock.weeklySummaryCard.totalTasks">{totalTasks}</Text>
+        <Text testID="mock.weeklySummaryCard.totalMinutes">{totalMinutes}</Text>
       </Pressable>
     ),
   };
@@ -109,8 +123,9 @@ describe('PerformanceScreen', () => {
     jest.setSystemTime(new Date('2026-02-28T10:00:00.000Z'));
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await AsyncStorage.clear();
     mockAdminState.adminMode = 'self';
     mockAdminState.adminTargetId = null;
     mockAdminState.adminTargetType = null;
@@ -359,6 +374,104 @@ describe('PerformanceScreen', () => {
 
     expect(getByText('Past activity title')).toBeTruthy();
     expect(queryByText('Current week title')).toBeNull();
+  });
+
+  it('filters historik weekly totals by saved category filters', async () => {
+    mockUseFootball.mockReturnValue({
+      trophies: [],
+      hasPerformanceDataLoaded: true,
+      ensurePerformanceDataLoaded: jest.fn(),
+      currentWeekStats: {
+        percentage: 60,
+        completedTasks: 3,
+        totalTasks: 5,
+        completedTasksForWeek: 5,
+        totalTasksForWeek: 8,
+        weekActivities: [],
+      },
+      externalCalendars: [],
+      fetchExternalCalendarEvents: jest.fn(),
+      categories: [
+        { id: 'cat-technical', name: 'Technical', color: '#4CAF50', emoji: 'T' },
+        { id: 'cat-strength', name: 'Strength', color: '#2196F3', emoji: 'S' },
+        { id: 'cat-recovery', name: 'Recovery', color: '#FF9800', emoji: 'R' },
+      ],
+    });
+    mockUseHomeActivities.mockReturnValue({
+      loading: false,
+      hasLoadedFullWindow: true,
+      loadFullWindow: jest.fn().mockResolvedValue(true),
+      refresh: jest.fn(),
+      activities: [
+        {
+          id: 'technical-activity',
+          title: 'Technical history',
+          activity_date: '2026-02-12',
+          activity_time: '10:00:00',
+          category_id: 'cat-technical',
+          category: { id: 'cat-technical', name: 'Technical', color: '#4CAF50', emoji: 'T' },
+          duration_minutes: 30,
+          tasks: [{ id: 'task-technical', completed: true }],
+        },
+        {
+          id: 'strength-activity',
+          title: 'Strength history',
+          activity_date: '2026-02-13',
+          activity_time: '10:00:00',
+          category_id: 'cat-strength',
+          category: { id: 'cat-strength', name: 'Strength', color: '#2196F3', emoji: 'S' },
+          duration_minutes: 45,
+          tasks: [{ id: 'task-strength', completed: true }],
+        },
+        {
+          id: 'recovery-activity',
+          title: 'Recovery history',
+          activity_date: '2026-02-14',
+          activity_time: '10:00:00',
+          category_id: 'cat-recovery',
+          category: { id: 'cat-recovery', name: 'Recovery', color: '#FF9800', emoji: 'R' },
+          duration_minutes: 60,
+          tasks: [{ id: 'task-recovery', completed: true }],
+        },
+      ],
+    });
+
+    const screen = render(<PerformanceScreen />);
+
+    fireEvent.press(screen.getByTestId('performance.history.toggle'));
+    expect(screen.getByTestId('mock.weeklySummaryCard.activityCount').props.children).toBe(3);
+    expect(screen.getByTestId('mock.weeklySummaryCard.totalTasks').props.children).toBe(3);
+    expect(screen.getByTestId('mock.weeklySummaryCard.totalMinutes').props.children).toBe(135);
+
+    fireEvent.press(screen.getByTestId('performance.historyFilter.open'));
+    fireEvent.press(screen.getByTestId('performance.historyFilter.category.cat-technical'));
+    fireEvent.press(screen.getByTestId('performance.historyFilter.category.cat-strength'));
+    fireEvent.changeText(screen.getByTestId('performance.historyFilter.nameInput'), 'Main work');
+    fireEvent.press(screen.getByTestId('performance.historyFilter.save'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock.weeklySummaryCard.activityCount').props.children).toBe(2);
+      expect(screen.getByTestId('mock.weeklySummaryCard.totalTasks').props.children).toBe(2);
+      expect(screen.getByTestId('mock.weeklySummaryCard.totalMinutes').props.children).toBe(75);
+    });
+
+    fireEvent.press(screen.getByTestId('mock.weeklySummaryCard'));
+    expect(screen.getByText('Technical history')).toBeTruthy();
+    expect(screen.getByText('Strength history')).toBeTruthy();
+    expect(screen.queryByText('Recovery history')).toBeNull();
+
+    await expect(AsyncStorage.getItem('@performance_history_category_filters_v1')).resolves.toContain('Main work');
+
+    fireEvent.press(screen.getByTestId('performance.historyFilter.clear'));
+    expect(screen.getByTestId('mock.weeklySummaryCard.activityCount').props.children).toBe(3);
+
+    fireEvent.press(screen.getByTestId('performance.historyFilter.open'));
+    fireEvent.press(screen.getByText('Main work'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('performance.historyFilter.activeLabel').props.children).toBe('Main work');
+      expect(screen.getByTestId('mock.weeklySummaryCard.activityCount').props.children).toBe(2);
+    });
   });
 
   it('uses trophies from football context instead of deriving them from history weeks', () => {
