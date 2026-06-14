@@ -40,6 +40,7 @@ interface ActivityTask {
   video_urls?: string[] | null;
   feedback_template_id?: string | null;
   task_template_id?: string | null;
+  created_at?: string | null;
 }
 
 interface ActivityWithCategory {
@@ -252,9 +253,40 @@ const resolveTaskTemplateId = (task: any): string | null => {
   return normalizeId(marker);
 };
 
-const computeOrphanFeedbackTaskIds = (tasks: ActivityTask[]): string[] => {
+const resolveActivityCutoffMs = (
+  activityDate: string | Date | null | undefined,
+  activityTime?: string | null,
+): number | null => {
+  if (!activityDate) return null;
+  const isoDate =
+    activityDate instanceof Date
+      ? Number.isFinite(activityDate.getTime())
+        ? activityDate.toISOString().slice(0, 10)
+        : null
+      : String(activityDate).slice(0, 10);
+  if (!isoDate || isoDate.length !== 10) return null;
+
+  const rawTime = typeof activityTime === 'string' ? activityTime.trim() : '';
+  const hhmm = rawTime.length >= 5 ? rawTime.slice(0, 5) : '00:00';
+  const parsed = Date.parse(`${isoDate}T${hhmm}:00`);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const resolveTaskCreatedAtMs = (task: ActivityTask | null | undefined): number | null => {
+  const raw = task?.created_at;
+  if (!raw) return null;
+  const parsed = Date.parse(String(raw));
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const computeOrphanFeedbackTaskIds = (
+  tasks: ActivityTask[],
+  activityDate: string | Date | null | undefined,
+  activityTime?: string | null,
+): string[] => {
   const parentsByTemplate = new Set<string>();
   const parentsByTitle = new Set<string>();
+  const activityCutoffMs = resolveActivityCutoffMs(activityDate, activityTime);
 
   for (const task of Array.isArray(tasks) ? tasks : []) {
     if (isFeedbackTask(task)) continue;
@@ -268,6 +300,7 @@ const computeOrphanFeedbackTaskIds = (tasks: ActivityTask[]): string[] => {
 
   for (const task of Array.isArray(tasks) ? tasks : []) {
     if (!isFeedbackTask(task)) continue;
+    if (task.completed === true) continue;
 
     const linkedTemplateId = normalizeId(task.feedback_template_id) ?? getMarkerTemplateId(task);
     const linkedTitle = normalizeTitle(stripLeadingFeedbackPrefix(task.title ?? ''));
@@ -281,7 +314,13 @@ const computeOrphanFeedbackTaskIds = (tasks: ActivityTask[]): string[] => {
       continue;
     }
 
-    if (isOrphan) {
+    const taskCreatedAtMs = resolveTaskCreatedAtMs(task);
+    const isLateOrphan =
+      activityCutoffMs !== null &&
+      taskCreatedAtMs !== null &&
+      taskCreatedAtMs > activityCutoffMs;
+
+    if (isOrphan && isLateOrphan) {
       orphanIds.push(String(task.id));
     }
   }
@@ -820,7 +859,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               task_duration_enabled,
               task_duration_minutes,
               feedback_template_id,
-              task_template_id
+              task_template_id,
+              created_at
             )
           `;
       const internalSelectLegacy = `
@@ -848,7 +888,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               completed,
               reminder_minutes,
               feedback_template_id,
-              task_template_id
+              task_template_id,
+              created_at
             )
           `;
 
@@ -1024,6 +1065,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           task_duration_minutes: coerceReminderMinutes(task.task_duration_minutes),
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          created_at: task.created_at ?? null,
         }));
         
         return {
@@ -1340,11 +1382,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         : [];
 
       const activityTasksSelectWithLocalOptions =
-        'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, video_urls, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+        'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, created_at, video_urls, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
       const activityTasksSelectLegacy =
-        'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+        'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, created_at, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
       const activityTasksSelectNoVideo =
-        'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+        'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, created_at, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
 
       const fetchActivityTasksWithFallback = async (activityIds: string[]) => {
         if (!activityIds.length) return { data: [], error: null };
@@ -1465,6 +1507,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          created_at: task.created_at ?? null,
         });
         internalTaskGroups.set(key, list);
       });
@@ -1504,6 +1547,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          created_at: task.created_at ?? null,
         });
         externalEventTaskGroups.set(key, list);
       });
@@ -1543,6 +1587,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          created_at: task.created_at ?? null,
         });
         externalActivityTaskGroups.set(key, list);
       });
@@ -1570,6 +1615,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       const finalActivities = [...internalActivities, ...externalActivities].map(activity => {
         const key = String(activity.id);
         const rowKey = String((activity as any).external_event_row_id ?? '');
+        const activityTaskCutoffTime =
+          activity.activity_end_time ?? activity.end_time ?? activity.activity_time;
         let tasks: ActivityTask[] = [];
         if (activity.is_external) {
           tasks = dedupeTasks([
@@ -1578,7 +1625,11 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             activity.tasks ?? [],
           ]);
 
-          const orphanIds = computeOrphanFeedbackTaskIds(tasks);
+          const orphanIds = computeOrphanFeedbackTaskIds(
+            tasks,
+            activity.activity_date,
+            activityTaskCutoffTime,
+          );
           if (orphanIds.length) {
             orphanCleanupResults.push({
               activityId: String(activity.id),
@@ -1650,7 +1701,7 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         tasks = filterVisibleTasksForActivity(
           tasks,
           activity.activity_date,
-          activity.activity_time,
+          activityTaskCutoffTime,
           templateArchivedAtById,
         );
 

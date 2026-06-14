@@ -23,12 +23,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { ProgressionSection } from '@/components/ProgressionSection';
 import { WeeklySummaryCard } from '@/components/WeeklySummaryCard';
 import { useAdmin } from '@/contexts/AdminContext';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useFootball } from '@/contexts/FootballContext';
 import { useTeamPlayer, type Player } from '@/contexts/TeamPlayerContext';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useUserRole } from '@/hooks/useUserRole';
+import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import * as CommonStyles from '@/styles/commonStyles';
-import type { ActivityCategory } from '@/types';
+import type { ActivityCategory, TaskTemplateSelfFeedback } from '@/types';
 import {
   buildPerformanceHistoryWeeks,
   resolvePerformanceHistoryActivityCategoryId,
@@ -70,6 +72,12 @@ function sanitizeTestIdSegment(value: string): string {
   return String(value).replace(/[^A-Za-z0-9_-]/g, '_');
 }
 
+function normalizeId(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function normalizeIdList(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   return Array.from(
@@ -79,6 +87,47 @@ function normalizeIdList(values: unknown): string[] {
         .filter((value) => value.length > 0)
     )
   );
+}
+
+function isUuidString(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isExternalActivity(activity: any): boolean {
+  return Boolean(activity?.is_external ?? activity?.isExternal);
+}
+
+function getFeedbackActivityIdCandidatesForActivity(activity: any): string[] {
+  if (!activity) return [];
+  const candidates: string[] = [];
+  const push = (value: unknown) => {
+    const normalized = normalizeId(value);
+    if (!normalized || !isUuidString(normalized)) return;
+    if (!candidates.includes(normalized)) candidates.push(normalized);
+  };
+
+  if (isExternalActivity(activity)) {
+    push(activity?.id ?? activity?.activity_id);
+    push(activity?.externalEventRowId ?? activity?.external_event_row_id);
+    push(activity?.externalEventId ?? activity?.external_event_id);
+    return candidates;
+  }
+
+  push(activity?.activity_id ?? activity?.activityId);
+  push(activity?.id);
+  return candidates;
+}
+
+function safeDateMs(value: unknown): number {
+  const ms = new Date(String(value ?? '')).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function isFeedbackAnswered(feedback?: TaskTemplateSelfFeedback): boolean {
+  if (!feedback) return false;
+  const hasScore = typeof feedback.rating === 'number';
+  const hasNote = (feedback.note?.trim() ?? '').length > 0;
+  return hasScore || hasNote;
 }
 
 function areIdListsEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -148,6 +197,7 @@ function sanitizeSavedHistoryFilters(raw: unknown): SavedHistoryCategoryFilter[]
 
 export default function PerformanceScreen() {
   const { adminMode, adminTargetId, adminTargetType, startAdminPlayer } = useAdmin();
+  const { user } = useAuthSession();
   const {
     trophies,
     externalCalendars,
@@ -189,6 +239,7 @@ export default function PerformanceScreen() {
   const [activeHistoryFilterName, setActiveHistoryFilterName] = useState<string | null>(null);
   const [historyFilterNameInput, setHistoryFilterNameInput] = useState('');
   const [historyFilterSaveError, setHistoryFilterSaveError] = useState<string | null>(null);
+  const [historySelfFeedbackRows, setHistorySelfFeedbackRows] = useState<TaskTemplateSelfFeedback[]>([]);
   const isTrainerProfile = userRole === 'trainer';
 
   const palette = useMemo(() => {
@@ -223,6 +274,7 @@ export default function PerformanceScreen() {
     return players.find((player) => player.id === adminTargetId) ?? null;
   }, [adminMode, adminTargetId, adminTargetType, isTrainerProfile, players]);
   const selectedPerformancePlayerId = selectedPerformancePlayer?.id ?? null;
+  const historyFeedbackUserId = selectedPerformancePlayerId ?? user?.id ?? null;
   const isPlayerRosterLoading = rosterLoading || isBootstrappingRoster;
   const historyCategoryOptions = useMemo(
     () => buildHistoryCategoryOptions(categories, activities),
@@ -480,6 +532,158 @@ export default function PerformanceScreen() {
     () => buildPerformanceHistoryWeeks(activities, new Date(), { categoryIds: selectedHistoryCategoryIds }),
     [activities, selectedHistoryCategoryIds],
   );
+
+  const historyFeedbackActivityIds = useMemo(() => {
+    const ids = new Set<string>();
+    historyWeeks.forEach((week) => {
+      week.activities.forEach((activity) => {
+        getFeedbackActivityIdCandidatesForActivity(activity).forEach((candidate) => ids.add(candidate));
+      });
+    });
+    return Array.from(ids);
+  }, [historyWeeks]);
+
+  const historyFeedbackActivityIdsKey = useMemo(
+    () => historyFeedbackActivityIds.join('|'),
+    [historyFeedbackActivityIds],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!historyFeedbackUserId || !historyFeedbackActivityIds.length) {
+      setHistorySelfFeedbackRows([]);
+      return;
+    }
+
+    fetchSelfFeedbackForActivities(historyFeedbackUserId, historyFeedbackActivityIds)
+      .then((rows) => {
+        if (cancelled) return;
+        setHistorySelfFeedbackRows(Array.isArray(rows) ? rows : []);
+      })
+      .catch((error) => {
+        if (__DEV__) console.log('[Performance] history self feedback fetch failed', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [historyFeedbackActivityIds, historyFeedbackActivityIdsKey, historyFeedbackUserId]);
+
+  const historyFeedbackCompletionByActivityTaskId = useMemo(() => {
+    const latestByKey: Record<string, TaskTemplateSelfFeedback> = {};
+    for (const row of historySelfFeedbackRows) {
+      const activityId = normalizeId((row as any)?.activityId ?? (row as any)?.activity_id);
+      const taskInstanceId = normalizeId(
+        (row as any)?.taskInstanceId ?? (row as any)?.task_instance_id,
+      );
+      if (!activityId || !taskInstanceId) continue;
+
+      const key = `${activityId}::${taskInstanceId}`;
+      if (!latestByKey[key] || safeDateMs(row.createdAt) > safeDateMs(latestByKey[key].createdAt)) {
+        latestByKey[key] = row;
+      }
+    }
+
+    const completionByActivity: Record<string, Record<string, boolean>> = {};
+    Object.entries(latestByKey).forEach(([key, row]) => {
+      const [activityId, taskInstanceId] = key.split('::');
+      if (!activityId || !taskInstanceId) return;
+      completionByActivity[activityId] = completionByActivity[activityId] ?? {};
+      completionByActivity[activityId][taskInstanceId] = isFeedbackAnswered(row);
+    });
+
+    return completionByActivity;
+  }, [historySelfFeedbackRows]);
+
+  const historyFeedbackCompletionByActivityId = useMemo(() => {
+    const latestByKey: Record<string, TaskTemplateSelfFeedback> = {};
+    for (const row of historySelfFeedbackRows) {
+      const activityId = normalizeId((row as any)?.activityId ?? (row as any)?.activity_id);
+      const templateId = normalizeId((row as any)?.taskTemplateId ?? (row as any)?.task_template_id);
+      if (!activityId || !templateId) continue;
+
+      const key = `${activityId}::${templateId}`;
+      if (!latestByKey[key] || safeDateMs(row.createdAt) > safeDateMs(latestByKey[key].createdAt)) {
+        latestByKey[key] = row;
+      }
+    }
+
+    const completionByActivity: Record<string, Record<string, boolean>> = {};
+    Object.entries(latestByKey).forEach(([key, row]) => {
+      const [activityId, templateId] = key.split('::');
+      if (!activityId || !templateId) return;
+      completionByActivity[activityId] = completionByActivity[activityId] ?? {};
+      completionByActivity[activityId][templateId] = isFeedbackAnswered(row);
+    });
+
+    return completionByActivity;
+  }, [historySelfFeedbackRows]);
+
+  const historyFeedbackDoneByActivityId = useMemo(() => {
+    const doneMap: Record<string, boolean> = {};
+    Object.entries(historyFeedbackCompletionByActivityId).forEach(([activityId, templateMap]) => {
+      if (Object.values(templateMap).some(Boolean)) {
+        doneMap[activityId] = true;
+      }
+    });
+    Object.entries(historyFeedbackCompletionByActivityTaskId).forEach(([activityId, taskMap]) => {
+      if (Object.values(taskMap).some(Boolean)) {
+        doneMap[activityId] = true;
+      }
+    });
+    return doneMap;
+  }, [historyFeedbackCompletionByActivityId, historyFeedbackCompletionByActivityTaskId]);
+
+  const getHistoryActivityCardFeedbackProps = useCallback((activity: any) => {
+    const feedbackActivityCandidates = getFeedbackActivityIdCandidatesForActivity(activity);
+    const feedbackActivityId = feedbackActivityCandidates[0] ?? null;
+
+    const feedbackCompletionByTemplateId: Record<string, boolean> = {};
+    for (const candidateId of feedbackActivityCandidates) {
+      const perTemplate = historyFeedbackCompletionByActivityId[candidateId];
+      if (!perTemplate) continue;
+      for (const [templateId, done] of Object.entries(perTemplate)) {
+        const normalized = normalizeId(templateId);
+        if (!normalized) continue;
+        if (done) {
+          feedbackCompletionByTemplateId[normalized] = true;
+        } else if (feedbackCompletionByTemplateId[normalized] === undefined) {
+          feedbackCompletionByTemplateId[normalized] = false;
+        }
+      }
+    }
+
+    const feedbackCompletionByTaskId: Record<string, boolean> = {};
+    for (const candidateId of feedbackActivityCandidates) {
+      const perTask = historyFeedbackCompletionByActivityTaskId[candidateId];
+      if (!perTask) continue;
+      for (const [taskId, done] of Object.entries(perTask)) {
+        const normalized = normalizeId(taskId);
+        if (!normalized) continue;
+        if (done) {
+          feedbackCompletionByTaskId[normalized] = true;
+        } else if (feedbackCompletionByTaskId[normalized] === undefined) {
+          feedbackCompletionByTaskId[normalized] = false;
+        }
+      }
+    }
+
+    const feedbackDone = feedbackActivityCandidates.some(
+      (candidateId) => historyFeedbackDoneByActivityId[candidateId] === true,
+    );
+
+    return {
+      feedbackActivityId,
+      feedbackCompletionByTaskId,
+      feedbackCompletionByTemplateId,
+      feedbackDone,
+    };
+  }, [
+    historyFeedbackCompletionByActivityId,
+    historyFeedbackCompletionByActivityTaskId,
+    historyFeedbackDoneByActivityId,
+  ]);
 
   const historyListData = useMemo(() => {
     const items: HistoryListItem[] = [];
@@ -1050,12 +1254,15 @@ export default function PerformanceScreen() {
                   );
                 }
 
+                const feedbackProps = getHistoryActivityCardFeedbackProps(item.activity);
+
                 return (
                   <View style={styles.activityWrapper}>
                     <ActivityCard
                       activity={item.activity}
                       resolvedDate={item.activity.__resolvedDateTime}
                       showTasks
+                      {...feedbackProps}
                     />
                   </View>
                 );

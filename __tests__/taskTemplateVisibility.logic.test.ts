@@ -54,6 +54,33 @@ describe('task template archive visibility', () => {
     ).toBe(true);
   });
 
+  it('hides incomplete template tasks created after the activity cutoff', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Ny template opgave',
+      task_template_id: 'template-1',
+      created_at: '2026-02-20T16:15:00.000Z',
+    };
+
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '16:00:00', {}),
+    ).toBe(false);
+  });
+
+  it('keeps completed historical tasks even when they were backfilled later', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Udfyldt historik opgave',
+      task_template_id: 'template-1',
+      created_at: '2026-02-20T16:15:00.000Z',
+      completed: true,
+    };
+
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '16:00:00', {}),
+    ).toBe(true);
+  });
+
   it('resolves template id from feedback marker and filters without deleting rows', () => {
     const archivedTemplateId = '11111111-1111-1111-1111-111111111111';
     const tasks = [

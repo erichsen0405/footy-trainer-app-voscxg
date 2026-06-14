@@ -9,6 +9,8 @@ export interface ArchiveVisibilityTask {
   taskTemplateId?: string | null;
   feedback_template_id?: string | null;
   feedbackTemplateId?: string | null;
+  created_at?: string | null;
+  createdAt?: string | null;
 }
 
 export type TemplateArchivedAtById = Record<string, string | null | undefined>;
@@ -55,6 +57,13 @@ const resolveTemplateId = (task: ArchiveVisibilityTask | null | undefined): stri
   return normalizeId(markerTemplate);
 };
 
+const resolveTaskCreatedAtMs = (task: ArchiveVisibilityTask | null | undefined): number | null => {
+  const createdAt = task?.createdAt ?? task?.created_at;
+  if (!createdAt) return null;
+  const ms = Date.parse(String(createdAt));
+  return Number.isFinite(ms) ? ms : null;
+};
+
 export const isTaskVisibleForActivity = (
   task: ArchiveVisibilityTask,
   activityDate: string | Date | null | undefined,
@@ -67,10 +76,15 @@ export const isTaskVisibleForActivity = (
   const templateId = resolveTemplateId(task);
   if (!templateId) return true;
 
+  const activityMs = toActivityDateTimeMs(activityDate, activityTime);
+  const taskCreatedAtMs = resolveTaskCreatedAtMs(task);
+  if (activityMs !== null && taskCreatedAtMs !== null && taskCreatedAtMs > activityMs) {
+    return false;
+  }
+
   const archivedAt = archivedAtByTemplateId[templateId];
   if (!archivedAt) return true;
 
-  const activityMs = toActivityDateTimeMs(activityDate, activityTime);
   const archivedAtMs = Date.parse(String(archivedAt));
 
   if (!Number.isFinite(archivedAtMs) || activityMs === null) {

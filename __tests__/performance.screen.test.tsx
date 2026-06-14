@@ -9,11 +9,16 @@ const mockUseHomeActivities = jest.fn();
 const mockStartAdminPlayer = jest.fn();
 const mockSetSelectedContext = jest.fn();
 const mockEnsureRosterLoaded = jest.fn();
+const mockFetchSelfFeedbackForActivities = jest.fn();
+const mockActivityCard = jest.fn();
 
 const mockAdminState = {
   adminMode: 'self' as 'self' | 'player' | 'team',
   adminTargetId: null as string | null,
   adminTargetType: null as 'player' | 'team' | null,
+};
+const mockAuthSessionState = {
+  user: { id: 'self-user-id' } as { id: string } | null,
 };
 const mockTeamPlayerState = {
   players: [] as { id: string; full_name: string; email: string; phone_number?: string }[],
@@ -27,6 +32,16 @@ jest.mock('@/contexts/AdminContext', () => ({
   useAdmin: () => ({
     ...mockAdminState,
     startAdminPlayer: mockStartAdminPlayer,
+  }),
+}));
+
+jest.mock('@/contexts/AuthSessionContext', () => ({
+  useAuthSession: () => ({
+    user: mockAuthSessionState.user,
+    session: mockAuthSessionState.user ? { user: mockAuthSessionState.user } : null,
+    authReady: true,
+    isAuthenticated: Boolean(mockAuthSessionState.user),
+    refreshSession: jest.fn(),
   }),
 }));
 
@@ -88,9 +103,16 @@ jest.mock('@/components/ActivityCard', () => {
   const { Text } = jest.requireActual('react-native');
   return {
     __esModule: true,
-    default: ({ activity }: { activity: any }) => <Text>{activity?.title ?? 'untitled'}</Text>,
+    default: (props: { activity: any }) => {
+      mockActivityCard(props);
+      return <Text>{props.activity?.title ?? 'untitled'}</Text>;
+    },
   };
 });
+
+jest.mock('@/services/feedbackService', () => ({
+  fetchSelfFeedbackForActivities: (...args: unknown[]) => mockFetchSelfFeedbackForActivities(...args),
+}));
 
 jest.mock('@/components/WeeklySummaryCard', () => {
   const React = jest.requireActual('react');
@@ -129,11 +151,13 @@ describe('PerformanceScreen', () => {
     mockAdminState.adminMode = 'self';
     mockAdminState.adminTargetId = null;
     mockAdminState.adminTargetType = null;
+    mockAuthSessionState.user = { id: 'self-user-id' };
     mockTeamPlayerState.players = [];
     mockTeamPlayerState.loading = false;
     mockUserRoleState.userRole = 'player';
     mockSetSelectedContext.mockResolvedValue(undefined);
     mockEnsureRosterLoaded.mockReturnValue(new Promise(() => {}));
+    mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
 
     mockUseFootball.mockReturnValue({
       trophies: [],
@@ -374,6 +398,74 @@ describe('PerformanceScreen', () => {
 
     expect(getByText('Past activity title')).toBeTruthy();
     expect(queryByText('Current week title')).toBeNull();
+  });
+
+  it('passes completed history feedback to activity cards', async () => {
+    const activityId = '11111111-1111-1111-1111-111111111111';
+    mockUserRoleState.userRole = 'trainer';
+    mockAdminState.adminMode = 'player';
+    mockAdminState.adminTargetId = 'player-1';
+    mockAdminState.adminTargetType = 'player';
+    mockTeamPlayerState.players = [
+      { id: 'player-1', email: '', full_name: 'Alma Striker' },
+    ];
+    mockFetchSelfFeedbackForActivities.mockResolvedValue([
+      {
+        id: 'feedback-row-1',
+        userId: 'player-1',
+        taskTemplateId: 'template-1',
+        taskInstanceId: 'feedback-task-1',
+        activityId,
+        rating: 5,
+        note: '',
+        createdAt: '2026-02-12T12:00:00.000Z',
+        updatedAt: '2026-02-12T12:00:00.000Z',
+      },
+    ]);
+    mockUseHomeActivities.mockReturnValue({
+      loading: false,
+      hasLoadedFullWindow: true,
+      loadFullWindow: jest.fn().mockResolvedValue(true),
+      refresh: jest.fn(),
+      activities: [
+        {
+          id: activityId,
+          title: 'Feedback history activity',
+          activity_date: '2026-02-12',
+          activity_time: '10:00:00',
+          duration_minutes: 40,
+          tasks: [
+            {
+              id: 'feedback-task-1',
+              title: 'Feedback på boldkontrol',
+              feedback_template_id: 'template-1',
+              completed: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    const screen = render(<PerformanceScreen />);
+
+    fireEvent.press(screen.getByTestId('performance.history.toggle'));
+    fireEvent.press(screen.getByText('mock.weeklySummaryCard'));
+
+    await waitFor(() => {
+      expect(mockFetchSelfFeedbackForActivities).toHaveBeenCalledWith('player-1', [activityId]);
+    });
+
+    await waitFor(() => {
+      expect(
+        mockActivityCard.mock.calls.some(([props]) =>
+          props?.activity?.id === activityId &&
+          props?.feedbackActivityId === activityId &&
+          props?.feedbackDone === true &&
+          props?.feedbackCompletionByTaskId?.['feedback-task-1'] === true &&
+          props?.feedbackCompletionByTemplateId?.['template-1'] === true
+        ),
+      ).toBe(true);
+    });
   });
 
   it('filters historik weekly totals by saved category filters', async () => {
