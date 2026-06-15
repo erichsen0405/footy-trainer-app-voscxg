@@ -6,11 +6,23 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
+const SELF_FEEDBACK_SELECT_WITH_TEMPLATE = `
+  *,
+  task_templates (
+    title,
+    description,
+    after_training_feedback_score_explanation
+  )
+`;
+
 export function mapFeedbackRow(row: any): TaskTemplateSelfFeedback {
   return {
     id: row.id,
     userId: row.user_id,
     taskTemplateId: row.task_template_id,
+    taskTemplateTitle: row.task_templates?.title ?? null,
+    taskTemplateDescription: row.task_templates?.description ?? null,
+    taskTemplateScoreExplanation: row.task_templates?.after_training_feedback_score_explanation ?? null,
     taskInstanceId: row.task_instance_id ?? null,
     activityId: row.activity_id,
     rating: normalizeFivePointScore(row.rating),
@@ -39,7 +51,7 @@ export async function fetchSelfFeedbackForTemplates(
 
   const { data, error } = await supabase
     .from('task_template_self_feedback')
-    .select('*')
+    .select(SELF_FEEDBACK_SELECT_WITH_TEMPLATE)
     .eq('user_id', trimmedUserId)
     .in('task_template_id', normalizedTemplateIds)
     .order('created_at', { ascending: false });
@@ -91,7 +103,7 @@ export async function fetchSelfFeedbackForActivities(
     const chunk = normalizedActivityIds.slice(i, i + CHUNK_SIZE);
     const { data, error } = await supabase
       .from('task_template_self_feedback')
-      .select('*')
+      .select(SELF_FEEDBACK_SELECT_WITH_TEMPLATE)
       .eq('user_id', trimmedUserId)
       .in('activity_id', chunk)
       .order('created_at', { ascending: false });

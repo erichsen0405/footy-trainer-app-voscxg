@@ -414,6 +414,7 @@ describe('PerformanceScreen', () => {
         id: 'feedback-row-1',
         userId: 'player-1',
         taskTemplateId: 'template-1',
+        taskTemplateTitle: 'Scan før du får bolden',
         taskInstanceId: 'feedback-task-1',
         activityId,
         rating: 5,
@@ -475,6 +476,7 @@ describe('PerformanceScreen', () => {
         id: 'feedback-row-week-1',
         userId: 'self-user-id',
         taskTemplateId: 'template-week-1',
+        taskTemplateTitle: 'Scan før du får bolden',
         taskInstanceId: null,
         activityId,
         rating: 4,
@@ -495,14 +497,7 @@ describe('PerformanceScreen', () => {
           activity_date: '2026-02-12',
           activity_time: '10:00:00',
           duration_minutes: 45,
-          tasks: [
-            {
-              id: 'feedback-task-week-1',
-              title: 'Feedback på afslutninger',
-              feedback_template_id: 'template-week-1',
-              completed: false,
-            },
-          ],
+          tasks: [],
         },
       ],
     });
@@ -518,6 +513,22 @@ describe('PerformanceScreen', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mock.weeklySummaryCard.totalTasks').props.children).toBe(1);
       expect(screen.getByTestId('mock.weeklySummaryCard.totalMinutes').props.children).toBe(45);
+    });
+
+    fireEvent.press(screen.getByText('mock.weeklySummaryCard'));
+
+    await waitFor(() => {
+      expect(
+        mockActivityCard.mock.calls.some(([props]) =>
+          props?.activity?.id === activityId &&
+          props?.activity?.tasks?.some(
+            (task: any) =>
+              task?.title === 'Feedback på Scan før du får bolden' &&
+              task?.feedbackTemplateId === 'template-week-1' &&
+              task?.completed === true,
+          )
+        ),
+      ).toBe(true);
     });
   });
 

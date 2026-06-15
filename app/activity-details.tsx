@@ -71,6 +71,7 @@ import {
 } from '@/utils/taskModalContent';
 import { buildTaskVideoPayload } from '@/utils/taskVideos';
 import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
+import { appendVirtualFeedbackTasks } from '@/utils/virtualFeedbackTasks';
 import {
   emitActivityDeleted,
   emitActivityDeleteRestored,
@@ -789,6 +790,37 @@ async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<TemplateVisib
   return fetchTaskTemplateVisibilityStateForTasks(tasks);
 }
 
+async function appendCurrentActivityVirtualFeedbackTasks(
+  tasks: FeedbackTask[],
+  userId: string | null,
+  activityIds: Iterable<string | null | undefined>,
+): Promise<FeedbackTask[]> {
+  if (!userId) return tasks;
+
+  const candidateIds = Array.from(
+    new Set(
+      Array.from(activityIds)
+        .map((id) => normalizeId(id))
+        .filter((id): id is string => id !== null),
+    ),
+  );
+  if (!candidateIds.length) return tasks;
+
+  try {
+    const rows = await fetchSelfFeedbackForActivities(userId, candidateIds);
+    return appendVirtualFeedbackTasks({ tasks }, rows).tasks as FeedbackTask[];
+  } catch (error) {
+    if (__DEV__) {
+      console.log('[ActivityDetails] virtual feedback task backfill skipped/failed', {
+        activityIds: candidateIds.slice(0, 5),
+        message: (error as any)?.message,
+        code: (error as any)?.code,
+      });
+    }
+    return tasks;
+  }
+}
+
 export async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
   try {
     let currentUserId: string | null = null;
@@ -882,6 +914,15 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         archivedAtByTemplateId,
         internalActivityAny.category_id ?? null,
       );
+      const tasksWithVirtualFeedback = await appendCurrentActivityVirtualFeedbackTasks(
+        visibleTasks,
+        currentUserId,
+        [
+          internalActivityAny.id,
+          internalActivityAny.source_activity_id,
+          activityId,
+        ],
+      );
 
       return {
         id: internalActivityAny.id,
@@ -891,7 +932,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         endTime: internalActivityAny.activity_end_time ?? undefined,
         location: internalActivityAny.location || '',
         category,
-        tasks: visibleTasks,
+        tasks: tasksWithVirtualFeedback,
         isExternal: false,
         externalCalendarId: internalActivityAny.external_calendar_id ?? undefined,
         externalEventId: internalActivityAny.external_event_id ?? undefined,
@@ -1114,6 +1155,11 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         archivedAtByTemplateId,
         localMetaAny.category_id ?? null,
       );
+      const tasksWithVirtualFeedback = await appendCurrentActivityVirtualFeedbackTasks(
+        visibleExternalTasks,
+        currentUserId,
+        linkedActivityIds,
+      );
 
       return {
         id: localMetaAny.id,
@@ -1129,7 +1175,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
             color: '#999999',
             emoji: '⚽️',
           },
-        tasks: visibleExternalTasks,
+        tasks: tasksWithVirtualFeedback,
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMetaAny.external_event_id,
@@ -1214,6 +1260,11 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         archivedAtByTemplateId,
         null,
       );
+      const tasksWithVirtualFeedback = await appendCurrentActivityVirtualFeedbackTasks(
+        visibleExternalOnlyTasks,
+        currentUserId,
+        [externalOnlyRowId, activityId],
+      );
 
       return {
         id: String(externalOnlyAny.id),
@@ -1228,7 +1279,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           color: '#999999',
           emoji: '⚽️',
         },
-        tasks: visibleExternalOnlyTasks,
+        tasks: tasksWithVirtualFeedback,
         isExternal: true,
         externalCalendarId: externalOnlyAny.provider_calendar_id ?? undefined,
         externalEventId: String(externalOnlyAny.id),
