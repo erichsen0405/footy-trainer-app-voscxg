@@ -81,6 +81,8 @@ export interface Task {
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
   isFeedbackTask?: boolean;
+  isVirtualScoredTask?: boolean;
+  isVirtualFeedbackTask?: boolean;
   userId?: string | null;
   playerId?: string | null;
   teamId?: string | null;

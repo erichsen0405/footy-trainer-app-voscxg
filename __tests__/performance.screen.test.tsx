@@ -511,7 +511,7 @@ describe('PerformanceScreen', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('mock.weeklySummaryCard.totalTasks').props.children).toBe(1);
+      expect(screen.getByTestId('mock.weeklySummaryCard.totalTasks').props.children).toBe(2);
       expect(screen.getByTestId('mock.weeklySummaryCard.totalMinutes').props.children).toBe(45);
     });
 
@@ -521,6 +521,12 @@ describe('PerformanceScreen', () => {
       expect(
         mockActivityCard.mock.calls.some(([props]) =>
           props?.activity?.id === activityId &&
+          props?.activity?.tasks?.some(
+            (task: any) =>
+              task?.title === 'Scan før du får bolden' &&
+              task?.taskTemplateId === 'template-week-1' &&
+              task?.completed === true,
+          ) &&
           props?.activity?.tasks?.some(
             (task: any) =>
               task?.title === 'Feedback på Scan før du får bolden' &&

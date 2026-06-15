@@ -22,6 +22,13 @@ function isFeedbackTitle(value: unknown): boolean {
   return normalized.startsWith('feedback pa') || normalized.startsWith('feedback on');
 }
 
+function stripFeedbackTitle(value: unknown): string {
+  const title = normalizeId(value) ?? 'Feedback task';
+  return title
+    .replace(/^\s*feedback\s+(?:on|p(?:å|a\u030a|a))\s*[:\s-]*/i, '')
+    .trim() || title;
+}
+
 function getTaskFeedbackTemplateId(task: any): string | null {
   return (
     normalizeId(task?.feedbackTemplateId ?? task?.feedback_template_id) ??
@@ -33,6 +40,11 @@ function getTaskFeedbackTemplateId(task: any): string | null {
   );
 }
 
+function getTaskTemplateId(task: any): string | null {
+  if (!task || getTaskFeedbackTemplateId(task)) return null;
+  return normalizeId(task?.taskTemplateId ?? task?.task_template_id);
+}
+
 function isFeedbackAnswered(row: TaskTemplateSelfFeedback): boolean {
   return typeof row.rating === 'number' || String(row.note ?? '').trim().length > 0;
 }
@@ -42,13 +54,49 @@ function safeDateMs(value: unknown): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function getLatestAnsweredRowsByTemplate(rows: TaskTemplateSelfFeedback[]): TaskTemplateSelfFeedback[] {
+  const latestByTemplate = new Map<string, TaskTemplateSelfFeedback>();
+  rows.forEach((row) => {
+    if (!isFeedbackAnswered(row)) return;
+    const templateId = normalizeId(row.taskTemplateId);
+    if (!templateId) return;
+
+    const existing = latestByTemplate.get(templateId);
+    if (!existing || safeDateMs(row.createdAt) > safeDateMs(existing.createdAt)) {
+      latestByTemplate.set(templateId, row);
+    }
+  });
+  return Array.from(latestByTemplate.values());
+}
+
+function buildVirtualScoredTask(row: TaskTemplateSelfFeedback): Task | null {
+  const templateId = normalizeId(row.taskTemplateId);
+  const activityId = normalizeId(row.activityId);
+  if (!templateId || !activityId || !isFeedbackAnswered(row)) return null;
+
+  const taskTitle = stripFeedbackTitle(row.taskTemplateTitle);
+
+  return {
+    id: `task:${activityId}:${templateId}`,
+    title: taskTitle,
+    description: row.taskTemplateDescription ?? '',
+    completed: true,
+    isTemplate: false,
+    categoryIds: [],
+    reminder: null,
+    subtasks: [],
+    taskTemplateId: templateId,
+    isVirtualScoredTask: true,
+  };
+}
+
 function buildVirtualFeedbackTask(row: TaskTemplateSelfFeedback): Task | null {
   const templateId = normalizeId(row.taskTemplateId);
   const activityId = normalizeId(row.activityId);
   if (!templateId || !activityId || !isFeedbackAnswered(row)) return null;
 
   const taskInstanceId = normalizeId(row.taskInstanceId);
-  const taskTitle = normalizeId(row.taskTemplateTitle) ?? 'Feedback task';
+  const taskTitle = stripFeedbackTitle(row.taskTemplateTitle);
   const virtualId = taskInstanceId && taskInstanceId !== templateId
     ? taskInstanceId
     : `feedback:${activityId}:${templateId}`;
@@ -65,10 +113,11 @@ function buildVirtualFeedbackTask(row: TaskTemplateSelfFeedback): Task | null {
     feedbackTemplateId: templateId,
     taskTemplateId: templateId,
     isFeedbackTask: true,
+    isVirtualFeedbackTask: true,
   };
 }
 
-export function appendVirtualFeedbackTasks<TActivity extends { tasks?: any[] }>(
+export function appendVirtualScoredTasks<TActivity extends { tasks?: any[] }>(
   activity: TActivity,
   rows: TaskTemplateSelfFeedback[],
 ): TActivity {
@@ -77,30 +126,58 @@ export function appendVirtualFeedbackTasks<TActivity extends { tasks?: any[] }>(
     return activity;
   }
 
-  const existingTemplateIds = new Set<string>();
+  const existingTaskTemplateIds = new Set<string>();
+  const existingFeedbackTemplateIds = new Set<string>();
   const existingTaskIds = new Set<string>();
-  existingTasks.forEach((task) => {
+  let changedExistingTask = false;
+  const latestRows = getLatestAnsweredRowsByTemplate(rows);
+  const scoredTemplateIds = new Set(
+    latestRows
+      .map((row) => normalizeId(row.taskTemplateId))
+      .filter((id): id is string => id !== null),
+  );
+
+  const nextExistingTasks = existingTasks.map((task) => {
     const taskId = normalizeId(task?.id ?? task?.task_id);
     if (taskId) existingTaskIds.add(taskId);
 
-    const templateId = getTaskFeedbackTemplateId(task);
-    if (templateId) existingTemplateIds.add(templateId);
-  });
-
-  const latestByTemplate = new Map<string, TaskTemplateSelfFeedback>();
-  rows.forEach((row) => {
-    if (!isFeedbackAnswered(row)) return;
-    const templateId = normalizeId(row.taskTemplateId);
-    if (!templateId || existingTemplateIds.has(templateId)) return;
-
-    const existing = latestByTemplate.get(templateId);
-    if (!existing || safeDateMs(row.createdAt) > safeDateMs(existing.createdAt)) {
-      latestByTemplate.set(templateId, row);
+    const feedbackTemplateId = getTaskFeedbackTemplateId(task);
+    if (feedbackTemplateId) {
+      existingFeedbackTemplateIds.add(feedbackTemplateId);
+      if (scoredTemplateIds.has(feedbackTemplateId) && task?.completed !== true) {
+        changedExistingTask = true;
+        return { ...task, completed: true };
+      }
+      return task;
     }
+
+    const taskTemplateId = getTaskTemplateId(task);
+    if (taskTemplateId) {
+      existingTaskTemplateIds.add(taskTemplateId);
+      if (scoredTemplateIds.has(taskTemplateId) && task?.completed !== true) {
+        changedExistingTask = true;
+        return { ...task, completed: true };
+      }
+    }
+
+    return task;
   });
 
-  const virtualTasks = Array.from(latestByTemplate.values())
-    .map(buildVirtualFeedbackTask)
+  const virtualTasks = latestRows
+    .flatMap((row) => {
+      const templateId = normalizeId(row.taskTemplateId);
+      if (!templateId) return [];
+      const tasks: Task[] = [];
+      if (!existingTaskTemplateIds.has(templateId)) {
+        const scoredTask = buildVirtualScoredTask(row);
+        if (scoredTask) tasks.push(scoredTask);
+      }
+      if (!existingFeedbackTemplateIds.has(templateId)) {
+        const feedbackTask = buildVirtualFeedbackTask(row);
+        if (feedbackTask) tasks.push(feedbackTask);
+      }
+      return tasks;
+    })
     .filter((task): task is Task => {
       if (!task) return false;
       if (existingTaskIds.has(task.id)) return false;
@@ -108,17 +185,17 @@ export function appendVirtualFeedbackTasks<TActivity extends { tasks?: any[] }>(
       return true;
     });
 
-  if (!virtualTasks.length) {
+  if (!changedExistingTask && !virtualTasks.length) {
     return activity;
   }
 
   return {
     ...activity,
-    tasks: [...existingTasks, ...virtualTasks],
+    tasks: [...nextExistingTasks, ...virtualTasks],
   };
 }
 
-export function appendVirtualFeedbackTasksForActivityCandidates<TActivity extends { tasks?: any[] }>(
+export function appendVirtualScoredTasksForActivityCandidates<TActivity extends { tasks?: any[] }>(
   activity: TActivity,
   rows: TaskTemplateSelfFeedback[],
   activityIdCandidates: string[],
@@ -135,5 +212,8 @@ export function appendVirtualFeedbackTasksForActivityCandidates<TActivity extend
     return !!activityId && candidateSet.has(activityId);
   });
 
-  return appendVirtualFeedbackTasks(activity, matchingRows);
+  return appendVirtualScoredTasks(activity, matchingRows);
 }
+
+export const appendVirtualFeedbackTasks = appendVirtualScoredTasks;
+export const appendVirtualFeedbackTasksForActivityCandidates = appendVirtualScoredTasksForActivityCandidates;

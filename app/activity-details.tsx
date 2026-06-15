@@ -71,7 +71,7 @@ import {
 } from '@/utils/taskModalContent';
 import { buildTaskVideoPayload } from '@/utils/taskVideos';
 import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
-import { appendVirtualFeedbackTasks } from '@/utils/virtualFeedbackTasks';
+import { appendVirtualScoredTasks } from '@/utils/virtualFeedbackTasks';
 import {
   emitActivityDeleted,
   emitActivityDeleteRestored,
@@ -790,7 +790,7 @@ async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<TemplateVisib
   return fetchTaskTemplateVisibilityStateForTasks(tasks);
 }
 
-async function appendCurrentActivityVirtualFeedbackTasks(
+async function appendCurrentActivityVirtualScoredTasks(
   tasks: FeedbackTask[],
   userId: string | null,
   activityIds: Iterable<string | null | undefined>,
@@ -808,10 +808,10 @@ async function appendCurrentActivityVirtualFeedbackTasks(
 
   try {
     const rows = await fetchSelfFeedbackForActivities(userId, candidateIds);
-    return appendVirtualFeedbackTasks({ tasks }, rows).tasks as FeedbackTask[];
+    return appendVirtualScoredTasks({ tasks }, rows).tasks as FeedbackTask[];
   } catch (error) {
     if (__DEV__) {
-      console.log('[ActivityDetails] virtual feedback task backfill skipped/failed', {
+      console.log('[ActivityDetails] virtual scored task backfill skipped/failed', {
         activityIds: candidateIds.slice(0, 5),
         message: (error as any)?.message,
         code: (error as any)?.code,
@@ -914,7 +914,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         archivedAtByTemplateId,
         internalActivityAny.category_id ?? null,
       );
-      const tasksWithVirtualFeedback = await appendCurrentActivityVirtualFeedbackTasks(
+      const tasksWithVirtualScores = await appendCurrentActivityVirtualScoredTasks(
         visibleTasks,
         currentUserId,
         [
@@ -932,7 +932,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         endTime: internalActivityAny.activity_end_time ?? undefined,
         location: internalActivityAny.location || '',
         category,
-        tasks: tasksWithVirtualFeedback,
+        tasks: tasksWithVirtualScores,
         isExternal: false,
         externalCalendarId: internalActivityAny.external_calendar_id ?? undefined,
         externalEventId: internalActivityAny.external_event_id ?? undefined,
@@ -1155,7 +1155,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         archivedAtByTemplateId,
         localMetaAny.category_id ?? null,
       );
-      const tasksWithVirtualFeedback = await appendCurrentActivityVirtualFeedbackTasks(
+      const tasksWithVirtualScores = await appendCurrentActivityVirtualScoredTasks(
         visibleExternalTasks,
         currentUserId,
         linkedActivityIds,
@@ -1175,7 +1175,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
             color: '#999999',
             emoji: '⚽️',
           },
-        tasks: tasksWithVirtualFeedback,
+        tasks: tasksWithVirtualScores,
         isExternal: true,
         externalCalendarId: externalEvent.provider_calendar_id,
         externalEventId: localMetaAny.external_event_id,
@@ -1260,7 +1260,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         archivedAtByTemplateId,
         null,
       );
-      const tasksWithVirtualFeedback = await appendCurrentActivityVirtualFeedbackTasks(
+      const tasksWithVirtualScores = await appendCurrentActivityVirtualScoredTasks(
         visibleExternalOnlyTasks,
         currentUserId,
         [externalOnlyRowId, activityId],
@@ -1279,7 +1279,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           color: '#999999',
           emoji: '⚽️',
         },
-        tasks: tasksWithVirtualFeedback,
+        tasks: tasksWithVirtualScores,
         isExternal: true,
         externalCalendarId: externalOnlyAny.provider_calendar_id ?? undefined,
         externalEventId: String(externalOnlyAny.id),

@@ -1,16 +1,16 @@
 import {
-  appendVirtualFeedbackTasks,
-  appendVirtualFeedbackTasksForActivityCandidates,
+  appendVirtualScoredTasks,
+  appendVirtualScoredTasksForActivityCandidates,
 } from '@/utils/virtualFeedbackTasks';
 
 describe('virtualFeedbackTasks', () => {
-  it('appends answered feedback rows as virtual feedback tasks', () => {
+  it('appends answered feedback rows as virtual scored and feedback tasks', () => {
     const activity = {
       id: 'activity-1',
       tasks: [] as any[],
     };
 
-    const result = appendVirtualFeedbackTasks(activity, [
+    const result = appendVirtualScoredTasks(activity, [
       {
         id: 'feedback-1',
         userId: 'player-1',
@@ -26,6 +26,13 @@ describe('virtualFeedbackTasks', () => {
     ]);
 
     expect(result.tasks).toEqual([
+      expect.objectContaining({
+        id: 'task:activity-1:template-scan',
+        title: 'Scan før du får bolden',
+        completed: true,
+        taskTemplateId: 'template-scan',
+        isVirtualScoredTask: true,
+      }),
       expect.objectContaining({
         id: 'feedback:activity-1:template-scan',
         title: 'Feedback på Scan før du får bolden',
@@ -51,7 +58,7 @@ describe('virtualFeedbackTasks', () => {
       ],
     };
 
-    const result = appendVirtualFeedbackTasks(activity, [
+    const result = appendVirtualScoredTasks(activity, [
       {
         id: 'feedback-1',
         userId: 'player-1',
@@ -66,12 +73,73 @@ describe('virtualFeedbackTasks', () => {
       },
     ]);
 
-    expect(result.tasks).toHaveLength(1);
-    expect(result.tasks[0].id).toBe('task-1');
+    expect(result.tasks).toHaveLength(2);
+    expect(result.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'task-1',
+          completed: true,
+          feedback_template_id: 'template-scan',
+        }),
+        expect.objectContaining({
+          id: 'task:activity-1:template-scan',
+          title: 'Scan før du får bolden',
+          completed: true,
+          taskTemplateId: 'template-scan',
+        }),
+      ]),
+    );
+  });
+
+  it('does not duplicate an existing scored task for the same template', () => {
+    const activity = {
+      id: 'activity-1',
+      tasks: [
+        {
+          id: 'task-1',
+          title: 'Scan før du får bolden',
+          description: '',
+          completed: false,
+          taskTemplateId: 'template-scan',
+        },
+      ],
+    };
+
+    const result = appendVirtualScoredTasks(activity, [
+      {
+        id: 'feedback-1',
+        userId: 'player-1',
+        activityId: 'activity-1',
+        taskTemplateId: 'template-scan',
+        taskTemplateTitle: 'Scan før du får bolden',
+        taskInstanceId: null,
+        rating: 4,
+        note: '',
+        createdAt: '2026-05-18T16:00:00.000Z',
+        updatedAt: '2026-05-18T16:00:00.000Z',
+      },
+    ]);
+
+    expect(result.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'task-1',
+          title: 'Scan før du får bolden',
+          completed: true,
+          taskTemplateId: 'template-scan',
+        }),
+        expect.objectContaining({
+          id: 'feedback:activity-1:template-scan',
+          title: 'Feedback på Scan før du får bolden',
+          completed: true,
+          feedbackTemplateId: 'template-scan',
+        }),
+      ]),
+    );
   });
 
   it('matches rows using activity id candidates', () => {
-    const result = appendVirtualFeedbackTasksForActivityCandidates(
+    const result = appendVirtualScoredTasksForActivityCandidates(
       { id: 'local-meta-id', tasks: [] as any[] },
       [
         {
@@ -90,7 +158,10 @@ describe('virtualFeedbackTasks', () => {
       ['local-meta-id', 'external-event-id'],
     );
 
-    expect(result.tasks).toHaveLength(1);
-    expect(result.tasks[0].title).toBe('Feedback på Scan før du får bolden');
+    expect(result.tasks).toHaveLength(2);
+    expect(result.tasks.map((task) => task.title)).toEqual([
+      'Scan før du får bolden',
+      'Feedback på Scan før du får bolden',
+    ]);
   });
 });

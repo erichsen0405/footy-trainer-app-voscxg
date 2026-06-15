@@ -37,7 +37,7 @@ import {
   resolvePerformanceHistoryActivityCategoryId,
   type PerformanceHistoryWeek,
 } from '@/utils/performanceHistory';
-import { appendVirtualFeedbackTasksForActivityCandidates } from '@/utils/virtualFeedbackTasks';
+import { appendVirtualScoredTasksForActivityCandidates } from '@/utils/virtualFeedbackTasks';
 
 type HistoryListItem =
   | { type: 'weekCard'; key: string; week: PerformanceHistoryWeek }
@@ -673,10 +673,10 @@ export default function PerformanceScreen() {
     return doneMap;
   }, [historyFeedbackCompletionByActivityId, historyFeedbackCompletionByActivityTaskId]);
 
-  const historyActivitiesWithFeedbackTasks = useMemo(
+  const historyActivitiesWithScoredTasks = useMemo(
     () =>
       activities.map((activity) =>
-        appendVirtualFeedbackTasksForActivityCandidates(
+        appendVirtualScoredTasksForActivityCandidates(
           activity,
           historySelfFeedbackRows,
           getFeedbackActivityIdCandidatesForActivity(activity),
@@ -758,11 +758,11 @@ export default function PerformanceScreen() {
 
   const historyWeeks = useMemo(
     () =>
-      buildPerformanceHistoryWeeks(historyActivitiesWithFeedbackTasks, new Date(), {
+      buildPerformanceHistoryWeeks(historyActivitiesWithScoredTasks, new Date(), {
         categoryIds: selectedHistoryCategoryIds,
         isTaskCompleted: isHistoryTaskCompleted,
       }),
-    [historyActivitiesWithFeedbackTasks, isHistoryTaskCompleted, selectedHistoryCategoryIds],
+    [historyActivitiesWithScoredTasks, isHistoryTaskCompleted, selectedHistoryCategoryIds],
   );
 
   const historyListData = useMemo(() => {
