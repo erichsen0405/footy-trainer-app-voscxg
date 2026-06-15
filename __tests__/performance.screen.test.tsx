@@ -564,6 +564,21 @@ describe('PerformanceScreen', () => {
       expect(screen.getByTestId('performance.historyFilter.activeLabel').props.children).toBe('Main work');
       expect(screen.getByTestId('mock.weeklySummaryCard.activityCount').props.children).toBe(2);
     });
+
+    fireEvent.press(screen.getByTestId('performance.historyFilter.open'));
+    fireEvent.press(screen.getByTestId('performance.historyFilter.clearDraft'));
+    fireEvent.press(screen.getByTestId('performance.historyFilter.category.cat-recovery'));
+    fireEvent.changeText(screen.getByTestId('performance.historyFilter.nameInput'), 'Recovery only');
+    fireEvent.press(screen.getByTestId('performance.historyFilter.save'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('performance.historyFilter.activeLabel').props.children).toBe('Recovery only');
+      expect(screen.getByTestId('mock.weeklySummaryCard.activityCount').props.children).toBe(1);
+    });
+
+    const storedFiltersRaw = await AsyncStorage.getItem('@performance_history_category_filters_v1');
+    const storedFilters = JSON.parse(storedFiltersRaw ?? '[]');
+    expect(storedFilters.map((filter: any) => filter.name).sort()).toEqual(['Main work', 'Recovery only']);
   });
 
   it('uses trophies from football context instead of deriving them from history weeks', () => {

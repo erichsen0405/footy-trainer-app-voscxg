@@ -13,7 +13,34 @@ export interface ArchiveVisibilityTask {
   createdAt?: string | null;
 }
 
-export type TemplateArchivedAtById = Record<string, string | null | undefined>;
+export type TemplateArchivePeriod = {
+  archivedAt?: string | null;
+  archived_at?: string | null;
+  reactivatedAt?: string | null;
+  reactivated_at?: string | null;
+};
+
+export type TemplateCategoryPeriod = {
+  categoryId?: string | null;
+  category_id?: string | null;
+  assignedAt?: string | null;
+  assigned_at?: string | null;
+  removedAt?: string | null;
+  removed_at?: string | null;
+};
+
+export type TemplateVisibilityState = {
+  archivedAt?: string | null;
+  archived_at?: string | null;
+  archivePeriods?: TemplateArchivePeriod[] | null;
+  archive_periods?: TemplateArchivePeriod[] | null;
+  categoryPeriods?: TemplateCategoryPeriod[] | null;
+  category_periods?: TemplateCategoryPeriod[] | null;
+  categoryPeriodsById?: Record<string, TemplateCategoryPeriod[] | null | undefined> | null;
+};
+
+export type TemplateVisibilityById = Record<string, string | TemplateVisibilityState | null | undefined>;
+export type TemplateArchivedAtById = TemplateVisibilityById;
 
 const normalizeId = (value: unknown): string | null => {
   if (value === null || value === undefined) return null;
@@ -64,45 +91,141 @@ const resolveTaskCreatedAtMs = (task: ArchiveVisibilityTask | null | undefined):
   return Number.isFinite(ms) ? ms : null;
 };
 
+const parseTimestampMs = (value: unknown): number | null => {
+  if (!value) return null;
+  const ms = Date.parse(String(value));
+  return Number.isFinite(ms) ? ms : null;
+};
+
+const resolveTemplateVisibilityState = (
+  visibilityByTemplateId: TemplateVisibilityById,
+  templateId: string,
+): TemplateVisibilityState | null => {
+  const raw = visibilityByTemplateId?.[templateId];
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string') return { archivedAt: raw };
+  if (typeof raw === 'object') return raw;
+  return null;
+};
+
+const getArchivePeriods = (state: TemplateVisibilityState | null): TemplateArchivePeriod[] => {
+  if (!state) return [];
+
+  const explicitPeriods = state.archivePeriods ?? state.archive_periods;
+  if (Array.isArray(explicitPeriods) && explicitPeriods.length > 0) {
+    return explicitPeriods;
+  }
+
+  const archivedAt = state.archivedAt ?? state.archived_at;
+  return archivedAt ? [{ archivedAt, reactivatedAt: null }] : [];
+};
+
+const getAllCategoryPeriods = (state: TemplateVisibilityState | null): TemplateCategoryPeriod[] => {
+  if (!state) return [];
+
+  const periods = state.categoryPeriods ?? state.category_periods;
+  const flatPeriods = Array.isArray(periods) ? periods : [];
+  const groupedPeriods = state.categoryPeriodsById
+    ? Object.values(state.categoryPeriodsById).flatMap((value) => (Array.isArray(value) ? value : []))
+    : [];
+
+  return [...flatPeriods, ...groupedPeriods];
+};
+
+const getCategoryPeriodsForActivity = (
+  state: TemplateVisibilityState | null,
+  activityCategoryId: string | null,
+): TemplateCategoryPeriod[] => {
+  if (!state || !activityCategoryId) return [];
+
+  const grouped = state.categoryPeriodsById?.[activityCategoryId];
+  if (Array.isArray(grouped) && grouped.length > 0) return grouped;
+
+  return getAllCategoryPeriods(state).filter((period) => {
+    const categoryId = normalizeId(period.categoryId ?? period.category_id);
+    return categoryId === activityCategoryId;
+  });
+};
+
+const isActivityInsideArchivePeriod = (
+  state: TemplateVisibilityState | null,
+  activityMs: number | null,
+): boolean => {
+  if (activityMs === null) return false;
+
+  return getArchivePeriods(state).some((period) => {
+    const archivedAtMs = parseTimestampMs(period.archivedAt ?? period.archived_at);
+    if (archivedAtMs === null || activityMs <= archivedAtMs) return false;
+
+    const reactivatedAtMs = parseTimestampMs(period.reactivatedAt ?? period.reactivated_at);
+    return reactivatedAtMs === null || activityMs < reactivatedAtMs;
+  });
+};
+
+const isActivityInsideCategoryPeriod = (
+  state: TemplateVisibilityState | null,
+  activityCategoryId: string | null,
+  activityMs: number | null,
+): boolean => {
+  if (!state || !activityCategoryId || activityMs === null) return true;
+
+  const allCategoryPeriods = getAllCategoryPeriods(state);
+  if (allCategoryPeriods.length === 0) return true;
+
+  const relevantPeriods = getCategoryPeriodsForActivity(state, activityCategoryId);
+  if (relevantPeriods.length === 0) return false;
+
+  return relevantPeriods.some((period) => {
+    const assignedAtMs = parseTimestampMs(period.assignedAt ?? period.assigned_at);
+    if (assignedAtMs === null || activityMs < assignedAtMs) return false;
+
+    const removedAtMs = parseTimestampMs(period.removedAt ?? period.removed_at);
+    return removedAtMs === null || activityMs <= removedAtMs;
+  });
+};
+
 export const isTaskVisibleForActivity = (
   task: ArchiveVisibilityTask,
   activityDate: string | Date | null | undefined,
   activityTime: string | null | undefined,
-  archivedAtByTemplateId: TemplateArchivedAtById,
+  visibilityByTemplateId: TemplateArchivedAtById,
+  activityCategoryId?: string | null,
 ): boolean => {
-  // Preserve history: already completed tasks stay visible even if template is archived.
-  if (task?.completed === true) return true;
-
   const templateId = resolveTemplateId(task);
   if (!templateId) return true;
 
   const activityMs = toActivityDateTimeMs(activityDate, activityTime);
+  const visibilityState = resolveTemplateVisibilityState(visibilityByTemplateId, templateId);
+  const normalizedActivityCategoryId = normalizeId(activityCategoryId);
+
+  if (!isActivityInsideCategoryPeriod(visibilityState, normalizedActivityCategoryId, activityMs)) {
+    return false;
+  }
+
+  if (isActivityInsideArchivePeriod(visibilityState, activityMs)) {
+    return false;
+  }
+
+  // Preserve manually completed legacy/history rows when no visibility period excludes them.
+  if (task?.completed === true) return true;
+
   const taskCreatedAtMs = resolveTaskCreatedAtMs(task);
   if (activityMs !== null && taskCreatedAtMs !== null && taskCreatedAtMs > activityMs) {
     return false;
   }
-
-  const archivedAt = archivedAtByTemplateId[templateId];
-  if (!archivedAt) return true;
-
-  const archivedAtMs = Date.parse(String(archivedAt));
-
-  if (!Number.isFinite(archivedAtMs) || activityMs === null) {
-    return true;
-  }
-
-  return activityMs <= archivedAtMs;
+  return true;
 };
 
 export const filterVisibleTasksForActivity = <T extends ArchiveVisibilityTask>(
   tasks: T[] | null | undefined,
   activityDate: string | Date | null | undefined,
   activityTime: string | null | undefined,
-  archivedAtByTemplateId: TemplateArchivedAtById,
+  visibilityByTemplateId: TemplateArchivedAtById,
+  activityCategoryId?: string | null,
 ): T[] => {
   if (!Array.isArray(tasks) || tasks.length === 0) return [];
 
   return tasks.filter((task) =>
-    isTaskVisibleForActivity(task, activityDate, activityTime, archivedAtByTemplateId)
+    isTaskVisibleForActivity(task, activityDate, activityTime, visibilityByTemplateId, activityCategoryId)
   );
 };

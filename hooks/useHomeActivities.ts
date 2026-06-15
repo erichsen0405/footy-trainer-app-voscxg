@@ -6,10 +6,11 @@ import { addDays, addMonths, endOfWeek, format, startOfWeek } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { getCategories, DatabaseActivityCategory } from '@/services/activities';
+import { fetchTaskTemplateVisibilityStateByIds } from '@/services/taskTemplateVisibilityState';
 import { resolveActivityCategory, type CategoryMappingRecord } from '@/shared/activityCategoryResolver';
 import { subscribeToTaskCompletion } from '@/utils/taskEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
+import { filterVisibleTasksForActivity, type TemplateVisibilityById } from '@/utils/taskTemplateVisibility';
 import {
   subscribeToActivityPatch,
   subscribeToActivityDeleted,
@@ -1453,12 +1454,18 @@ export function useHomeActivities(): UseHomeActivitiesResult {
       let templateDelayById: Record<string, number | null> = {};
       let templateDurationEnabledById: Record<string, boolean> = {};
       let templateDurationMinutesById: Record<string, number | null> = {};
-      let templateArchivedAtById: Record<string, string | null> = {};
+      let templateVisibilityById: TemplateVisibilityById = {};
       if (templateIdCandidates.size) {
-        const { data: templateRows } = await supabase
-          .from('task_templates')
-          .select('id, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, archived_at')
-          .in('id', Array.from(templateIdCandidates));
+        const templateIds = Array.from(templateIdCandidates);
+        const [templateRowsResult, visibilityByTemplateId] = await Promise.all([
+          supabase
+            .from('task_templates')
+            .select('id, after_training_delay_minutes, task_duration_enabled, task_duration_minutes')
+            .in('id', templateIds),
+          fetchTaskTemplateVisibilityStateByIds(templateIds),
+        ]);
+        templateVisibilityById = visibilityByTemplateId;
+        const templateRows = templateRowsResult.data;
         if (Array.isArray(templateRows)) {
           templateRows.forEach((row: any) => {
             const tid = normalizeId(row?.id);
@@ -1466,8 +1473,6 @@ export function useHomeActivities(): UseHomeActivitiesResult {
             templateDelayById[tid] = coerceReminderMinutes(row.after_training_delay_minutes);
             templateDurationEnabledById[tid] = row?.task_duration_enabled === true;
             templateDurationMinutesById[tid] = coerceReminderMinutes(row?.task_duration_minutes);
-            templateArchivedAtById[tid] =
-              typeof row?.archived_at === 'string' ? row.archived_at : null;
           });
         }
       }
@@ -1702,7 +1707,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           tasks,
           activity.activity_date,
           activityTaskCutoffTime,
-          templateArchivedAtById,
+          templateVisibilityById,
+          activity.category_id,
         );
 
         return {

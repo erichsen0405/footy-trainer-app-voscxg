@@ -577,6 +577,8 @@ export const taskService = {
     signal: AbortSignal = new AbortController().signal,
   ): Promise<void> {
     const updateData: TablesUpdate<'task_templates'> = {};
+    const nextCategoryIds =
+      updates.categoryIds !== undefined ? uniqueStringIds(updates.categoryIds) : null;
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.description !== undefined) updateData.description = updates.description;
@@ -658,17 +660,38 @@ export const taskService = {
     }
 
     /* ----------------------------------
-       Categories (replace-all strategy)
+       Categories (diff-based, preserves assignment timestamps)
        ---------------------------------- */
-    if (updates.categoryIds) {
-      await supabase
+    if (nextCategoryIds !== null) {
+      const { data: existingCategoryRows, error: existingCategoryError } = await supabase
         .from('task_template_categories')
-        .delete()
+        .select('category_id')
         .eq('task_template_id', taskId)
         .abortSignal(signal);
 
-      if (updates.categoryIds.length) {
-        const rows = updates.categoryIds.map(categoryId => ({
+      if (existingCategoryError) throw existingCategoryError;
+
+      const existingCategoryIds = uniqueStringIds(
+        (existingCategoryRows ?? []).map((row: any) => row?.category_id)
+      );
+      const nextCategorySet = new Set(nextCategoryIds);
+      const existingCategorySet = new Set(existingCategoryIds);
+      const categoryIdsToRemove = existingCategoryIds.filter((categoryId) => !nextCategorySet.has(categoryId));
+      const categoryIdsToAdd = nextCategoryIds.filter((categoryId) => !existingCategorySet.has(categoryId));
+
+      if (categoryIdsToRemove.length) {
+        const { error: deleteError } = await supabase
+          .from('task_template_categories')
+          .delete()
+          .eq('task_template_id', taskId)
+          .in('category_id', categoryIdsToRemove)
+          .abortSignal(signal);
+
+        if (deleteError) throw deleteError;
+      }
+
+      if (categoryIdsToAdd.length) {
+        const rows = categoryIdsToAdd.map(categoryId => ({
           task_template_id: taskId,
           category_id: categoryId,
         }));
@@ -686,7 +709,7 @@ export const taskService = {
       await syncTaskTemplateSubtasks(taskId, updates.subtasks, signal);
     }
 
-    if (updates.categoryIds !== undefined) {
+    if (nextCategoryIds !== null) {
       try {
         const { error: categorySyncError } = await supabase.rpc(
           'update_all_tasks_from_template',
@@ -710,7 +733,7 @@ export const taskService = {
       }
 
       try {
-        await removeStaleTemplateCategoryAssignments(taskId, updates.categoryIds, signal);
+        await removeStaleTemplateCategoryAssignments(taskId, nextCategoryIds, signal);
       } catch (categoryCleanupUnexpectedError) {
         console.error(
           '[TEMPLATE_CATEGORY_SYNC] Unexpected cleanup failure after template category update',

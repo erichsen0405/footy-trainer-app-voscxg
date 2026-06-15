@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/integrations/supabase/client';
 import { Platform } from 'react-native';
+import { fetchTaskTemplateVisibilityStateByIds } from '@/services/taskTemplateVisibilityState';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
 
@@ -202,6 +203,7 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
       .from('activity_tasks')
       .select(`
         id,
+        created_at,
         title,
         description,
         reminder_minutes,
@@ -210,9 +212,11 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         activity_id,
         activities!inner (
           id,
+          created_at,
           title,
           activity_date,
           activity_time,
+          category_id,
           user_id
         )
       `)
@@ -240,31 +244,23 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
             .filter((id: string | null): id is string => !!id)
         )
       );
-      const templateArchivedAtById: Record<string, string | null> = {};
+      let templateVisibilityById = {};
       if (templateIds.length) {
-        const { data: templates, error: templatesError } = await supabase
-          .from('task_templates')
-          .select('id, archived_at')
-          .in('id', templateIds);
-
-        if (templatesError) {
-          console.error('❌ Error fetching template archive state for reminders:', templatesError);
-        } else {
-          (templates || []).forEach((template: any) => {
-            const templateId = normalizeId(template?.id);
-            if (!templateId) return;
-            templateArchivedAtById[templateId] =
-              typeof template?.archived_at === 'string' && template.archived_at.trim().length
-                ? template.archived_at
-                : null;
-          });
-        }
+        templateVisibilityById = await fetchTaskTemplateVisibilityStateByIds(templateIds);
       }
       
       for (const task of tasks) {
         const activity = (task as any).activities;
         if (!activity) continue;
-        if (!isTaskVisibleForActivity(task, activity.activity_date, activity.activity_time, templateArchivedAtById)) {
+        if (
+          !isTaskVisibleForActivity(
+            task,
+            activity.activity_date,
+            activity.activity_time,
+            templateVisibilityById,
+            activity.category_id ?? null,
+          )
+        ) {
           console.log('ℹ️ Skipping reminder for archived template task', {
             activityId: activity.id,
             taskId: task.id,
@@ -320,6 +316,7 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
             activity_date,
             activity_time,
             activity_end_time,
+            category_id,
             user_id
           )
         `)
@@ -343,12 +340,16 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
         ) as string[];
 
         const templateDelayById = new Map<string, number>();
-        const templateArchivedAtById: Record<string, string | null> = {};
+        let templateVisibilityById = {};
         if (templateIds.length) {
-          const { data: templates, error: templatesError } = await supabase
-            .from('task_templates')
-            .select('id, after_training_enabled, after_training_delay_minutes, archived_at')
-            .in('id', templateIds);
+          const [{ data: templates, error: templatesError }, visibilityByTemplateId] = await Promise.all([
+            supabase
+              .from('task_templates')
+              .select('id, after_training_enabled, after_training_delay_minutes')
+              .in('id', templateIds),
+            fetchTaskTemplateVisibilityStateByIds(templateIds),
+          ]);
+          templateVisibilityById = visibilityByTemplateId;
 
           if (templatesError) {
             console.error('❌ Error fetching template delay for after-training:', templatesError);
@@ -356,10 +357,6 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
             (templates || []).forEach((tt: any) => {
               const templateId = normalizeId(tt?.id);
               if (!templateId) return;
-              templateArchivedAtById[templateId] =
-                typeof tt?.archived_at === 'string' && tt.archived_at.trim().length
-                  ? tt.archived_at
-                  : null;
               if (!tt.after_training_enabled) return;
               const delay = tt.after_training_delay_minutes;
               templateDelayById.set(templateId, typeof delay === 'number' && Number.isFinite(delay) ? delay : 0);
@@ -389,10 +386,11 @@ async function fetchPendingReminders(): Promise<PendingReminder[]> {
           }
           if (
             !isTaskVisibleForActivity(
-              { feedback_template_id: templateId },
+              { ...(feedbackTask as any), feedback_template_id: templateId },
               activity.activity_date,
               activity.activity_time,
-              templateArchivedAtById
+              templateVisibilityById,
+              activity.category_id ?? null,
             )
           ) {
             console.log('ℹ️ Skipping after-training reminder for archived template task', {

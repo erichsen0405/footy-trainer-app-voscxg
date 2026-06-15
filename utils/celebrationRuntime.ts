@@ -1,5 +1,6 @@
 import { addDays, format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchTaskTemplateVisibilityStateByIds } from '@/services/taskTemplateVisibilityState';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import {
   buildCelebrationCompletionUnitKey,
@@ -7,7 +8,7 @@ import {
   type CelebrationType,
   resolveCelebrationAfterCompletionFromUnits,
 } from '@/utils/celebration';
-import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
+import { isTaskVisibleForActivity, type TemplateVisibilityById } from '@/utils/taskTemplateVisibility';
 
 type CelebrationRuntimeInput = {
   completingToDone: boolean;
@@ -26,10 +27,12 @@ type CelebrationRuntimeDecision = {
 type ExternalEventRelation =
   | {
       start_date?: string | null;
+      start_time?: string | null;
       deleted?: boolean | null;
     }
   | {
       start_date?: string | null;
+      start_time?: string | null;
       deleted?: boolean | null;
     }[]
   | null;
@@ -211,13 +214,13 @@ export async function resolveCelebrationAfterCompletionFromDatabase(
       supabase
         .from('activity_tasks')
         .select(
-          'id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date, activity_time)'
+          'id, activity_id, created_at, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date, activity_time, category_id)'
         )
         .eq('activities.activity_date', startIso),
       supabase
         .from('external_event_tasks')
         .select(
-          'id, local_meta_id, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(id, external_event_id, events_external!inner(start_date, deleted))'
+          'id, local_meta_id, created_at, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(id, external_event_id, category_id, events_external!inner(start_date, start_time, deleted))'
         )
         .gte('events_local_meta.events_external.start_date', startIso)
         .lt('events_local_meta.events_external.start_date', endIsoExclusive),
@@ -256,20 +259,9 @@ export async function resolveCelebrationAfterCompletionFromDatabase(
       if (templateId) templateIdCandidates.add(templateId);
     });
 
-    const templateArchivedAtById: Record<string, string | null> = {};
+    let templateVisibilityById: TemplateVisibilityById = {};
     if (templateIdCandidates.size) {
-      const { data: templateRows, error: templateLookupError } = await supabase
-        .from('task_templates')
-        .select('id, archived_at')
-        .in('id', Array.from(templateIdCandidates));
-      if (templateLookupError) throw templateLookupError;
-
-      (templateRows ?? []).forEach((row: any) => {
-        const templateId = normalizeId(row?.id);
-        if (!templateId) return;
-        templateArchivedAtById[templateId] =
-          typeof row?.archived_at === 'string' && row.archived_at.trim().length ? row.archived_at : null;
-      });
+      templateVisibilityById = await fetchTaskTemplateVisibilityStateByIds(Array.from(templateIdCandidates));
     }
 
     const internalTasks = internalTasksRaw.filter((task) =>
@@ -277,7 +269,8 @@ export async function resolveCelebrationAfterCompletionFromDatabase(
         task as any,
         (task.activities as any)?.activity_date ?? null,
         (task.activities as any)?.activity_time ?? null,
-        templateArchivedAtById
+        templateVisibilityById,
+        (task.activities as any)?.category_id ?? null,
       )
     );
 
@@ -285,7 +278,13 @@ export async function resolveCelebrationAfterCompletionFromDatabase(
       const meta = toRelationObject((task as any)?.events_local_meta);
       const externalEvent = toExternalEvent((meta as any)?.events_external ?? null);
       const { activityDate, activityTime } = getExternalDateTimeParts(externalEvent?.start_date);
-      return isTaskVisibleForActivity(task as any, activityDate, activityTime, templateArchivedAtById);
+      return isTaskVisibleForActivity(
+        task as any,
+        activityDate,
+        activityTime ?? externalEvent?.start_time ?? null,
+        templateVisibilityById,
+        meta?.category_id ?? null,
+      );
     });
 
     const feedbackByActivityTask: Record<string, any> = {};

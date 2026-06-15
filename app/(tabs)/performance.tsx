@@ -173,9 +173,10 @@ function buildHistoryCategoryOptions(
 }
 
 function sanitizeSavedHistoryFilters(raw: unknown): SavedHistoryCategoryFilter[] {
-  if (!Array.isArray(raw)) return [];
+  const rawItems = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? [raw] : [];
+  if (!rawItems.length) return [];
 
-  return raw
+  return rawItems
     .map((filter, index) => {
       if (!filter || typeof filter !== 'object') return null;
       const item = filter as Record<string, unknown>;

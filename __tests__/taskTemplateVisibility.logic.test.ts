@@ -39,7 +39,7 @@ describe('task template archive visibility', () => {
     ).toBe(true);
   });
 
-  it('keeps completed tasks visible even when template is archived after activity', () => {
+  it('hides completed tasks on activities after template archive timestamp', () => {
     const task = {
       id: 'task-1',
       title: 'Template opgave',
@@ -51,7 +51,7 @@ describe('task template archive visibility', () => {
       isTaskVisibleForActivity(task, '2026-02-21', '16:00:00', {
         'template-1': '2026-02-20T14:00:00.000Z',
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('hides incomplete template tasks created after the activity cutoff', () => {
@@ -102,5 +102,85 @@ describe('task template archive visibility', () => {
 
     expect(visible.map((task) => task.id)).toEqual(['manual-1']);
     expect(tasks).toHaveLength(2);
+  });
+
+  it('shows category-assigned tasks only from the assignment timestamp', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Template opgave',
+      task_template_id: 'template-1',
+    };
+    const visibility = {
+      'template-1': {
+        categoryPeriods: [
+          {
+            categoryId: 'cat-technical',
+            assignedAt: '2026-02-20T14:00:00.000Z',
+            removedAt: null,
+          },
+        ],
+      },
+    };
+
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '12:00:00', visibility, 'cat-technical'),
+    ).toBe(false);
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '16:00:00', visibility, 'cat-technical'),
+    ).toBe(true);
+  });
+
+  it('keeps removed category tasks visible before removal and hides them after removal', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Template opgave',
+      task_template_id: 'template-1',
+    };
+    const visibility = {
+      'template-1': {
+        categoryPeriods: [
+          {
+            categoryId: 'cat-technical',
+            assignedAt: '2026-02-18T09:00:00.000Z',
+            removedAt: '2026-02-20T14:00:00.000Z',
+          },
+        ],
+      },
+    };
+
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '12:00:00', visibility, 'cat-technical'),
+    ).toBe(true);
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '16:00:00', visibility, 'cat-technical'),
+    ).toBe(false);
+  });
+
+  it('hides tasks during an archive period and shows them after reactivation', () => {
+    const task = {
+      id: 'task-1',
+      title: 'Template opgave',
+      task_template_id: 'template-1',
+    };
+    const visibility = {
+      'template-1': {
+        archivePeriods: [
+          {
+            archivedAt: '2026-02-20T14:00:00.000Z',
+            reactivatedAt: '2026-02-22T09:00:00.000Z',
+          },
+        ],
+      },
+    };
+
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-20', '12:00:00', visibility, 'cat-technical'),
+    ).toBe(true);
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-21', '12:00:00', visibility, 'cat-technical'),
+    ).toBe(false);
+    expect(
+      isTaskVisibleForActivity(task, '2026-02-22', '10:00:00', visibility, 'cat-technical'),
+    ).toBe(true);
   });
 });

@@ -50,8 +50,9 @@ import {
   sendTrainerFeedback,
 } from '@/services/trainerFeedbackService';
 import { activityAssignmentsService } from '@/services/activityAssignments';
+import { fetchTaskTemplateVisibilityStateForTasks } from '@/services/taskTemplateVisibilityState';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { filterVisibleTasksForActivity } from '@/utils/taskTemplateVisibility';
+import { filterVisibleTasksForActivity, type TemplateVisibilityById } from '@/utils/taskTemplateVisibility';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
 import {
   PERFECT_SCORE,
@@ -372,6 +373,7 @@ const INTERNAL_SELECT_WITH_VIDEO = `
   ),
   activity_tasks (
     id,
+    created_at,
     title,
     description,
     completed,
@@ -415,6 +417,7 @@ const INTERNAL_SELECT_NO_VIDEO = `
   ),
   activity_tasks (
     id,
+    created_at,
     title,
     description,
     completed,
@@ -458,6 +461,7 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
   ),
   external_event_tasks (
     id,
+    created_at,
     task_template_id,
     feedback_template_id,
     is_feedback_task,
@@ -502,6 +506,7 @@ const EXTERNAL_META_SELECT_NO_VIDEO = `
   ),
   external_event_tasks (
     id,
+    created_at,
     task_template_id,
     feedback_template_id,
     is_feedback_task,
@@ -545,6 +550,7 @@ const EXTERNAL_META_SELECT_MINIMAL = `
   ),
   external_event_tasks (
     id,
+    created_at,
     task_template_id,
     feedback_template_id,
     is_feedback_task,
@@ -584,6 +590,7 @@ const EXTERNAL_META_SELECT_LEGACY = `
   ),
   external_event_tasks (
     id,
+    created_at,
     task_template_id,
     feedback_template_id,
     title,
@@ -595,6 +602,7 @@ const EXTERNAL_META_SELECT_LEGACY = `
 
 const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
   id,
+  created_at,
   title,
   description,
   completed,
@@ -611,6 +619,7 @@ const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
 
 const ACTIVITY_TASKS_SELECT_NO_VIDEO = `
   id,
+  created_at,
   title,
   description,
   completed,
@@ -626,6 +635,7 @@ const ACTIVITY_TASKS_SELECT_NO_VIDEO = `
 
 const ACTIVITY_TASKS_SELECT_LEGACY_WITH_VIDEO = `
   id,
+  created_at,
   title,
   description,
   completed,
@@ -638,6 +648,7 @@ const ACTIVITY_TASKS_SELECT_LEGACY_WITH_VIDEO = `
 
 const ACTIVITY_TASKS_SELECT_LEGACY_NO_VIDEO = `
   id,
+  created_at,
   title,
   description,
   completed,
@@ -774,52 +785,8 @@ async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]
   return [];
 }
 
-async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<Record<string, string | null>> {
-  const normalizeId = (value: unknown): string | null => {
-    if (value === null || value === undefined) return null;
-    const normalized = String(value).trim();
-    return normalized.length ? normalized : null;
-  };
-
-  const templateIds = new Set<string>();
-
-  (tasks || []).forEach((task) => {
-    const directTemplateId = normalizeId(task?.task_template_id ?? task?.taskTemplateId);
-    if (directTemplateId) templateIds.add(directTemplateId);
-
-    const feedbackTemplateId = normalizeId(task?.feedback_template_id ?? task?.feedbackTemplateId);
-    if (feedbackTemplateId) templateIds.add(feedbackTemplateId);
-
-    const markerTemplateId =
-      parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '') ||
-      parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '');
-    const normalizedMarkerId = normalizeId(markerTemplateId);
-    if (normalizedMarkerId) templateIds.add(normalizedMarkerId);
-  });
-
-  const ids = Array.from(templateIds);
-  if (!ids.length) return {};
-
-  try {
-    const { data, error } = await (supabase as any)
-      .from('task_templates')
-      .select('id, archived_at')
-      .in('id', ids);
-
-    if (error || !Array.isArray(data)) {
-      return {};
-    }
-
-    const map: Record<string, string | null> = {};
-    data.forEach((row: any) => {
-      const id = normalizeId(row?.id);
-      if (!id) return;
-      map[id] = typeof row?.archived_at === 'string' ? row.archived_at : null;
-    });
-    return map;
-  } catch {
-    return {};
-  }
+async function fetchArchivedAtByTemplateIds(tasks: any[]): Promise<TemplateVisibilityById> {
+  return fetchTaskTemplateVisibilityStateForTasks(tasks);
 }
 
 export async function fetchActivityFromDatabase(activityId: string): Promise<Activity | null> {
@@ -861,6 +828,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
         const mapped: any = {
           id: task.id,
+          created_at: task.created_at ?? null,
           title: task.title,
           description: task.description || '',
           completed: task.completed,
@@ -912,6 +880,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         internalActivityAny.activity_date,
         internalActivityAny.activity_time,
         archivedAtByTemplateId,
+        internalActivityAny.category_id ?? null,
       );
 
       return {
@@ -1077,6 +1046,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
         const mapped: any = {
           id: task.id,
+          created_at: task.created_at ?? null,
           title: task.title,
           description: task.description || '',
           completed: task.completed,
@@ -1142,6 +1112,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         externalEvent.start_date,
         externalEvent.start_time,
         archivedAtByTemplateId,
+        localMetaAny.category_id ?? null,
       );
 
       return {
@@ -1194,6 +1165,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
         const mapped: any = {
           id: task.id,
+          created_at: task.created_at ?? null,
           title: task.title,
           description: task.description || '',
           completed: task.completed,
@@ -1240,6 +1212,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         externalOnlyAny.start_date,
         externalOnlyAny.start_time,
         archivedAtByTemplateId,
+        null,
       );
 
       return {

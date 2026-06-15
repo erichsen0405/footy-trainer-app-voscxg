@@ -86,6 +86,13 @@ jest.mock('@/integrations/supabase/client', () => {
         return { error: null };
       }
 
+      if (table === 'task_template_categories' && state.action === 'select') {
+        return {
+          data: applyFilters(db.taskTemplateCategories, state.filters),
+          error: null,
+        };
+      }
+
       if (table === 'task_template_categories' && state.action === 'insert') {
         const rows = Array.isArray(state.payload) ? state.payload : [state.payload];
         db.taskTemplateCategories.push(...rows);

@@ -18,6 +18,7 @@ import { AppState, AppStateStatus, InteractionManager, Platform } from 'react-na
 import { taskService } from '@/services/taskService';
 import { activityService } from '@/services/activityService';
 import { calendarService } from '@/services/calendarService';
+import { fetchTaskTemplateVisibilityStateByIds } from '@/services/taskTemplateVisibilityState';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
@@ -31,7 +32,7 @@ import {
   subscribeToActivityDeleted,
 } from '@/utils/activityEvents';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { isTaskVisibleForActivity } from '@/utils/taskTemplateVisibility';
+import { isTaskVisibleForActivity, type TemplateVisibilityById } from '@/utils/taskTemplateVisibility';
 import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
 import { buildTaskVideoPayload } from '@/utils/taskVideos';
 
@@ -955,12 +956,12 @@ export const useFootballData = ({
       const [internalRes, externalRes, internalIntensityRes, externalIntensityRes] = await Promise.all([
         supabase
           .from('activity_tasks')
-          .select('id, activity_id, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date, activity_time)')
+          .select('id, activity_id, created_at, completed, title, description, task_template_id, feedback_template_id, activities!inner(activity_date, activity_time, category_id)')
           .gte('activities.activity_date', startIso)
           .lt('activities.activity_date', endIsoExclusive),
         supabase
           .from('external_event_tasks')
-          .select('id, local_meta_id, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(id, external_event_id, events_external!inner(start_date, deleted))')
+          .select('id, local_meta_id, created_at, completed, title, description, task_template_id, feedback_template_id, events_local_meta!inner(id, external_event_id, category_id, events_external!inner(start_date, start_time, deleted))')
           .gte('events_local_meta.events_external.start_date', startIso)
           .lt('events_local_meta.events_external.start_date', endIsoExclusive),
         supabase
@@ -1033,34 +1034,35 @@ export const useFootballData = ({
         if (templateId) templateIdCandidates.add(templateId);
       });
 
-      const templateArchivedAtById: Record<string, string | null> = {};
+      let templateVisibilityById: TemplateVisibilityById = {};
       if (templateIdCandidates.size) {
-        const { data: templateRows, error: templateLookupError } = await supabase
-          .from('task_templates')
-          .select('id, archived_at')
-          .in('id', Array.from(templateIdCandidates));
-        if (templateLookupError) throw templateLookupError;
-
-        (templateRows || []).forEach((row: any) => {
-          const templateId = normalizeId(row?.id);
-          if (!templateId) return;
-          templateArchivedAtById[templateId] =
-            typeof row?.archived_at === 'string' && row.archived_at.trim().length
-              ? row.archived_at
-              : null;
-        });
+        templateVisibilityById = await fetchTaskTemplateVisibilityStateByIds(Array.from(templateIdCandidates));
       }
 
       const internalWeeklyTasks = internalWeeklyTasksRaw.filter((task: any) => {
         const activityDate = (task as any)?.activities?.activity_date as string | undefined;
         const activityTime = (task as any)?.activities?.activity_time as string | undefined;
-        return isTaskVisibleForActivity(task, activityDate ?? null, activityTime ?? null, templateArchivedAtById);
+        const categoryId = (task as any)?.activities?.category_id as string | undefined;
+        return isTaskVisibleForActivity(
+          task,
+          activityDate ?? null,
+          activityTime ?? null,
+          templateVisibilityById,
+          categoryId ?? null,
+        );
       });
 
       const externalWeeklyTasks = externalWeeklyTasksRaw.filter((task: any) => {
-        const startDate = (task as any)?.events_local_meta?.events_external?.start_date as string | undefined;
+        const meta = (task as any)?.events_local_meta;
+        const startDate = meta?.events_external?.start_date as string | undefined;
         const { activityDate, activityTime } = getExternalDateTimeParts(startDate);
-        return isTaskVisibleForActivity(task, activityDate, activityTime, templateArchivedAtById);
+        return isTaskVisibleForActivity(
+          task,
+          activityDate,
+          activityTime ?? meta?.events_external?.start_time ?? null,
+          templateVisibilityById,
+          meta?.category_id ?? null,
+        );
       });
 
       const normalizeFeedbackTitle = (value?: string | null): string => {
