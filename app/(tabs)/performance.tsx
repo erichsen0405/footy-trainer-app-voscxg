@@ -267,8 +267,8 @@ export default function PerformanceScreen() {
   const [isPlayerDropdownOpen, setIsPlayerDropdownOpen] = useState(false);
   const [expandedTrophy, setExpandedTrophy] = useState<'gold' | 'silver' | 'bronze' | null>(null);
   const [expandedHistoryWeeks, setExpandedHistoryWeeks] = useState<Record<string, boolean>>({});
-  const [isTrophySectionExpanded, setIsTrophySectionExpanded] = useState(true);
-  const [isProgressionSectionExpanded, setIsProgressionSectionExpanded] = useState(true);
+  const [isTrophySectionExpanded, setIsTrophySectionExpanded] = useState(false);
+  const [isProgressionSectionExpanded, setIsProgressionSectionExpanded] = useState(false);
   const [isHistorySectionExpanded, setIsHistorySectionExpanded] = useState(false);
   const [isHistoryFilterModalOpen, setIsHistoryFilterModalOpen] = useState(false);
   const [selectedHistoryCategoryIds, setSelectedHistoryCategoryIds] = useState<string[]>([]);

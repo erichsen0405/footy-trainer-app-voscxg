@@ -194,7 +194,13 @@ describe('PerformanceScreen', () => {
 
     expect(getByText('Trophies')).toBeTruthy();
     expect(getByText('Development')).toBeTruthy();
+    expect(queryByText('Gold trophies')).toBeNull();
+    expect(queryByTestId('mock.progressionSection')).toBeNull();
+
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
     expect(getByText('Gold trophies')).toBeTruthy();
+
+    fireEvent.press(getByTestId('performance.progression.toggle'));
     expect(getByTestId('mock.progressionSection')).toBeTruthy();
 
     fireEvent.press(getByTestId('performance.trophies.toggle'));
@@ -324,7 +330,9 @@ describe('PerformanceScreen', () => {
     screen.rerender(<PerformanceScreen />);
 
     expect(screen.getByText('Showing performance for Alma Striker')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('performance.progression.toggle'));
     expect(screen.getByTestId('mock.progressionTarget').props.children).toBe('player-1');
+    fireEvent.press(screen.getByTestId('performance.trophies.toggle'));
     expect(screen.getByTestId('performance.trophies.count.gold').props.children).toBe(1);
   });
 
@@ -358,6 +366,7 @@ describe('PerformanceScreen', () => {
     const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
 
     expect(getByTestId('performance.selectedPlayer')).toBeTruthy();
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
     expect(getByText('Loading trophies and calendars...')).toBeTruthy();
     expect(queryByTestId('performance.trophies.count.gold')).toBeNull();
   });
@@ -680,8 +689,9 @@ describe('PerformanceScreen', () => {
       activities: [],
     });
 
-    const { getByText } = render(<PerformanceScreen />);
+    const { getByTestId, getByText } = render(<PerformanceScreen />);
 
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
     fireEvent.press(getByText('Bronze trophies'));
 
     expect(getByText('Week 6, 2026')).toBeTruthy();
@@ -708,8 +718,9 @@ describe('PerformanceScreen', () => {
       categories: [],
     });
 
-    const { getByText, queryByText } = render(<PerformanceScreen />);
+    const { getByTestId, getByText, queryByText } = render(<PerformanceScreen />);
 
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
     expect(getByText('Bronze trophies')).toBeTruthy();
     fireEvent.press(getByText('Bronze trophies'));
 
@@ -721,6 +732,7 @@ describe('PerformanceScreen', () => {
   it('shows 0 in all trophy boxes when valid trophy data is loaded but empty', () => {
     const { getByTestId } = render(<PerformanceScreen />);
 
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
     expect(getByTestId('performance.trophies.count.gold').props.children).toBe(0);
     expect(getByTestId('performance.trophies.count.silver').props.children).toBe(0);
     expect(getByTestId('performance.trophies.count.bronze').props.children).toBe(0);
@@ -746,8 +758,9 @@ describe('PerformanceScreen', () => {
       categories: [],
     });
 
-    const { getByText, queryByTestId } = render(<PerformanceScreen />);
+    const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
 
+    fireEvent.press(getByTestId('performance.trophies.toggle'));
     expect(getByText('Loading trophies and calendars...')).toBeTruthy();
     expect(queryByTestId('performance.trophies.count.gold')).toBeNull();
     expect(queryByTestId('performance.trophies.count.silver')).toBeNull();
