@@ -31,6 +31,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { fetchSelfFeedbackForActivities } from '@/services/feedbackService';
 import * as CommonStyles from '@/styles/commonStyles';
 import type { ActivityCategory, TaskTemplateSelfFeedback } from '@/types';
+import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import {
   buildPerformanceHistoryWeeks,
   resolvePerformanceHistoryActivityCategoryId,
@@ -128,6 +129,41 @@ function isFeedbackAnswered(feedback?: TaskTemplateSelfFeedback): boolean {
   const hasScore = typeof feedback.rating === 'number';
   const hasNote = (feedback.note?.trim() ?? '').length > 0;
   return hasScore || hasNote;
+}
+
+function normalizeFeedbackTitle(value?: string | null): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isFeedbackTitle(value?: string | null): boolean {
+  const normalized = normalizeFeedbackTitle(value);
+  return normalized.startsWith('feedback pa') || normalized.startsWith('feedback on');
+}
+
+function getHistoryFeedbackTemplateId(task: any): string | null {
+  return (
+    normalizeId(task?.feedbackTemplateId ?? task?.feedback_template_id) ??
+    normalizeId(parseTemplateIdFromMarker(typeof task?.description === 'string' ? task.description : '')) ??
+    normalizeId(parseTemplateIdFromMarker(typeof task?.title === 'string' ? task.title : '')) ??
+    (isFeedbackTitle(task?.title)
+      ? normalizeId(task?.taskTemplateId ?? task?.task_template_id)
+      : null)
+  );
+}
+
+function isHistoryFeedbackTask(task: any): boolean {
+  return (
+    !!getHistoryFeedbackTemplateId(task) ||
+    task?.isFeedbackTask === true ||
+    task?.is_feedback_task === true ||
+    isFeedbackTitle(task?.title)
+  );
 }
 
 function areIdListsEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -529,20 +565,20 @@ export default function PerformanceScreen() {
     [applyHistoryFilter],
   );
 
-  const historyWeeks = useMemo(
+  const baseHistoryWeeks = useMemo(
     () => buildPerformanceHistoryWeeks(activities, new Date(), { categoryIds: selectedHistoryCategoryIds }),
     [activities, selectedHistoryCategoryIds],
   );
 
   const historyFeedbackActivityIds = useMemo(() => {
     const ids = new Set<string>();
-    historyWeeks.forEach((week) => {
+    baseHistoryWeeks.forEach((week) => {
       week.activities.forEach((activity) => {
         getFeedbackActivityIdCandidatesForActivity(activity).forEach((candidate) => ids.add(candidate));
       });
     });
     return Array.from(ids);
-  }, [historyWeeks]);
+  }, [baseHistoryWeeks]);
 
   const historyFeedbackActivityIdsKey = useMemo(
     () => historyFeedbackActivityIds.join('|'),
@@ -685,6 +721,36 @@ export default function PerformanceScreen() {
     historyFeedbackCompletionByActivityTaskId,
     historyFeedbackDoneByActivityId,
   ]);
+
+  const isHistoryTaskCompleted = useCallback(
+    (task: any, activity: any): boolean => {
+      if (task?.completed === true) return true;
+      if (!isHistoryFeedbackTask(task)) return false;
+
+      const feedbackProps = getHistoryActivityCardFeedbackProps(activity);
+      const taskId = normalizeId(task?.id ?? task?.task_id);
+      if (taskId && feedbackProps.feedbackCompletionByTaskId?.[taskId] === true) {
+        return true;
+      }
+
+      const templateId = getHistoryFeedbackTemplateId(task);
+      if (templateId && feedbackProps.feedbackCompletionByTemplateId?.[templateId] === true) {
+        return true;
+      }
+
+      return !templateId && feedbackProps.feedbackDone === true;
+    },
+    [getHistoryActivityCardFeedbackProps],
+  );
+
+  const historyWeeks = useMemo(
+    () =>
+      buildPerformanceHistoryWeeks(activities, new Date(), {
+        categoryIds: selectedHistoryCategoryIds,
+        isTaskCompleted: isHistoryTaskCompleted,
+      }),
+    [activities, isHistoryTaskCompleted, selectedHistoryCategoryIds],
+  );
 
   const historyListData = useMemo(() => {
     const items: HistoryListItem[] = [];

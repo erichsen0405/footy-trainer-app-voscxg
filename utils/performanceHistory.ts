@@ -17,6 +17,7 @@ export type PerformanceHistoryWeek = {
 
 export type PerformanceHistoryOptions = {
   categoryIds?: readonly string[] | Set<string> | null;
+  isTaskCompleted?: (task: any, activity: any) => boolean;
 };
 
 function normalizeCategoryId(value: unknown): string | null {
@@ -93,6 +94,10 @@ export function buildPerformanceHistoryWeeks(
   const safeActivities = Array.isArray(activities) ? activities : [];
   const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
   const categoryFilter = normalizeCategoryFilterSet(options.categoryIds);
+  const isTaskCompleted =
+    typeof options.isTaskCompleted === 'function'
+      ? options.isTaskCompleted
+      : (task: any) => task?.completed === true;
 
   const weeksByKey = new Map<string, PerformanceHistoryWeek>();
 
@@ -110,7 +115,7 @@ export function buildPerformanceHistoryWeeks(
     const weekKey = weekStart.toISOString();
     const existing = weeksByKey.get(weekKey);
     const tasks = getActivityTasks(activity);
-    const completedTasks = tasks.filter((task) => task?.completed === true);
+    const completedTasks = tasks.filter((task) => isTaskCompleted(task, activity));
     const hasTasks = tasks.length > 0;
     const allTasksCompleted = hasTasks && completedTasks.length === tasks.length;
 

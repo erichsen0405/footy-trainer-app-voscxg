@@ -12,6 +12,9 @@ const mockSelect = jest.fn(() => ({ eq: mockEq }));
 const mockFrom = jest.fn(() => ({ select: mockSelect }));
 const mockInvoke = jest.fn();
 
+const externalEventRowUuid = '11111111-1111-1111-1111-111111111111';
+const localMetaUuid = '22222222-2222-2222-2222-222222222222';
+
 jest.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (...args: any[]) => (mockFrom as (...innerArgs: any[]) => unknown)(...args),
@@ -103,17 +106,40 @@ describe('trainerFeedbackService', () => {
     });
   });
 
-  it('resolves external trainer feedback context from external event ids', () => {
+  it('resolves external trainer feedback context from external UUID ids', () => {
     expect(
       resolveTrainerFeedbackActivityContext({
-        id: 'meta-1',
+        id: localMetaUuid,
         isExternal: true,
-        external_event_id: 'external-event-1',
+        external_event_id: '6330603@dbu',
+        external_event_row_id: externalEventRowUuid,
       }),
     ).toEqual({
       activityContextType: 'external',
-      activityContextId: 'external-event-1',
+      activityContextId: externalEventRowUuid,
     });
+  });
+
+  it('prefers external event UUID over local meta id when no row id alias is present', () => {
+    expect(
+      resolveTrainerFeedbackActivityContext({
+        id: localMetaUuid,
+        isExternal: true,
+        external_event_id: externalEventRowUuid,
+      }),
+    ).toEqual({
+      activityContextType: 'external',
+      activityContextId: externalEventRowUuid,
+    });
+  });
+
+  it('does not resolve external trainer feedback context from provider event ids', () => {
+    expect(
+      resolveTrainerFeedbackActivityContext({
+        isExternal: true,
+        external_event_id: '6330603@dbu',
+      }),
+    ).toBeNull();
   });
 
   it('reads trainer feedback for a player activity', async () => {
@@ -225,6 +251,20 @@ describe('trainerFeedbackService', () => {
     expect(mockEq).toHaveBeenNthCalledWith(2, 'activity_context_type', 'internal');
     expect(mockEq).toHaveBeenNthCalledWith(3, 'activity_context_id', 'source-activity-1');
     expect(mockOrder).toHaveBeenCalledWith('updated_at', { ascending: false });
+  });
+
+  it('skips player feedback query when an external activity only has a provider id', async () => {
+    await expect(
+      fetchTrainerFeedbackForPlayerActivity({
+        activity: {
+          isExternal: true,
+          external_event_id: '6330603@dbu',
+        },
+        playerId: 'player-1',
+      }),
+    ).resolves.toEqual([]);
+
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 
   it('saves trainer feedback via the edge function', async () => {

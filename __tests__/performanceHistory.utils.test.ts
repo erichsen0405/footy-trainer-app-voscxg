@@ -57,6 +57,33 @@ describe('buildPerformanceHistoryWeeks', () => {
     expect(weeks[0].totalMinutes).toBe(0);
   });
 
+  it('uses a custom task completion resolver for historical week totals', () => {
+    const now = new Date('2026-02-28T10:00:00.000Z');
+    const weeks = buildPerformanceHistoryWeeks(
+      [
+        {
+          id: 'past-feedback',
+          title: 'Past with feedback completion',
+          activity_date: '2026-02-18',
+          activity_time: '10:00:00',
+          duration_minutes: 45,
+          tasks: [
+            { id: 'feedback-task-1', feedback_template_id: 'template-1', completed: false },
+            { id: 'normal-task-1', completed: false },
+          ],
+        },
+      ],
+      now,
+      {
+        isTaskCompleted: (task) => task?.feedback_template_id === 'template-1',
+      },
+    );
+
+    expect(weeks).toHaveLength(1);
+    expect(weeks[0].totalCompletedTasks).toBe(1);
+    expect(weeks[0].totalMinutes).toBe(0);
+  });
+
   it('counts activity duration when activity has no tasks', () => {
     const now = new Date('2026-02-28T10:00:00.000Z');
     const weeks = buildPerformanceHistoryWeeks(

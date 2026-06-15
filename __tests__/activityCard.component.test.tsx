@@ -140,6 +140,30 @@ describe('ActivityCard completion UI', () => {
     expect(getByText('Feedback on: fokus')).toHaveStyle({ textDecorationLine: 'line-through' });
   });
 
+  it('marks feedback task completed from feedbackCompletionByTemplateId map', () => {
+    const { getByText } = render(
+      <ActivityCard
+        activity={{
+          ...baseActivity,
+          tasks: [
+            {
+              id: 'feedback-task-template-1',
+              title: 'Feedback on: vendinger',
+              completed: false,
+              feedback_template_id: 'template-completed-1',
+            },
+          ],
+        }}
+        resolvedDate={new Date('2026-01-01T10:00:00Z')}
+        showTasks
+        feedbackCompletionByTaskId={{}}
+        feedbackCompletionByTemplateId={{ 'template-completed-1': true }}
+      />
+    );
+
+    expect(getByText('Feedback on: vendinger')).toHaveStyle({ textDecorationLine: 'line-through' });
+  });
+
   it('keeps feedback task not completed without completion signals', () => {
     const { getByText } = render(
       <ActivityCard

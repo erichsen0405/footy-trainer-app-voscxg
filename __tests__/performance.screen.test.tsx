@@ -468,6 +468,59 @@ describe('PerformanceScreen', () => {
     });
   });
 
+  it('counts completed history feedback in history week totals', async () => {
+    const activityId = '33333333-3333-3333-3333-333333333333';
+    mockFetchSelfFeedbackForActivities.mockResolvedValue([
+      {
+        id: 'feedback-row-week-1',
+        userId: 'self-user-id',
+        taskTemplateId: 'template-week-1',
+        taskInstanceId: null,
+        activityId,
+        rating: 4,
+        note: '',
+        createdAt: '2026-02-12T12:00:00.000Z',
+        updatedAt: '2026-02-12T12:00:00.000Z',
+      },
+    ]);
+    mockUseHomeActivities.mockReturnValue({
+      loading: false,
+      hasLoadedFullWindow: true,
+      loadFullWindow: jest.fn().mockResolvedValue(true),
+      refresh: jest.fn(),
+      activities: [
+        {
+          id: activityId,
+          title: 'Feedback week total',
+          activity_date: '2026-02-12',
+          activity_time: '10:00:00',
+          duration_minutes: 45,
+          tasks: [
+            {
+              id: 'feedback-task-week-1',
+              title: 'Feedback på afslutninger',
+              feedback_template_id: 'template-week-1',
+              completed: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    const screen = render(<PerformanceScreen />);
+
+    fireEvent.press(screen.getByTestId('performance.history.toggle'));
+
+    await waitFor(() => {
+      expect(mockFetchSelfFeedbackForActivities).toHaveBeenCalledWith('self-user-id', [activityId]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock.weeklySummaryCard.totalTasks').props.children).toBe(1);
+      expect(screen.getByTestId('mock.weeklySummaryCard.totalMinutes').props.children).toBe(45);
+    });
+  });
+
   it('filters historik weekly totals by saved category filters', async () => {
     mockUseFootball.mockReturnValue({
       trophies: [],

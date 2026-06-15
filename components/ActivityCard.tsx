@@ -428,17 +428,6 @@ export default function ActivityCard({
     [isFeedbackTask]
   );
 
-  const feedbackTemplateCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const task of Array.isArray(optimisticTasks) ? optimisticTasks : []) {
-      if (!isFeedbackTask(task)) continue;
-      const templateId = resolveFeedbackTemplateId(task);
-      if (!templateId) continue;
-      counts[String(templateId)] = (counts[String(templateId)] ?? 0) + 1;
-    }
-    return counts;
-  }, [isFeedbackTask, optimisticTasks, resolveFeedbackTemplateId]);
-
   const isTaskDone = useCallback(
     (task: any): boolean => {
       if (!task) return false;
@@ -452,12 +441,8 @@ export default function ActivityCard({
 
         if (templateId) {
           const templateKey = String(templateId);
-          const hasDuplicateTemplate = (feedbackTemplateCounts[templateKey] ?? 0) > 1;
-          if (!hasDuplicateTemplate) {
-            return (
-              feedbackCompletionByTemplateId?.[templateKey] === true ||
-              task.completed === true
-            );
+          if (feedbackCompletionByTemplateId?.[templateKey] === true) {
+            return true;
           }
           return task.completed === true;
         }
@@ -470,7 +455,6 @@ export default function ActivityCard({
       feedbackCompletionByTaskId,
       feedbackCompletionByTemplateId,
       feedbackDone,
-      feedbackTemplateCounts,
       isFeedbackTask,
       resolveFeedbackTemplateId,
     ]

@@ -11,6 +11,15 @@ function normalizeId(value: unknown): string {
   return value.trim();
 }
 
+function isUuidString(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function normalizeUuid(value: unknown): string {
+  const normalized = normalizeId(value);
+  return normalized && isUuidString(normalized) ? normalized : '';
+}
+
 function pickRowValue(row: Record<string, unknown>, snakeKey: string, camelKey: string): unknown {
   return row[snakeKey] ?? row[camelKey];
 }
@@ -43,13 +52,14 @@ export function resolveTrainerFeedbackActivityContext(
 
   const isExternal = activityAny.isExternal === true || activityAny.is_external === true;
   if (isExternal) {
-    const externalEventId = normalizeId(
-      activityAny.externalEventId ?? activityAny.external_event_id
-    );
-    if (!externalEventId) return null;
+    const externalContextId =
+      normalizeUuid(activityAny.externalEventRowId ?? activityAny.external_event_row_id) ||
+      normalizeUuid(activityAny.externalEventId ?? activityAny.external_event_id) ||
+      normalizeUuid(activityAny.id ?? activityAny.activity_id ?? activityAny.activityId);
+    if (!externalContextId) return null;
     return {
       activityContextType: 'external',
-      activityContextId: externalEventId,
+      activityContextId: externalContextId,
     };
   }
 
