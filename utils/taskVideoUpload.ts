@@ -5,7 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 const TASK_VIDEO_BUCKET = 'drill-videos';
 const TASK_VIDEO_FOLDER = 'task-videos';
-const MAX_TASK_VIDEO_BYTES = 500 * 1024 * 1024;
+const MAX_TASK_VIDEO_SIZE_MB = 150;
+export const MAX_TASK_VIDEO_BYTES = MAX_TASK_VIDEO_SIZE_MB * 1024 * 1024;
 
 const EXTENSION_BY_MIME: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -177,7 +178,7 @@ export async function uploadTaskVideoAsset({
 
   const fileSize = typeof asset.fileSize === 'number' ? asset.fileSize : asset.size;
   if (typeof fileSize === 'number' && fileSize > MAX_TASK_VIDEO_BYTES) {
-    throw new Error('The file is too large to upload. Maximum size is 500 MB.');
+    throw new Error(`The file is too large to upload. Maximum size is ${MAX_TASK_VIDEO_SIZE_MB} MB.`);
   }
 
   if (!hasSupportedUploadType(asset)) {

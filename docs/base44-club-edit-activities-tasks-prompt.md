@@ -906,7 +906,7 @@ File input:
 
 Maks filstørrelse:
 
-- 500 MB, samme som appen.
+- 150 MB, samme som appen.
 
 Upload-flow:
 
@@ -941,7 +941,7 @@ Fejltekster:
 
 - `Du skal være logget ind for at uploade filer.`
 - `Vælg en JPG, PNG, PDF eller understøttet videofil.`
-- `Filen er for stor. Maksimal størrelse er 500 MB.`
+- `Filen er for stor. Maksimal størrelse er 150 MB.`
 - `Filen kunne ikke uploades.`
 
 ## Media URL Validering
