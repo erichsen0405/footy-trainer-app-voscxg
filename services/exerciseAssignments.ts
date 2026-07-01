@@ -78,6 +78,7 @@ export const exerciseAssignmentsService = {
       after_training_feedback_score_explanation: null,
       after_training_feedback_enable_intensity: true,
       after_training_feedback_enable_note: true,
+      auto_add_to_activities: false,
     };
 
     const rows: any[] = [];

@@ -20,6 +20,7 @@ export interface CreateTaskData {
   afterTrainingFeedbackScoreExplanation?: string | null;
   afterTrainingFeedbackEnableIntensity?: boolean;
   afterTrainingFeedbackEnableNote?: boolean;
+  autoAddToActivities?: boolean;
   taskDurationEnabled?: boolean;
   taskDurationMinutes?: number | null;
   playerId?: string | null;
@@ -42,6 +43,7 @@ export interface UpdateTaskData {
   afterTrainingFeedbackScoreExplanation?: string | null;
   afterTrainingFeedbackEnableIntensity?: boolean;
   afterTrainingFeedbackEnableNote?: boolean;
+  autoAddToActivities?: boolean;
   taskDurationEnabled?: boolean;
   taskDurationMinutes?: number | null;
 }
@@ -406,6 +408,12 @@ export const taskService = {
         : ('libraryExerciseId' in sourceTask
             ? (sourceTask as any).libraryExerciseId
             : (rawData as CreateTaskData).libraryExerciseId)) ?? null;
+    const resolvedAutoAddToActivities =
+      ('autoAddToActivities' in sourceTask
+        ? (sourceTask as any).autoAddToActivities
+        : ('auto_add_to_activities' in sourceTask
+            ? (sourceTask as any).auto_add_to_activities
+            : (rawData as CreateTaskData).autoAddToActivities)) ?? false;
 
     let resolvedPlayerId: string | null =
       (rawData as CreateTaskData).playerId ?? null;
@@ -441,13 +449,14 @@ export const taskService = {
       after_training_feedback_enable_note: resolvedAfterTrainingFeedbackEnableNote,
       task_duration_enabled: resolvedTaskDurationEnabled,
       task_duration_minutes: resolvedTaskDurationMinutes,
+      auto_add_to_activities: !!resolvedAutoAddToActivities,
       source_folder: resolvedSourceFolder,
       player_id: resolvedPlayerId,
       team_id: resolvedTeamId,
       library_exercise_id: resolvedLibraryExerciseId,
     };
     const templateSelect =
-      'id, title, description, reminder_minutes, video_url, video_urls, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes';
+      'id, title, description, reminder_minutes, video_url, video_urls, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes, auto_add_to_activities';
 
     let template: any = null;
     let templateCreated = false;
@@ -564,6 +573,8 @@ export const taskService = {
       afterTrainingFeedbackEnableNote: template.after_training_feedback_enable_note ?? true,
       taskDurationEnabled: template.task_duration_enabled ?? false,
       taskDurationMinutes: template.task_duration_minutes ?? null,
+      autoAddToActivities: template.auto_add_to_activities ?? !!resolvedAutoAddToActivities,
+      auto_add_to_activities: template.auto_add_to_activities ?? !!resolvedAutoAddToActivities,
     };
   },
 
@@ -579,6 +590,20 @@ export const taskService = {
     const updateData: TablesUpdate<'task_templates'> = {};
     const nextCategoryIds =
       updates.categoryIds !== undefined ? uniqueStringIds(updates.categoryIds) : null;
+    let previousAutoAddToActivities: boolean | null = null;
+    const loadCurrentAutoAddToActivities = async (): Promise<boolean> => {
+      const { data: autoAddRows, error: autoAddLookupError } = await supabase
+        .from('task_templates')
+        .select('auto_add_to_activities')
+        .eq('id', taskId)
+        .eq('user_id', userId)
+        .abortSignal(signal);
+
+      if (autoAddLookupError) throw autoAddLookupError;
+
+      const firstRow = Array.isArray(autoAddRows) ? autoAddRows[0] : autoAddRows;
+      return firstRow?.auto_add_to_activities === true;
+    };
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.description !== undefined) updateData.description = updates.description;
@@ -646,6 +671,19 @@ export const taskService = {
       updateData.task_duration_minutes = normalizeTaskDurationMinutes(updates.taskDurationMinutes);
     }
 
+    if (updates.autoAddToActivities !== undefined) {
+      try {
+        previousAutoAddToActivities = await loadCurrentAutoAddToActivities();
+      } catch (autoAddLookupUnexpectedError) {
+        console.error(
+          '[TEMPLATE_CATEGORY_SYNC] Could not load previous auto-add state before template update',
+          autoAddLookupUnexpectedError
+        );
+        previousAutoAddToActivities = null;
+      }
+      (updateData as any).auto_add_to_activities = !!updates.autoAddToActivities;
+    }
+
     updateData.updated_at = new Date().toISOString();
 
     const { error: templateError } = await supabase
@@ -709,7 +747,26 @@ export const taskService = {
       await syncTaskTemplateSubtasks(taskId, updates.subtasks, signal);
     }
 
-    if (nextCategoryIds !== null) {
+    let resolvedAutoAddToActivities =
+      updates.autoAddToActivities !== undefined ? !!updates.autoAddToActivities : null;
+
+    if (nextCategoryIds !== null && resolvedAutoAddToActivities === null) {
+      try {
+        resolvedAutoAddToActivities = await loadCurrentAutoAddToActivities();
+      } catch (autoAddLookupUnexpectedError) {
+        console.error(
+          '[TEMPLATE_CATEGORY_SYNC] Could not load auto-add state before category sync',
+          autoAddLookupUnexpectedError
+        );
+        resolvedAutoAddToActivities = false;
+      }
+    }
+
+    const shouldSyncCategoryAssignments =
+      (nextCategoryIds !== null && resolvedAutoAddToActivities === true) ||
+      (nextCategoryIds === null && updates.autoAddToActivities === true);
+
+    if (shouldSyncCategoryAssignments) {
       try {
         const { error: categorySyncError } = await supabase.rpc(
           'update_all_tasks_from_template',
@@ -732,11 +789,25 @@ export const taskService = {
         );
       }
 
+      if (nextCategoryIds !== null) {
+        try {
+          await removeStaleTemplateCategoryAssignments(taskId, nextCategoryIds, signal);
+        } catch (categoryCleanupUnexpectedError) {
+          console.error(
+            '[TEMPLATE_CATEGORY_SYNC] Unexpected cleanup failure after template category update',
+            categoryCleanupUnexpectedError
+          );
+        }
+      }
+    } else if (
+      updates.autoAddToActivities === false &&
+      previousAutoAddToActivities === true
+    ) {
       try {
-        await removeStaleTemplateCategoryAssignments(taskId, nextCategoryIds, signal);
+        await removeStaleTemplateCategoryAssignments(taskId, [], signal);
       } catch (categoryCleanupUnexpectedError) {
         console.error(
-          '[TEMPLATE_CATEGORY_SYNC] Unexpected cleanup failure after template category update',
+          '[TEMPLATE_CATEGORY_SYNC] Unexpected cleanup failure after disabling template auto-add',
           categoryCleanupUnexpectedError
         );
       }

@@ -707,6 +707,7 @@ export const useFootballData = ({
           after_training_feedback_enable_note,
           task_duration_enabled,
           task_duration_minutes,
+          auto_add_to_activities,
           archived_at,
           task_template_categories (
             category_id
@@ -799,6 +800,8 @@ export const useFootballData = ({
           afterTrainingFeedbackEnableNote: t.after_training_feedback_enable_note ?? true,
           taskDurationEnabled: t.task_duration_enabled ?? false,
           taskDurationMinutes: t.task_duration_minutes ?? null,
+          autoAddToActivities: t.auto_add_to_activities ?? false,
+          auto_add_to_activities: t.auto_add_to_activities ?? false,
           archivedAt: t.archived_at ?? null,
         };
       });
@@ -1646,6 +1649,7 @@ export const useFootballData = ({
           afterTrainingFeedbackEnableNote: task.afterTrainingFeedbackEnableNote ?? true,
           taskDurationEnabled: task.taskDurationEnabled ?? false,
           taskDurationMinutes: task.taskDurationEnabled ? (task.taskDurationMinutes ?? 0) : null,
+          autoAddToActivities: task.autoAddToActivities ?? false,
           playerId,
           teamId,
           sourceFolder: options?.sourceFolder ?? null,
@@ -1818,6 +1822,7 @@ export const useFootballData = ({
         afterTrainingFeedbackEnableNote: updates.afterTrainingFeedbackEnableNote,
         taskDurationEnabled: updates.taskDurationEnabled,
         taskDurationMinutes: updates.taskDurationEnabled ? (updates.taskDurationMinutes ?? 0) : null,
+        autoAddToActivities: updates.autoAddToActivities,
       });
 
       console.log('[updateTask] Task updated successfully, refreshing tasks...');
@@ -1885,6 +1890,7 @@ export const useFootballData = ({
           afterTrainingFeedbackEnableNote: taskToDuplicate.afterTrainingFeedbackEnableNote ?? true,
           taskDurationEnabled: taskToDuplicate.taskDurationEnabled ?? false,
           taskDurationMinutes: taskToDuplicate.taskDurationEnabled ? (taskToDuplicate.taskDurationMinutes ?? 0) : null,
+          autoAddToActivities: taskToDuplicate.autoAddToActivities ?? false,
         } as any;
 
         const created = await addTask(copyPayload);

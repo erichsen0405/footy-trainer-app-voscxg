@@ -74,6 +74,8 @@ export interface Task {
   afterTrainingFeedbackScoreExplanation?: string | null;
   afterTrainingFeedbackEnableIntensity?: boolean;
   afterTrainingFeedbackEnableNote?: boolean;
+  autoAddToActivities?: boolean;
+  auto_add_to_activities?: boolean;
   taskDurationEnabled?: boolean;
   taskDurationMinutes?: number | null;
   task_duration_enabled?: boolean;

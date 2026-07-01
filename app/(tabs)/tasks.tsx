@@ -352,6 +352,7 @@ export const TaskCard = React.memo(
     const categoryItems = getCategoryItems((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean));
     const description = String((task as any)?.description ?? '').trim();
     const hasMultipleVideos = videoUrls.length > 1;
+    const autoAddEnabled = !!((task as any)?.autoAddToActivities ?? (task as any)?.auto_add_to_activities);
 
     return (
       <TouchableOpacity
@@ -453,6 +454,34 @@ export const TaskCard = React.memo(
             </Text>
           </View>
         )}
+
+        <View
+          style={[
+            styles.autoAddBadge,
+            {
+              backgroundColor: autoAddEnabled
+                ? withAlpha(colors.primary, 0.12)
+                : withAlpha(colors.textSecondary ?? '#6B7280', 0.12),
+              borderColor: autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280',
+            },
+          ]}
+          testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
+        >
+          <IconSymbol
+            ios_icon_name={autoAddEnabled ? 'checkmark.circle.fill' : 'minus.circle'}
+            android_material_icon_name={autoAddEnabled ? 'check_circle' : 'remove_circle_outline'}
+            size={15}
+            color={autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280'}
+          />
+          <Text
+            style={[
+              styles.autoAddBadgeText,
+              { color: autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280' },
+            ]}
+          >
+            Auto-add to activities: {autoAddEnabled ? 'On' : 'Off'}
+          </Text>
+        </View>
 
         {categoryItems.length ? (
           <View style={styles.categoriesBlock}>
@@ -735,6 +764,7 @@ export default function TasksScreen() {
           reminder: normalizeReminderValue((task as any).reminder),
           taskDurationEnabled: !!(task as any).taskDurationEnabled,
           taskDurationMinutes: normalizeTaskDurationValue((task as any).taskDurationMinutes),
+          autoAddToActivities: !!((task as any).autoAddToActivities ?? (task as any).auto_add_to_activities),
           subtasks: normalizeModalSubtasks((task as any).subtasks),
         } as Task)
       : task;
@@ -856,6 +886,8 @@ export default function TasksScreen() {
         taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
         taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
         afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
+        autoAddToActivities: !!(selectedTask as any).autoAddToActivities,
+        auto_add_to_activities: !!(selectedTask as any).autoAddToActivities,
       } as Task;
 
       if (isCreating) {
@@ -884,6 +916,8 @@ export default function TasksScreen() {
           taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
           taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
           afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
+          autoAddToActivities: !!(selectedTask as any).autoAddToActivities,
+          auto_add_to_activities: !!(selectedTask as any).autoAddToActivities,
         };
 
         await updateTask(String((selectedTask as any).id), taskToSave);
@@ -1152,6 +1186,18 @@ export default function TasksScreen() {
     });
   }, []);
 
+  const handleAutoAddToggle = useCallback((value: boolean) => {
+    setSelectedTask(prev =>
+      prev
+        ? ({
+            ...(prev as any),
+            autoAddToActivities: value,
+            auto_add_to_activities: value,
+          } as Task)
+        : prev
+    );
+  }, []);
+
   const openNewTaskModal = useCallback(() => {
     openTaskModal(
       {
@@ -1172,6 +1218,8 @@ export default function TasksScreen() {
         afterTrainingFeedbackEnableNote: true,
         taskDurationEnabled: false,
         taskDurationMinutes: null,
+        autoAddToActivities: false,
+        auto_add_to_activities: false,
       } as any,
       true,
     );
@@ -1921,6 +1969,36 @@ export default function TasksScreen() {
                     )}
                   </View>
 
+                  <View style={styles.reminderSectionSpacing} />
+
+                  <View
+                    style={[
+                      styles.reminderSectionCard,
+                      {
+                        backgroundColor: bgColor,
+                        borderColor: isDark ? '#333' : '#dfe5f2',
+                      },
+                    ]}
+                  >
+                    <View style={styles.reminderSectionHeader}>
+                      <View style={styles.toggleTextWrapper}>
+                        <Text style={[styles.toggleLabel, { color: textColor }]}>Auto-add to matching activities</Text>
+                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+                          Adds this template to future activities with one of the selected categories.
+                        </Text>
+                      </View>
+                      <Switch
+                        value={!!(selectedTask as any)?.autoAddToActivities}
+                        onValueChange={handleAutoAddToggle}
+                        trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
+                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                        ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
+                        disabled={isSaving}
+                        testID="tasks.template.autoAddToggle"
+                      />
+                    </View>
+                  </View>
+
                   <Text style={[styles.label, { color: textColor }]}>Activity categories</Text>
                   <View style={styles.categoriesGrid} testID="tasks.modal.categoryDropdownToggle">
                     {uniqueCategories.map((item: any, index: number) => {
@@ -2316,6 +2394,20 @@ const styles = StyleSheet.create({
 
   reminderBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
   reminderText: { fontSize: 12, fontWeight: '600' },
+  autoAddBadge: {
+    alignSelf: 'flex-start',
+    minHeight: 30,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  autoAddBadgeText: { fontSize: 12, fontWeight: '800' },
 
   categoriesBlock: { marginTop: 6, gap: 8 },
   categoriesLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

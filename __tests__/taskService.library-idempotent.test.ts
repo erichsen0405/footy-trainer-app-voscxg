@@ -20,6 +20,7 @@ type TaskTemplateRow = {
   after_training_feedback_enable_note: boolean;
   task_duration_enabled: boolean;
   task_duration_minutes: number | null;
+  auto_add_to_activities: boolean;
   created_at: string;
 };
 
@@ -80,6 +81,7 @@ jest.mock('@/integrations/supabase/client', () => {
             after_training_feedback_enable_note: payload.after_training_feedback_enable_note ?? true,
             task_duration_enabled: payload.task_duration_enabled ?? false,
             task_duration_minutes: payload.task_duration_minutes ?? null,
+            auto_add_to_activities: payload.auto_add_to_activities ?? false,
             created_at: new Date().toISOString(),
           };
           db.taskTemplates.push(created);
@@ -205,6 +207,19 @@ describe('taskService.createTask library idempotency', () => {
     expect(db.taskTemplates).toHaveLength(1);
     expect(first.id).toBe(second.id);
     expect(db.taskTemplates[0].library_exercise_id).toBe('711f3229-2fee-45fe-b46e-87dd1605af03');
+    expect(db.taskTemplates[0].auto_add_to_activities).toBe(false);
+  });
+
+  it('saves auto-add state when creating a task template', async () => {
+    await taskService.createTask({
+      title: 'Auto add drill',
+      description: 'Adds itself to matching activities',
+      categoryIds: ['cat-1'],
+      autoAddToActivities: true,
+    });
+
+    expect(db.taskTemplates).toHaveLength(1);
+    expect(db.taskTemplates[0].auto_add_to_activities).toBe(true);
   });
 
   it('clamps task duration minutes to 600 before save', async () => {

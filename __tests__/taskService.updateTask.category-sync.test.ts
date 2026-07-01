@@ -36,7 +36,14 @@ type ExternalMetaRow = {
   } | null;
 };
 
+type TaskTemplateRow = {
+  id: string;
+  user_id: string;
+  auto_add_to_activities: boolean;
+};
+
 const db = {
+  taskTemplates: [] as TaskTemplateRow[],
   taskTemplateCategories: [] as TaskTemplateCategoryRow[],
   activityTasks: [] as ActivityTaskRow[],
   activities: [] as ActivityRow[],
@@ -76,7 +83,18 @@ jest.mock('@/integrations/supabase/client', () => {
 
     const execute = async () => {
       if (table === 'task_templates' && state.action === 'update') {
+        db.taskTemplates = db.taskTemplates.map((row) => {
+          if (!applyFilters([row], state.filters).length) return row;
+          return { ...row, ...state.payload };
+        });
         return { data: [{ id: 'template-1' }], error: null };
+      }
+
+      if (table === 'task_templates' && state.action === 'select') {
+        return {
+          data: applyFilters(db.taskTemplates, state.filters),
+          error: null,
+        };
       }
 
       if (table === 'task_template_categories' && state.action === 'delete') {
@@ -196,6 +214,9 @@ describe('taskService.updateTask category sync cleanup', () => {
     db.taskTemplateCategories = [
       { task_template_id: 'template-1', category_id: 'cat-keep' },
       { task_template_id: 'template-1', category_id: 'cat-remove' },
+    ];
+    db.taskTemplates = [
+      { id: 'template-1', user_id: 'user-1', auto_add_to_activities: true },
     ];
     db.activityTasks = [
       {
@@ -356,5 +377,110 @@ describe('taskService.updateTask category sync cleanup', () => {
         p_dry_run: false,
       },
     });
+  });
+
+  it('does not sync matching activities when category changes and auto-add is off', async () => {
+    db.taskTemplates = [
+      { id: 'template-1', user_id: 'user-1', auto_add_to_activities: false },
+    ];
+
+    await taskService.updateTask('template-1', 'user-1', {
+      categoryIds: ['cat-keep'],
+    });
+
+    expect(db.taskTemplateCategories).toEqual([
+      { task_template_id: 'template-1', category_id: 'cat-keep' },
+    ]);
+
+    expect(db.rpcCalls).not.toContainEqual({
+      fn: 'update_all_tasks_from_template',
+      args: {
+        p_template_id: 'template-1',
+        p_dry_run: false,
+      },
+    });
+
+    expect(db.activityTasks).toEqual([
+      {
+        id: 'activity-task-keep',
+        activity_id: 'activity-keep',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'activity-task-remove',
+        activity_id: 'activity-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'activity-feedback-remove',
+        activity_id: 'activity-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
+      {
+        id: 'activity-task-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'activity-feedback-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
+    ]);
+  });
+
+  it('removes future auto-added tasks when auto-add is disabled', async () => {
+    await taskService.updateTask('template-1', 'user-1', {
+      autoAddToActivities: false,
+    });
+
+    expect(db.taskTemplates[0].auto_add_to_activities).toBe(false);
+    expect(db.activityTasks).toEqual([
+      {
+        id: 'activity-task-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'activity-feedback-past-remove',
+        activity_id: 'activity-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
+    ]);
+    expect(db.externalEventTasks).toEqual([
+      {
+        id: 'external-task-past-remove',
+        local_meta_id: 'meta-past-remove',
+        task_template_id: 'template-1',
+        feedback_template_id: null,
+      },
+      {
+        id: 'external-feedback-past-remove',
+        local_meta_id: 'meta-past-remove',
+        task_template_id: null,
+        feedback_template_id: 'template-1',
+      },
+    ]);
+  });
+
+  it('does not clean up future tasks when auto-add remains off', async () => {
+    db.taskTemplates = [
+      { id: 'template-1', user_id: 'user-1', auto_add_to_activities: false },
+    ];
+
+    await taskService.updateTask('template-1', 'user-1', {
+      title: 'Updated title',
+      autoAddToActivities: false,
+    });
+
+    expect(db.activityTasks).toHaveLength(5);
+    expect(db.externalEventTasks).toHaveLength(5);
   });
 });

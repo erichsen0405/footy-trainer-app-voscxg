@@ -915,6 +915,7 @@ export default function LibraryScreen() {
       afterTrainingFeedbackScoreExplanation: null,
       afterTrainingFeedbackEnableIntensity: false,
       afterTrainingFeedbackEnableNote: true,
+      autoAddToActivities: false,
     }),
     []
   );

@@ -244,6 +244,24 @@ describe('Tasks redesigned template screen', () => {
     expect(queryByText('Sprint')).toBeNull();
   });
 
+  it('shows auto-add status on task template cards', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true }),
+        baseTask({ id: 'auto-off', title: 'Auto inaktiv', autoAddToActivities: false }),
+      ],
+    }));
+
+    const { getByTestId, getByText } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+
+    expect(getByTestId('tasks.template.autoAddBadge.auto-on')).toBeTruthy();
+    expect(getByTestId('tasks.template.autoAddBadge.auto-off')).toBeTruthy();
+    expect(getByText('Auto-add to activities: On')).toBeTruthy();
+    expect(getByText('Auto-add to activities: Off')).toBeTruthy();
+  });
+
   it('validates required title and video URL in the modal', () => {
     const { getByTestId, getByText } = render(<TasksScreen />);
 
@@ -274,6 +292,45 @@ describe('Tasks redesigned template screen', () => {
     await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
     const createArg = mockCreateTask.mock.calls[0][0];
     expect(createArg.subtasks.map((subtask: any) => subtask.title)).toEqual(['Anden', 'Tredje']);
+  });
+
+  it('saves auto-add setting when creating a task template', async () => {
+    const { getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.header.newTaskButton'));
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med auto-add');
+    fireEvent(getByTestId('tasks.template.autoAddToggle'), 'valueChange', true);
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+
+    await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
+    const createArg = mockCreateTask.mock.calls[0][0];
+    expect(createArg.task.autoAddToActivities).toBe(true);
+    expect(createArg.task.auto_add_to_activities).toBe(true);
+  });
+
+  it('saves auto-add setting when editing a task template', async () => {
+    const updateTask = jest.fn().mockResolvedValue(undefined);
+    mockUseFootball.mockReturnValue(baseFootball({
+      updateTask,
+      tasks: [
+        baseTask({
+          id: 'template-auto-edit',
+          title: 'Auto edit',
+          autoAddToActivities: false,
+        }),
+      ],
+    }));
+
+    const { getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+    fireEvent.press(getByTestId('tasks.taskCard.template-auto-edit'));
+    fireEvent(getByTestId('tasks.template.autoAddToggle'), 'valueChange', true);
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+
+    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(1));
+    expect(updateTask.mock.calls[0][1].autoAddToActivities).toBe(true);
+    expect(updateTask.mock.calls[0][1].auto_add_to_activities).toBe(true);
   });
 
   it('shows delay options for reminder and feedback toggles', () => {

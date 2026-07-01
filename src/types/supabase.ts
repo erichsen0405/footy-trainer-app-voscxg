@@ -1342,6 +1342,7 @@ export type Database = {
           after_training_feedback_score_explanation: string | null
           after_training_feedback_enable_intensity: boolean
           after_training_feedback_enable_note: boolean
+          auto_add_to_activities: boolean
           created_at: string
           description: string | null
           id: string
@@ -1364,6 +1365,7 @@ export type Database = {
           after_training_feedback_score_explanation?: string | null
           after_training_feedback_enable_intensity?: boolean | null
           after_training_feedback_enable_note?: boolean | null
+          auto_add_to_activities?: boolean
           created_at?: string
           description?: string | null
           id?: string
@@ -1386,6 +1388,7 @@ export type Database = {
           after_training_feedback_score_explanation?: string | null
           after_training_feedback_enable_intensity?: boolean
           after_training_feedback_enable_note?: boolean
+          auto_add_to_activities?: boolean
           created_at?: string
           description?: string | null
           id?: string

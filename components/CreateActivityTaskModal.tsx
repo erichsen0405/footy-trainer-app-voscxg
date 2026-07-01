@@ -335,6 +335,7 @@ export function CreateActivityTaskModal({
         after_training_feedback_score_explanation: null,
         after_training_feedback_enable_note: true,
         after_training_feedback_enable_intensity: true,
+        auto_add_to_activities: false,
         source_folder: LOCAL_ACTIVITY_TEMPLATE_SOURCE,
         updated_at: new Date().toISOString(),
       };
