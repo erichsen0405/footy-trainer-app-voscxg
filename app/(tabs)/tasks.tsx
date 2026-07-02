@@ -28,6 +28,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import SwipeVideoPlayer from '@/components/SwipeVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
+import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
@@ -1663,39 +1664,28 @@ export default function TasksScreen() {
                     </TouchableOpacity>
 
                     {videoUrls.length > 0 ? (
-                      <View style={styles.videoList}>
-                        {videoUrls.map((url, index) => (
-                          <View key={`${url}-${index}`} style={[styles.videoListItem, { backgroundColor: bgColor }]}>
-                            <TouchableOpacity
-                              style={styles.videoListPreviewButton}
-                              onPress={() => openVideoModal(videoUrls, index)}
-                              activeOpacity={0.85}
-                            >
-                              <IconSymbol ios_icon_name="play.circle.fill" android_material_icon_name="play_circle" size={24} color={colors.primary} />
-                              <View style={styles.videoListTextWrap}>
-                                <Text style={[styles.videoListTitle, { color: textColor }]}>Media {index + 1}</Text>
-                                <Text style={[styles.videoListSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-                                  {getVideoSourceLabel(url)}
-                                  {videoUrls.length > 1 ? ' - swipe in the viewer' : ''}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.deleteVideoButton}
-                              onPress={() => handleDeleteVideo(index)}
-                              disabled={isSaving || isUploadingVideo}
-                              testID={`tasks.template.deleteVideoButton.${index}`}
-                            >
-                              <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={18} color={colors.error} />
-                            </TouchableOpacity>
-                          </View>
-                        ))}
+                      <>
+                        <TaskMediaListEditor
+                          urls={videoUrls}
+                          onChange={setVideoUrls}
+                          getLabel={getVideoSourceLabel}
+                          onRemove={handleDeleteVideo}
+                          onPreview={(index) => openVideoModal(videoUrls, index)}
+                          disabled={isSaving || isUploadingVideo}
+                          backgroundColor={bgColor}
+                          borderColor={isDark ? '#2f3642' : '#E2E8F0'}
+                          textColor={textColor}
+                          secondaryTextColor={textSecondaryColor}
+                          accentColor={colors.primary}
+                          dangerColor={colors.error}
+                          testIDPrefix="tasks.template.media"
+                        />
                         {videoUrls.length > 1 ? (
                           <Text style={[styles.videoSwipeHelperText, { color: colors.secondary }]}>
-                            Swipe sideways in the task to switch between files.
+                            Drag a media row to change the display order.
                           </Text>
                         ) : null}
-                      </View>
+                      </>
                     ) : null}
 
                     {(formErrors.videoUrl || (videoUrlInput.trim() && !isValidVideoUrl(videoUrlInput))) && (

@@ -8,6 +8,7 @@ import type { TaskTemplateSelfFeedback } from '@/types';
 
 const mockRefreshData = jest.fn().mockResolvedValue(undefined);
 const mockSupabaseFrom = jest.fn();
+const mockSupabaseRpc = jest.fn();
 let mockTaskTemplates: any[] = [];
 const mockUpdateActivitySingle = jest.fn().mockResolvedValue(undefined);
 const mockUpdateIntensityByCategory = jest.fn().mockResolvedValue(undefined);
@@ -102,6 +103,7 @@ jest.mock('@/contexts/FootballContext', () => ({
 jest.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: (...args: any[]) => mockSupabaseFrom(...args),
+    rpc: (...args: any[]) => mockSupabaseRpc(...args),
     auth: {
       getSession: jest.fn().mockResolvedValue({
         data: { session: { user: { id: 'user-1' } } },
@@ -200,6 +202,7 @@ describe('ActivityDetails add-task flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTaskTemplates = [];
+    mockSupabaseRpc.mockResolvedValue({ data: null, error: null });
     mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([]);
     mockFetchLatestCategoryFeedback.mockResolvedValue([]);
@@ -1566,12 +1569,16 @@ describe('ActivityDetails add-task flow', () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(insertedTaskTemplates).toHaveLength(1));
-    expect(insertedTaskTemplates[0].video_url).toBe(instagramUrl);
-    expect(insertedTaskTemplates[0].video_urls).toEqual([instagramUrl, 'https://vimeo.com/123456']);
-    expect(insertedActivityTasks).toHaveLength(1);
+    await waitFor(() => expect(insertedActivityTasks).toHaveLength(1));
+    expect(insertedTaskTemplates).toHaveLength(0);
+    expect(insertedActivityTasks[0].task_template_id).toBe('template-source-1');
+    expect(insertedActivityTasks[0].template_sync_enabled).toBe(true);
     expect(insertedActivityTasks[0].video_url).toBeUndefined();
     expect(insertedActivityTasks[0].video_urls).toEqual([instagramUrl, 'https://vimeo.com/123456']);
+    expect(mockSupabaseRpc).toHaveBeenCalledWith('update_all_tasks_from_template', {
+      p_template_id: 'template-source-1',
+      p_dry_run: false,
+    });
 
     alertSpy.mockRestore();
   });

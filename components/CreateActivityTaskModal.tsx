@@ -20,6 +20,7 @@ import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
 import { buildTaskVideoPayload, getTaskMediaType, isTaskMediaUrl, mergeTaskVideoUrls } from '@/utils/taskVideos';
+import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 
 /*
  * ========================================
@@ -68,6 +69,7 @@ const TASK_LOCAL_OPTIONAL_COLUMNS = [
   'after_training_delay_minutes',
   'task_duration_enabled',
   'task_duration_minutes',
+  'template_sync_enabled',
 ] as const;
 const TASK_FEEDBACK_OPTIONAL_COLUMNS = [
   'feedback_template_id',
@@ -121,6 +123,7 @@ const omitTaskLocalOptions = (payload: Record<string, any>): Record<string, any>
   delete next.after_training_delay_minutes;
   delete next.task_duration_enabled;
   delete next.task_duration_minutes;
+  delete next.template_sync_enabled;
   return next;
 };
 
@@ -141,6 +144,19 @@ type FeedbackTaskCandidateRow = {
   id?: string | null;
   created_at?: string | null;
   completed?: boolean | null;
+};
+
+type LinkedTemplateSnapshot = {
+  title: string;
+  description: string;
+  videoUrl: string | null;
+  videoUrls: string[] | null;
+  reminderMinutes: number | null;
+  afterTrainingEnabled: boolean;
+  afterTrainingDelayMinutes: number | null;
+  taskDurationEnabled: boolean;
+  taskDurationMinutes: number | null;
+  subtasks: SubtaskDraft[];
 };
 
 const feedbackTaskCanonicalSort = (
@@ -174,6 +190,12 @@ interface CreateActivityTaskModalProps {
     id: string;
     task_template_id?: string | null;
     taskTemplateId?: string | null;
+    template_sync_enabled?: boolean | null;
+    templateSyncEnabled?: boolean | null;
+    task_template_source_folder?: string | null;
+    taskTemplateSourceFolder?: string | null;
+    task_template_title?: string | null;
+    taskTemplateTitle?: string | null;
     feedback_template_id?: string | null;
     feedbackTemplateId?: string | null;
     reminder_minutes?: number | null;
@@ -224,6 +246,8 @@ export function CreateActivityTaskModal({
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([{ id: createLocalId(), title: '' }]);
   const [isLoading, setIsLoading] = useState(false);
+  const [templateSyncEnabled, setTemplateSyncEnabled] = useState(true);
+  const [isTemplateSnapshotLoading, setIsTemplateSnapshotLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [activityExists, setActivityExists] = useState(false);
   const [resolvedExternalMetaId, setResolvedExternalMetaId] = useState<string | null>(null);
@@ -262,6 +286,24 @@ export function CreateActivityTaskModal({
     return trimmed.length ? trimmed : null;
   }, []);
 
+  const linkedTemplateId = useMemo(
+    () => normalizeId(editingTask?.task_template_id ?? editingTask?.taskTemplateId),
+    [editingTask?.taskTemplateId, editingTask?.task_template_id, normalizeId],
+  );
+  const linkedTemplateSourceFolder = useMemo(
+    () => normalizeId(editingTask?.task_template_source_folder ?? editingTask?.taskTemplateSourceFolder),
+    [editingTask?.taskTemplateSourceFolder, editingTask?.task_template_source_folder, normalizeId],
+  );
+  const linkedTemplateTitle = useMemo(
+    () => normalizeId(editingTask?.task_template_title ?? editingTask?.taskTemplateTitle),
+    [editingTask?.taskTemplateTitle, editingTask?.task_template_title, normalizeId],
+  );
+  const isLinkedToSharedTemplate = useMemo(
+    () => !!linkedTemplateId && linkedTemplateSourceFolder !== LOCAL_ACTIVITY_TEMPLATE_SOURCE,
+    [linkedTemplateId, linkedTemplateSourceFolder],
+  );
+  const isTemplateControlled = isLinkedToSharedTemplate && templateSyncEnabled;
+
   const buildFeedbackTaskTitle = useCallback((taskTitle: string): string => {
     const trimmed = String(taskTitle ?? '').trim();
     return `Feedback on ${trimmed || 'the task'}`;
@@ -271,6 +313,119 @@ export function CreateActivityTaskModal({
     const normalizedTemplateId = String(templateId ?? '').trim();
     return `Share your feedback after training directly with your coach. [auto-after-training:${normalizedTemplateId}]`;
   }, []);
+
+  const applyTemplateSnapshotToForm = useCallback(
+    (snapshot: LinkedTemplateSnapshot) => {
+      const reminderValue = snapshot.reminderMinutes;
+
+      setTitle(snapshot.title);
+      setDescription(snapshot.description);
+      setHasReminder(typeof reminderValue === 'number' && Number.isFinite(reminderValue));
+      setReminderMinutes(
+        typeof reminderValue === 'number' && Number.isFinite(reminderValue)
+          ? String(Math.max(0, Math.round(reminderValue)))
+          : '0',
+      );
+      setHasAfterTrainingFeedback(snapshot.afterTrainingEnabled);
+      setAfterTrainingDelayMinutes(
+        String(normalizeDurationInput(String(snapshot.afterTrainingDelayMinutes ?? 0))),
+      );
+      setHasTaskDuration(snapshot.taskDurationEnabled);
+      setTaskDurationMinutes(String(normalizeDurationInput(String(snapshot.taskDurationMinutes ?? 0))));
+      setVideoUrls(snapshot.videoUrls ?? []);
+      setVideoUrlInput('');
+      setSubtasks(snapshot.subtasks.length ? snapshot.subtasks : [{ id: createLocalId(), title: '' }]);
+    },
+    [normalizeDurationInput],
+  );
+
+  const loadLinkedTemplateSnapshot = useCallback(
+    async (templateId: string): Promise<LinkedTemplateSnapshot> => {
+      const normalizedTemplateId = normalizeId(templateId);
+      if (!normalizedTemplateId) {
+        throw new Error('Template ID is missing.');
+      }
+
+      const { data: templateRow, error: templateError } = await supabase
+        .from('task_templates')
+        .select(
+          'title, description, reminder_minutes, video_url, video_urls, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes'
+        )
+        .eq('id', normalizedTemplateId)
+        .maybeSingle();
+
+      if (templateError) {
+        throw new Error(`Kunne ikke indlæse skabelonen: ${templateError.message}`);
+      }
+
+      if (!templateRow) {
+        throw new Error('Den linkede skabelon kunne ikke findes.');
+      }
+
+      const { data: templateSubtasks, error: subtasksError } = await supabase
+        .from('task_template_subtasks')
+        .select('id, title, sort_order')
+        .eq('task_template_id', normalizedTemplateId)
+        .order('sort_order', { ascending: true });
+
+      if (subtasksError) {
+        throw new Error(`Kunne ikke indlæse delopgaver fra skabelonen: ${subtasksError.message}`);
+      }
+
+      const videoPayload = buildTaskVideoPayload([
+        (templateRow as any).video_urls,
+        (templateRow as any).video_url,
+      ]);
+      const taskDurationEnabled = (templateRow as any).task_duration_enabled === true;
+      const afterTrainingEnabled = (templateRow as any).after_training_enabled === true;
+      const subtasksSnapshot = (Array.isArray(templateSubtasks) ? templateSubtasks : [])
+        .map((row: any) => ({
+          id: String(row?.id ?? createLocalId()),
+          title: String(row?.title ?? ''),
+        }))
+        .filter((row) => row.title.trim().length > 0);
+
+      return {
+        title: String((templateRow as any).title ?? '').trim() || 'Task',
+        description: String((templateRow as any).description ?? ''),
+        videoUrl: videoPayload.videoUrl,
+        videoUrls: videoPayload.video_urls,
+        reminderMinutes:
+          typeof (templateRow as any).reminder_minutes === 'number'
+            ? Math.max(0, Math.round((templateRow as any).reminder_minutes))
+            : null,
+        afterTrainingEnabled,
+        afterTrainingDelayMinutes: afterTrainingEnabled
+          ? normalizeDurationInput(String((templateRow as any).after_training_delay_minutes ?? 0))
+          : null,
+        taskDurationEnabled,
+        taskDurationMinutes: taskDurationEnabled
+          ? normalizeDurationInput(String((templateRow as any).task_duration_minutes ?? 0))
+          : null,
+        subtasks: subtasksSnapshot,
+      };
+    },
+    [normalizeDurationInput, normalizeId],
+  );
+
+  const handleTemplateSyncToggle = useCallback(
+    async (value: boolean) => {
+      setTemplateSyncEnabled(value);
+      if (!value || !linkedTemplateId) return;
+
+      setIsTemplateSnapshotLoading(true);
+      try {
+        const snapshot = await loadLinkedTemplateSnapshot(linkedTemplateId);
+        applyTemplateSnapshotToForm(snapshot);
+      } catch (error: any) {
+        setTemplateSyncEnabled(false);
+      Alert.alert('Skabelon-sync', error?.message || 'Kunne ikke opdatere fra den linkede skabelon.');
+      } finally {
+        setIsTemplateSnapshotLoading(false);
+      }
+    },
+    [applyTemplateSnapshotToForm, linkedTemplateId, loadLinkedTemplateSnapshot],
+  );
 
   const upsertLocalTaskTemplate = useCallback(
     async ({
@@ -805,6 +960,8 @@ export function CreateActivityTaskModal({
       setVideoUrls([]);
       setVideoUrlInput('');
       setSubtasks([{ id: createLocalId(), title: '' }]);
+      setTemplateSyncEnabled(true);
+      setIsTemplateSnapshotLoading(false);
       return;
     }
 
@@ -830,6 +987,10 @@ export function CreateActivityTaskModal({
     setAfterTrainingDelayMinutes(String(normalizeDurationInput(String(afterTrainingDelay))));
     setHasTaskDuration(durationEnabled);
     setTaskDurationMinutes(String(normalizeDurationInput(String(durationMinutesRaw))));
+    setTemplateSyncEnabled(
+      editingTask.template_sync_enabled !== false && editingTask.templateSyncEnabled !== false,
+    );
+    setIsTemplateSnapshotLoading(false);
     setVideoUrls(buildTaskVideoPayload([
       ...(Array.isArray(editingTask.videoUrls) ? editingTask.videoUrls : []),
       ...(Array.isArray(editingTask.video_urls) ? editingTask.video_urls : []),
@@ -975,6 +1136,11 @@ export function CreateActivityTaskModal({
       return;
     }
 
+    if (isTemplateSnapshotLoading) {
+      Alert.alert('Vent venligst', 'Den linkede skabelon indlæses stadig.');
+      return;
+    }
+
     if (videoUrlInput.trim() && !isTaskMediaUrl(videoUrlInput)) {
       Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
@@ -1003,35 +1169,67 @@ export function CreateActivityTaskModal({
       const taskDurationPayload = hasTaskDuration
         ? normalizeDurationInput(taskDurationMinutes)
         : null;
-      const videoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
+      let saveTitle = title.trim();
+      let saveDescription = description.trim();
+      let saveReminderPayload = reminderPayload;
+      let saveFeedbackEnabled = hasAfterTrainingFeedback;
+      let saveFeedbackDelayPayload = feedbackDelayPayload;
+      let saveTaskDurationEnabled = hasTaskDuration;
+      let saveTaskDurationPayload = taskDurationPayload;
+      let saveVideoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
+      let saveSubtasks = subtasks;
+      let taskTemplateId = linkedTemplateId;
+      const usesSharedTemplateLink = isEditMode && isLinkedToSharedTemplate && !!linkedTemplateId;
 
-      const localTemplateId = await upsertLocalTaskTemplate({
-        ownerUserId: userId,
-        existingTemplateId:
-          isEditMode && editingTask
-            ? editingTask.task_template_id ?? editingTask.taskTemplateId
-            : null,
-        templateTitle: title.trim(),
-        templateDescription: description.trim(),
-        templateVideoUrl: videoPayload.videoUrl,
-        templateVideoUrls: videoPayload.video_urls,
-        reminderMinutes: reminderPayload,
-        feedbackEnabled: hasAfterTrainingFeedback,
-        feedbackDelayMinutes: feedbackDelayPayload,
-        taskDurationEnabled: hasTaskDuration,
-        taskDurationMinutes: taskDurationPayload,
-      });
+      if (usesSharedTemplateLink && templateSyncEnabled && linkedTemplateId) {
+        const snapshot = await loadLinkedTemplateSnapshot(linkedTemplateId);
+        saveTitle = snapshot.title;
+        saveDescription = snapshot.description;
+        saveReminderPayload = snapshot.reminderMinutes;
+        saveFeedbackEnabled = snapshot.afterTrainingEnabled;
+        saveFeedbackDelayPayload = snapshot.afterTrainingDelayMinutes;
+        saveTaskDurationEnabled = snapshot.taskDurationEnabled;
+        saveTaskDurationPayload = snapshot.taskDurationMinutes;
+        saveVideoPayload = buildTaskVideoPayload(snapshot.videoUrls ?? []);
+        saveSubtasks = snapshot.subtasks.length ? snapshot.subtasks : [{ id: createLocalId(), title: '' }];
+        applyTemplateSnapshotToForm(snapshot);
+      }
+
+      if (!usesSharedTemplateLink) {
+        taskTemplateId = await upsertLocalTaskTemplate({
+          ownerUserId: userId,
+          existingTemplateId:
+            isEditMode && editingTask
+              ? editingTask.task_template_id ?? editingTask.taskTemplateId
+              : null,
+          templateTitle: saveTitle,
+          templateDescription: saveDescription,
+          templateVideoUrl: saveVideoPayload.videoUrl,
+          templateVideoUrls: saveVideoPayload.video_urls,
+          reminderMinutes: saveReminderPayload,
+          feedbackEnabled: saveFeedbackEnabled,
+          feedbackDelayMinutes: saveFeedbackDelayPayload,
+          taskDurationEnabled: saveTaskDurationEnabled,
+          taskDurationMinutes: saveTaskDurationPayload,
+        });
+      }
+
+      if (!taskTemplateId) {
+        throw new Error('Could not resolve task template link.');
+      }
+
       const baseTaskPayload: Record<string, any> = {
-        title: title.trim(),
-        description: description.trim(),
-        video_urls: videoPayload.video_urls,
+        title: saveTitle,
+        description: saveDescription,
+        video_urls: saveVideoPayload.video_urls,
         completed: false,
-        reminder_minutes: reminderPayload,
-        task_template_id: localTemplateId,
-        after_training_enabled: hasAfterTrainingFeedback,
-        after_training_delay_minutes: feedbackDelayPayload,
-        task_duration_enabled: hasTaskDuration,
-        task_duration_minutes: taskDurationPayload,
+        reminder_minutes: saveReminderPayload,
+        task_template_id: taskTemplateId,
+        template_sync_enabled: usesSharedTemplateLink ? templateSyncEnabled : false,
+        after_training_enabled: saveFeedbackEnabled,
+        after_training_delay_minutes: saveFeedbackDelayPayload,
+        task_duration_enabled: saveTaskDurationEnabled,
+        task_duration_minutes: saveTaskDurationPayload,
       };
       const baseTaskPayloadWithoutLocalOptions = omitTaskLocalOptions(baseTaskPayload);
       const buildTaskUpdatePayload = () => ({
@@ -1129,27 +1327,27 @@ export function CreateActivityTaskModal({
         }
 
         if (activeTable === 'activity_tasks') {
-          await syncActivitySubtasks(editingTask.id, subtasks);
+          await syncActivitySubtasks(editingTask.id, saveSubtasks);
           await syncLocalFeedbackTask({
             parentTaskId: editingTask.id,
             activityLinkId: resolvedActivityLinkId,
-            templateId: localTemplateId,
-            taskTitle: title.trim(),
-            enabled: hasAfterTrainingFeedback,
-            delayMinutes: feedbackDelayPayload,
+            templateId: taskTemplateId,
+            taskTitle: saveTitle,
+            enabled: saveFeedbackEnabled,
+            delayMinutes: saveFeedbackDelayPayload,
           });
         } else {
           await syncExternalFeedbackTask({
             parentTaskId: editingTask.id,
             localMetaId: resolvedActivityLinkId,
-            templateId: localTemplateId,
-            taskTitle: title.trim(),
-            enabled: hasAfterTrainingFeedback,
-            delayMinutes: feedbackDelayPayload,
+            templateId: taskTemplateId,
+            taskTitle: saveTitle,
+            enabled: saveFeedbackEnabled,
+            delayMinutes: saveFeedbackDelayPayload,
           });
         }
 
-        Alert.alert('Task updated', `The task "${title}" was updated.`, [{ text: 'OK' }]);
+        Alert.alert('Task updated', `The task "${saveTitle}" was updated.`, [{ text: 'OK' }]);
         if (onTaskUpdated) {
           await onTaskUpdated();
         }
@@ -1175,60 +1373,60 @@ export function CreateActivityTaskModal({
         );
 
         if (activeTable === 'activity_tasks') {
-          await syncActivitySubtasks(String(taskData.id), subtasks);
+          await syncActivitySubtasks(String(taskData.id), saveSubtasks);
           await syncLocalFeedbackTask({
             parentTaskId: String(taskData.id),
             activityLinkId: resolvedActivityLinkId,
-            templateId: localTemplateId,
-            taskTitle: title.trim(),
-            enabled: hasAfterTrainingFeedback,
-            delayMinutes: feedbackDelayPayload,
+            templateId: taskTemplateId,
+            taskTitle: saveTitle,
+            enabled: saveFeedbackEnabled,
+            delayMinutes: saveFeedbackDelayPayload,
           });
         } else {
           await syncExternalFeedbackTask({
             parentTaskId: String(taskData.id),
             localMetaId: resolvedActivityLinkId,
-            templateId: localTemplateId,
-            taskTitle: title.trim(),
-            enabled: hasAfterTrainingFeedback,
-            delayMinutes: feedbackDelayPayload,
+            templateId: taskTemplateId,
+            taskTitle: saveTitle,
+            enabled: saveFeedbackEnabled,
+            delayMinutes: saveFeedbackDelayPayload,
           });
         }
 
-        if (!isExternalActivity && hasReminder && safeActivityDate) {
+        if (!isExternalActivity && saveReminderPayload !== null && safeActivityDate) {
           const activityDateStr = safeActivityDate.toISOString().split('T')[0];
           const success = await scheduleTaskReminderImmediate(
             taskData.id,
-            title.trim(),
-            description.trim(),
+            saveTitle,
+            saveDescription,
             resolvedActivityLinkId,
             activityTitle,
             activityDateStr,
             activityTime,
-            reminderPayload ?? 0
+            saveReminderPayload ?? 0
           );
 
           if (success) {
             Alert.alert(
               'Task created',
-              `The task "${title}" was created with a reminder ${reminderPayload ?? 0} minutes before the activity.`,
+              `The task "${saveTitle}" was created with a reminder ${saveReminderPayload ?? 0} minutes before the activity.`,
               [{ text: 'OK' }]
             );
           } else {
             Alert.alert(
               'Task created',
-              `The task "${title}" was created. The reminder will be scheduled automatically.`,
+              `The task "${saveTitle}" was created. The reminder will be scheduled automatically.`,
               [{ text: 'OK' }]
             );
           }
-        } else if (!isExternalActivity && hasReminder && !safeActivityDate) {
+        } else if (!isExternalActivity && saveReminderPayload !== null && !safeActivityDate) {
           Alert.alert(
             'Task created',
-            `The task "${title}" was created, but a reminder could not be scheduled without a valid date.`,
+            `The task "${saveTitle}" was created, but a reminder could not be scheduled without a valid date.`,
             [{ text: 'OK' }],
           );
         } else {
-          Alert.alert('Task created', `The task "${title}" was created.`, [{ text: 'OK' }]);
+          Alert.alert('Task created', `The task "${saveTitle}" was created.`, [{ text: 'OK' }]);
         }
 
         if (onTaskCreated) {
@@ -1238,21 +1436,21 @@ export function CreateActivityTaskModal({
 
       if (onSave) {
         await onSave({
-          title: title.trim(),
-          description: description.trim(),
+          title: saveTitle,
+          description: saveDescription,
           completed: false,
           isTemplate: false,
           categoryIds: [],
-          reminder: reminderPayload ?? undefined,
-          videoUrl: videoPayload.videoUrl ?? undefined,
-          videoUrls: videoPayload.videoUrls,
-          afterTrainingEnabled: hasAfterTrainingFeedback,
-          afterTrainingDelayMinutes: hasAfterTrainingFeedback
-            ? normalizeDurationInput(afterTrainingDelayMinutes)
+          reminder: saveReminderPayload ?? undefined,
+          videoUrl: saveVideoPayload.videoUrl ?? undefined,
+          videoUrls: saveVideoPayload.videoUrls,
+          afterTrainingEnabled: saveFeedbackEnabled,
+          afterTrainingDelayMinutes: saveFeedbackEnabled
+            ? saveFeedbackDelayPayload
             : null,
-          taskDurationEnabled: hasTaskDuration,
-          taskDurationMinutes: hasTaskDuration ? normalizeDurationInput(taskDurationMinutes) : null,
-          subtasks: subtasks
+          taskDurationEnabled: saveTaskDurationEnabled,
+          taskDurationMinutes: saveTaskDurationEnabled ? saveTaskDurationPayload : null,
+          subtasks: saveSubtasks
             .map((draft) => String(draft?.title ?? '').trim())
             .filter(Boolean)
             .map((subtaskTitle) => ({ id: createLocalId(), title: subtaskTitle, completed: false })),
@@ -1271,6 +1469,7 @@ export function CreateActivityTaskModal({
       setVideoUrls([]);
       setVideoUrlInput('');
       setSubtasks([{ id: createLocalId(), title: '' }]);
+      setTemplateSyncEnabled(true);
       onClose();
     } catch (error: any) {
       console.error('❌ Error in handleSave:', error);
@@ -1291,6 +1490,7 @@ export function CreateActivityTaskModal({
     title,
     userId,
     isUploadingVideo,
+    isTemplateSnapshotLoading,
     activityExists,
     resolvedActivityLinkId,
     activityTitle,
@@ -1306,6 +1506,11 @@ export function CreateActivityTaskModal({
     videoUrls,
     videoUrlInput,
     normalizeDurationInput,
+    linkedTemplateId,
+    isLinkedToSharedTemplate,
+    templateSyncEnabled,
+    loadLinkedTemplateSnapshot,
+    applyTemplateSnapshotToForm,
     upsertLocalTaskTemplate,
     syncActivitySubtasks,
     syncLocalFeedbackTask,
@@ -1326,7 +1531,7 @@ export function CreateActivityTaskModal({
       animationType="slide"
       transparent={true}
       onRequestClose={() => {
-        if (!isLoading && !isUploadingVideo) onClose();
+        if (!isLoading && !isUploadingVideo && !isTemplateSnapshotLoading) onClose();
       }}
     >
       <KeyboardAvoidingView 
@@ -1340,7 +1545,7 @@ export function CreateActivityTaskModal({
             <TouchableOpacity
               style={styles.closeButton}
               onPress={onClose}
-              disabled={isLoading || isUploadingVideo}
+              disabled={isLoading || isUploadingVideo || isTemplateSnapshotLoading}
               activeOpacity={0.7}
             >
               <Text style={styles.closeButtonText}>✕</Text>
@@ -1372,6 +1577,35 @@ export function CreateActivityTaskModal({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            {isLinkedToSharedTemplate ? (
+              <View
+                style={[
+                  styles.templateSyncCard,
+                  templateSyncEnabled ? styles.templateSyncCardOn : styles.templateSyncCardOff,
+                ]}
+                testID="activityTaskModal.templateSyncCard"
+              >
+                <View style={styles.templateSyncTextWrap}>
+                  <Text style={styles.templateSyncTitle}>
+                    {templateSyncEnabled ? 'Følger skabelonen' : 'Løsrevet fra skabelonen'}
+                  </Text>
+                  <Text style={styles.templateSyncHelper}>
+                    {templateSyncEnabled
+                      ? `Linket til ${linkedTemplateTitle ?? 'skabelonen'}. Slå fra for at redigere lokalt.`
+                      : 'Lokale ændringer bliver kun på denne aktivitet. Slå til for at hente skabelonen igen.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={templateSyncEnabled}
+                  onValueChange={handleTemplateSyncToggle}
+                  disabled={isLoading || isUploadingVideo || isTemplateSnapshotLoading}
+                  trackColor={{ false: '#F59E0B', true: colors.primary }}
+                  thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                  testID="activityTaskModal.templateSyncSwitch"
+                />
+              </View>
+            ) : null}
+
             <Text style={styles.label}>Title</Text>
             <TextInput
               style={styles.input}
@@ -1379,7 +1613,7 @@ export function CreateActivityTaskModal({
               onChangeText={setTitle}
               placeholder="Task title"
               placeholderTextColor={colors.textSecondary}
-              editable={activityExists}
+              editable={activityExists && !isTemplateControlled}
               returnKeyType="next"
             />
 
@@ -1392,7 +1626,7 @@ export function CreateActivityTaskModal({
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={4}
-              editable={activityExists}
+              editable={activityExists && !isTemplateControlled}
               textAlignVertical="top"
             />
 
@@ -1412,15 +1646,15 @@ export function CreateActivityTaskModal({
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
-                editable={activityExists && !isUploadingVideo}
+                editable={activityExists && !isUploadingVideo && !isTemplateControlled}
               />
               <TouchableOpacity
                 style={[
                   styles.addVideoUrlButton,
-                  (!activityExists || isUploadingVideo || !videoUrlInput.trim()) && styles.uploadVideoButtonDisabled,
+                  (!activityExists || isUploadingVideo || isTemplateControlled || !videoUrlInput.trim()) && styles.uploadVideoButtonDisabled,
                 ]}
                 onPress={handleAddVideoUrl}
-                disabled={!activityExists || isUploadingVideo || !videoUrlInput.trim()}
+                disabled={!activityExists || isUploadingVideo || isTemplateControlled || !videoUrlInput.trim()}
                 activeOpacity={0.85}
               >
                 <Text style={styles.addVideoUrlButtonText}>Add media link</Text>
@@ -1428,10 +1662,10 @@ export function CreateActivityTaskModal({
               <TouchableOpacity
                 style={[
                   styles.uploadVideoButton,
-                  (!activityExists || isUploadingVideo) && styles.uploadVideoButtonDisabled,
+                  (!activityExists || isUploadingVideo || isTemplateControlled) && styles.uploadVideoButtonDisabled,
                 ]}
                 onPress={handlePickVideo}
-                disabled={!activityExists || isUploadingVideo}
+                disabled={!activityExists || isUploadingVideo || isTemplateControlled}
                 activeOpacity={0.85}
               >
                 <Text style={styles.uploadVideoButtonText}>
@@ -1439,30 +1673,25 @@ export function CreateActivityTaskModal({
                 </Text>
               </TouchableOpacity>
               {videoUrls.length ? (
-                <View style={styles.videoList}>
-                  {videoUrls.map((url, index) => (
-                    <View key={`${url}-${index}`} style={styles.videoListItem}>
-                      <View style={styles.videoListTextWrap}>
-                        <Text style={styles.videoListTitle}>Media {index + 1}</Text>
-                        <Text style={styles.videoListSubtitle} numberOfLines={1}>
-                          {getTaskMediaLabel(url)}
-                          {videoUrls.length > 1 ? ' - swipe in the viewer' : ''}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.removeVideoButton}
-                        onPress={() => setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index))}
-                        disabled={!activityExists || isUploadingVideo}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.removeVideoButtonText}>Remove</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                <>
+                  <TaskMediaListEditor
+                    urls={videoUrls}
+                    onChange={setVideoUrls}
+                    getLabel={getTaskMediaLabel}
+                    onRemove={(index) => setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index))}
+                    disabled={!activityExists || isUploadingVideo || isLoading || isTemplateControlled}
+                    backgroundColor={colors.cardBackground}
+                    borderColor={colors.border}
+                    textColor={colors.text}
+                    secondaryTextColor={colors.textSecondary}
+                    accentColor={colors.primary}
+                    dangerColor="#B91C1C"
+                    testIDPrefix="activity.task.media"
+                  />
                   {videoUrls.length > 1 ? (
-                    <Text style={styles.videoSuccessText}>Swipe sideways in the task to switch between files.</Text>
+                    <Text style={styles.videoSuccessText}>Drag a media row to change the display order.</Text>
                   ) : null}
-                </View>
+                </>
               ) : null}
               {videoUrlInput.trim() && !isTaskMediaUrl(videoUrlInput) ? (
                 <Text style={styles.videoErrorText}>
@@ -1475,9 +1704,12 @@ export function CreateActivityTaskModal({
               <View style={styles.subtasksHeader}>
                 <Text style={styles.label}>Subtasks</Text>
                 <TouchableOpacity
-                  style={[styles.addSubtaskButton, !activityExists && styles.addSubtaskButtonDisabled]}
+                  style={[
+                    styles.addSubtaskButton,
+                    (!activityExists || isTemplateControlled) && styles.addSubtaskButtonDisabled,
+                  ]}
                   onPress={addSubtask}
-                  disabled={!activityExists}
+                  disabled={!activityExists || isTemplateControlled}
                 >
                   <Text style={styles.addSubtaskButtonText}>Add</Text>
                 </TouchableOpacity>
@@ -1490,13 +1722,13 @@ export function CreateActivityTaskModal({
                     onChangeText={(value) => updateSubtask(index, value)}
                     placeholder={`Subtask ${index + 1}`}
                     placeholderTextColor={colors.textSecondary}
-                    editable={activityExists}
+                    editable={activityExists && !isTemplateControlled}
                   />
                   {subtasks.length > 1 && (
                     <TouchableOpacity
                       style={styles.removeSubtaskButton}
                       onPress={() => removeSubtask(index)}
-                      disabled={!activityExists}
+                      disabled={!activityExists || isTemplateControlled}
                     >
                       <Text style={styles.removeSubtaskButtonText}>Remove</Text>
                     </TouchableOpacity>
@@ -1519,7 +1751,7 @@ export function CreateActivityTaskModal({
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                   ios_backgroundColor={colors.border}
-                  disabled={!activityExists}
+                  disabled={!activityExists || isTemplateControlled}
                 />
               </View>
 
@@ -1535,10 +1767,10 @@ export function CreateActivityTaskModal({
                         style={[
                           styles.delayOption,
                           selected && styles.delayOptionSelected,
-                          !activityExists && styles.delayOptionDisabled,
+                          (!activityExists || isTemplateControlled) && styles.delayOptionDisabled,
                         ]}
                         onPress={() => setReminderMinutes(String(option.value))}
-                        disabled={!activityExists}
+                        disabled={!activityExists || isTemplateControlled}
                         activeOpacity={0.8}
                       >
                         <Text style={[styles.delayOptionText, selected && styles.delayOptionTextSelected]}>
@@ -1571,7 +1803,7 @@ export function CreateActivityTaskModal({
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                   ios_backgroundColor={colors.border}
-                  disabled={!activityExists}
+                  disabled={!activityExists || isTemplateControlled}
                 />
               </View>
 
@@ -1587,10 +1819,10 @@ export function CreateActivityTaskModal({
                         style={[
                           styles.delayOption,
                           selected && styles.delayOptionSelected,
-                          !activityExists && styles.delayOptionDisabled,
+                          (!activityExists || isTemplateControlled) && styles.delayOptionDisabled,
                         ]}
                         onPress={() => setAfterTrainingDelayMinutes(String(option.value))}
-                        disabled={!activityExists}
+                        disabled={!activityExists || isTemplateControlled}
                         activeOpacity={0.8}
                       >
                         <Text style={[styles.delayOptionText, selected && styles.delayOptionTextSelected]}>
@@ -1621,7 +1853,7 @@ export function CreateActivityTaskModal({
                   trackColor={{ false: colors.border, true: colors.primary }}
                   thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
                   ios_backgroundColor={colors.border}
-                  disabled={!activityExists}
+                  disabled={!activityExists || isTemplateControlled}
                 />
               </View>
 
@@ -1635,7 +1867,7 @@ export function CreateActivityTaskModal({
                     keyboardType="number-pad"
                     placeholder="0"
                     placeholderTextColor={colors.textSecondary}
-                    editable={activityExists}
+                    editable={activityExists && !isTemplateControlled}
                     returnKeyType="done"
                   />
                 </View>
@@ -1650,7 +1882,7 @@ export function CreateActivityTaskModal({
             <TouchableOpacity
               style={[styles.button, styles.cancelButton]}
               onPress={onClose}
-              disabled={isLoading || isUploadingVideo}
+              disabled={isLoading || isUploadingVideo || isTemplateSnapshotLoading}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -1659,14 +1891,16 @@ export function CreateActivityTaskModal({
               style={[
                 styles.button,
                 styles.saveButton,
-                (isLoading || isUploadingVideo || !activityExists) && styles.disabledButton
+                (isLoading || isUploadingVideo || isTemplateSnapshotLoading || !activityExists) && styles.disabledButton
               ]}
               onPress={handleSave}
-              disabled={isLoading || isUploadingVideo || !activityExists}
+              disabled={isLoading || isUploadingVideo || isTemplateSnapshotLoading || !activityExists}
             >
               <Text style={styles.saveButtonText}>
                 {isLoading
                   ? 'Saving...'
+                  : isTemplateSnapshotLoading
+                    ? 'Loading...'
                   : isUploadingVideo
                     ? 'Uploading...'
                     : !activityExists
@@ -1767,6 +2001,38 @@ const styles = StyleSheet.create({
   },
   videoSection: {
     marginBottom: 16,
+  },
+  templateSyncCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 12,
+    marginBottom: 16,
+  },
+  templateSyncCardOn: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#86EFAC',
+  },
+  templateSyncCardOff: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FED7AA',
+  },
+  templateSyncTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  templateSyncTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  templateSyncHelper: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   videoLabelRow: {
     flexDirection: 'row',

@@ -82,6 +82,12 @@ export interface Task {
   task_duration_minutes?: number | null;
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
+  templateSyncEnabled?: boolean | null;
+  template_sync_enabled?: boolean | null;
+  taskTemplateSourceFolder?: string | null;
+  task_template_source_folder?: string | null;
+  taskTemplateTitle?: string | null;
+  task_template_title?: string | null;
   isFeedbackTask?: boolean;
   isVirtualScoredTask?: boolean;
   isVirtualFeedbackTask?: boolean;

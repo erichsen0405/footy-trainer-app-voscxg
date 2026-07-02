@@ -96,6 +96,7 @@ const colors =
 const V2_WAVE_HEIGHT = 60;
 const V2_CTA_HEIGHT = 56;
 const FOCUS_CHANGE_PERFECT_SCORE_STREAK = 15;
+const LOCAL_ACTIVITY_TEMPLATE_SOURCE = 'activity_local_task';
 
 // Header action buttons
 const HEADER_ACTION_BUTTON_SIZE = 36;
@@ -230,6 +231,12 @@ type FeedbackTask = Task & {
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   taskTemplateId?: string | null;
+  templateSyncEnabled?: boolean | null;
+  template_sync_enabled?: boolean | null;
+  taskTemplateSourceFolder?: string | null;
+  task_template_source_folder?: string | null;
+  taskTemplateTitle?: string | null;
+  task_template_title?: string | null;
   task_duration_enabled?: boolean;
   task_duration_minutes?: number | null;
   taskDurationEnabled?: boolean;
@@ -386,7 +393,12 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     is_feedback_task,
     task_template_id,
     feedback_template_id,
-    video_urls
+    template_sync_enabled,
+    video_urls,
+    task_templates (
+      source_folder,
+      title
+    )
   )
 `;
 
@@ -429,7 +441,11 @@ const INTERNAL_SELECT_NO_VIDEO = `
     task_duration_minutes,
     is_feedback_task,
     task_template_id,
-    feedback_template_id
+    feedback_template_id,
+    task_templates (
+      source_folder,
+      title
+    )
   )
 `;
 
@@ -474,7 +490,12 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
     after_training_delay_minutes,
     task_duration_enabled,
     task_duration_minutes,
-    video_urls
+    template_sync_enabled,
+    video_urls,
+    task_templates (
+      source_folder,
+      title
+    )
   )
 `;
 
@@ -615,7 +636,12 @@ const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
   is_feedback_task,
   task_template_id,
   feedback_template_id,
-  video_urls
+  template_sync_enabled,
+  video_urls,
+  task_templates (
+    source_folder,
+    title
+  )
 `;
 
 const ACTIVITY_TASKS_SELECT_NO_VIDEO = `
@@ -688,6 +714,35 @@ function isMissingColumn(err: any, colName: string): boolean {
   return hay.includes(needle);
 }
 
+function getJoinedTaskTemplate(task: any): any | null {
+  const raw = task?.task_templates ?? task?.taskTemplate ?? null;
+  if (Array.isArray(raw)) return raw[0] ?? null;
+  return raw && typeof raw === 'object' ? raw : null;
+}
+
+function getTaskTemplateSourceFolder(task: any): string | null {
+  const direct = normalizeId(task?.taskTemplateSourceFolder ?? task?.task_template_source_folder);
+  if (direct) return direct;
+  return normalizeId(getJoinedTaskTemplate(task)?.source_folder);
+}
+
+function getTaskTemplateTitle(task: any): string | null {
+  const direct = normalizeId(task?.taskTemplateTitle ?? task?.task_template_title);
+  if (direct) return direct;
+  return normalizeId(getJoinedTaskTemplate(task)?.title);
+}
+
+function getTaskTemplateSyncEnabled(task: any): boolean {
+  const raw = task?.templateSyncEnabled ?? task?.template_sync_enabled;
+  return raw !== false;
+}
+
+function isRemoteTemplateLinkedTask(task: any): boolean {
+  const templateId = normalizeId(task?.taskTemplateId ?? task?.task_template_id);
+  if (!templateId) return false;
+  return getTaskTemplateSourceFolder(task) !== LOCAL_ACTIVITY_TEMPLATE_SOURCE;
+}
+
 async function selectSingleWithOptionalColumn<T>(opts: {
   table: string;
   selectWith: string;
@@ -695,9 +750,11 @@ async function selectSingleWithOptionalColumn<T>(opts: {
   eqColumn: string;
   eqValue: string;
   optionalColumnName: string;
+  optionalColumnNames?: string[];
   context: string;
 }): Promise<{ data: T | null; error: any | null; usedFallback: boolean }> {
-  const { table, selectWith, selectWithout, eqColumn, eqValue, optionalColumnName, context } = opts;
+  const { table, selectWith, selectWithout, eqColumn, eqValue, optionalColumnName, optionalColumnNames, context } = opts;
+  const optionalNames = optionalColumnNames?.length ? optionalColumnNames : [optionalColumnName];
 
   const first = await (supabase as any).from(table).select(selectWith).eq(eqColumn, eqValue).single();
   if (!first.error) return { data: (first.data as T) ?? null, error: null, usedFallback: false };
@@ -714,7 +771,7 @@ async function selectSingleWithOptionalColumn<T>(opts: {
     });
   }
 
-  if (!isMissingColumn(first.error, optionalColumnName)) {
+  if (!optionalNames.some((name) => isMissingColumn(first.error, name))) {
     return { data: null, error: first.error, usedFallback: false };
   }
 
@@ -766,8 +823,9 @@ async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]
       isMissingColumn(error, 'after_training_delay_minutes') ||
       isMissingColumn(error, 'task_duration_enabled') ||
       isMissingColumn(error, 'task_duration_minutes');
+    const isMissingTemplateSync = isMissingColumn(error, 'template_sync_enabled');
     const isMissingVideo = isMissingColumn(error, 'video_url') || isMissingColumn(error, 'video_urls');
-    const shouldRetry = isMissingLocalOption || isMissingVideo;
+    const shouldRetry = isMissingLocalOption || isMissingVideo || isMissingTemplateSync;
     if (!shouldRetry) {
       break;
     }
@@ -840,6 +898,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       eqColumn: 'id',
       eqValue: activityId,
       optionalColumnName: 'video_url',
+      optionalColumnNames: ['video_url', 'video_urls', 'template_sync_enabled'],
       context: `activities.id=${activityId}`,
     });
 
@@ -858,6 +917,9 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
+        const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
+        const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
+        const taskTemplateTitle = getTaskTemplateTitle(task);
         const mapped: any = {
           id: task.id,
           created_at: task.created_at ?? null,
@@ -889,6 +951,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
           taskTemplateId: task.task_template_id,
+          templateSyncEnabled,
+          template_sync_enabled: templateSyncEnabled,
+          taskTemplateSourceFolder,
+          task_template_source_folder: taskTemplateSourceFolder,
+          taskTemplateTitle,
+          task_template_title: taskTemplateTitle,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
           isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
@@ -986,8 +1054,9 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         isMissingColumn(withVideo.error, 'task_duration_enabled') ||
         isMissingColumn(withVideo.error, 'task_duration_minutes') ||
         isMissingColumn(withVideo.error, 'is_feedback_task');
+      const isMissingTemplateSync = isMissingColumn(withVideo.error, 'template_sync_enabled');
 
-      if (!(isMissingVideo || isMissingLocalOption)) {
+      if (!(isMissingVideo || isMissingLocalOption || isMissingTemplateSync)) {
         return { data: null, error: withVideo.error, usedFallback: false };
       }
 
@@ -1085,6 +1154,9 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
+        const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
+        const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
+        const taskTemplateTitle = getTaskTemplateTitle(task);
         const mapped: any = {
           id: task.id,
           created_at: task.created_at ?? null,
@@ -1116,6 +1188,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
           taskTemplateId: task.task_template_id,
+          templateSyncEnabled,
+          template_sync_enabled: templateSyncEnabled,
+          taskTemplateSourceFolder,
+          task_template_source_folder: taskTemplateSourceFolder,
+          taskTemplateTitle,
+          task_template_title: taskTemplateTitle,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
           isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
@@ -1209,6 +1287,9 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
+        const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
+        const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
+        const taskTemplateTitle = getTaskTemplateTitle(task);
         const mapped: any = {
           id: task.id,
           created_at: task.created_at ?? null,
@@ -1240,6 +1321,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
           taskTemplateId: task.task_template_id,
+          templateSyncEnabled,
+          template_sync_enabled: templateSyncEnabled,
+          taskTemplateSourceFolder,
+          task_template_source_folder: taskTemplateSourceFolder,
+          taskTemplateTitle,
+          task_template_title: taskTemplateTitle,
           feedback_template_id: task.feedback_template_id,
           feedbackTemplateId,
           isFeedbackTask: task.is_feedback_task === true || isFeedbackTask,
@@ -1878,6 +1965,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [assignActivityModalVisible, setAssignActivityModalVisible] = useState(false);
   const [isTemplateTaskSaving, setIsTemplateTaskSaving] = useState(false);
   const [templateTaskSearch, setTemplateTaskSearch] = useState('');
+  const [templateTaskSyncEnabled, setTemplateTaskSyncEnabled] = useState(true);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -3228,13 +3316,17 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   );
 
   const handleEditTask = useCallback((task: FeedbackTask) => {
+    const isLinkedTemplateTask = isRemoteTemplateLinkedTask(task);
+    const syncEnabled = getTaskTemplateSyncEnabled(task);
     Alert.alert(
-      'Editing assignment',
-      'This task can be edited locally on the activity without changing the task template.',
+      isLinkedTemplateTask ? 'Opgave linket til skabelon' : 'Rediger opgave',
+      isLinkedTemplateTask && syncEnabled
+        ? 'Denne opgave modtager ændringer fra skabelonen. Slå skabelon-sync fra i editoren for at redigere lokalt.'
+        : 'Denne opgave kan redigeres lokalt på aktiviteten uden at ændre opgaveskabelonen.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Annuller', style: 'cancel' },
         {
-          text: 'Continue',
+          text: 'Fortsæt',
           onPress: () => {
             setEditingActivityTask(task);
             setShowCreateTaskModal(true);
@@ -3319,6 +3411,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         text: 'Create from template',
         onPress: () => {
           setTemplateTaskSearch('');
+          setTemplateTaskSyncEnabled(true);
           setShowTemplateTaskModal(true);
         },
       },
@@ -3387,6 +3480,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     if (isTemplateTaskSaving) return;
     setShowTemplateTaskModal(false);
     setTemplateTaskSearch('');
+    setTemplateTaskSyncEnabled(true);
   }, [isTemplateTaskSaving]);
 
   const handleCreateTaskFromTemplate = useCallback(
@@ -3415,40 +3509,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         const afterTrainingEnabled = template.afterTrainingEnabled === true;
         const taskDurationEnabled =
           template.taskDurationEnabled === true || template.task_duration_enabled === true;
-
-        const localTemplatePayload = {
-          user_id: currentUserId,
-          title: String(template.title ?? '').trim() || 'Task',
-          description: String(template.description ?? ''),
-          reminder_minutes: reminderValue,
-          video_url: videoPayload.video_url,
-          video_urls: videoPayload.video_urls,
-          after_training_enabled: afterTrainingEnabled,
-          after_training_delay_minutes: afterTrainingEnabled
-            ? clampMinutes(template.afterTrainingDelayMinutes ?? 0)
-            : null,
-          after_training_feedback_enable_score:
-            template.afterTrainingFeedbackEnableScore !== false,
-          after_training_feedback_score_explanation:
-            template.afterTrainingFeedbackScoreExplanation ?? null,
-          after_training_feedback_enable_note:
-            template.afterTrainingFeedbackEnableNote !== false,
-          after_training_feedback_enable_intensity: true,
-          task_duration_enabled: taskDurationEnabled,
-          task_duration_minutes: taskDurationEnabled
-            ? clampMinutes(template.taskDurationMinutes ?? template.task_duration_minutes ?? 0)
-            : null,
-          source_folder: 'activity_local_task',
-        };
-
-        const { data: localTemplateData, error: localTemplateError } = await supabase
-          .from('task_templates')
-          .insert(localTemplatePayload as any)
-          .select('id')
-          .single();
-
-        if (localTemplateError || !localTemplateData?.id) {
-          throw new Error(localTemplateError?.message || 'Failed to create local template.');
+        const sourceTemplateId = normalizeId(template.id);
+        if (!sourceTemplateId) {
+          throw new Error('The template is missing an ID.');
         }
 
         const basePayload = {
@@ -3457,7 +3520,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           completed: false,
           reminder_minutes: reminderValue,
           video_urls: videoPayload.video_urls,
-          task_template_id: String(localTemplateData.id),
+          task_template_id: sourceTemplateId,
+          template_sync_enabled: templateTaskSyncEnabled,
           after_training_enabled: afterTrainingEnabled,
           after_training_delay_minutes:
             afterTrainingEnabled
@@ -3470,6 +3534,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               : null,
         };
         const fallbackBasePayload = { ...basePayload } as Record<string, any>;
+        delete fallbackBasePayload.template_sync_enabled;
         delete fallbackBasePayload.after_training_enabled;
         delete fallbackBasePayload.after_training_delay_minutes;
         delete fallbackBasePayload.task_duration_enabled;
@@ -3480,10 +3545,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           ? { local_meta_id: activity.id, ...basePayload }
           : { activity_id: activity.id, ...basePayload };
 
-        let { error } = await supabase.from(table).insert(payload as any);
+        let insertResponse = await supabase.from(table).insert(payload as any).select('id').single();
+        let error = insertResponse.error;
         if (
           error &&
-          (isMissingColumn(error, 'video_urls') ||
+          (isMissingColumn(error, 'template_sync_enabled') ||
+            isMissingColumn(error, 'video_urls') ||
             isMissingColumn(error, 'after_training_enabled') ||
             isMissingColumn(error, 'after_training_delay_minutes') ||
             isMissingColumn(error, 'task_duration_enabled') ||
@@ -3495,8 +3562,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           const fallbackPayload = activity.isExternal
             ? { local_meta_id: activity.id, ...fallbackBasePayload }
             : { activity_id: activity.id, ...fallbackBasePayload };
-          const retry = await supabase.from(table).insert(fallbackPayload as any);
-          error = retry.error;
+          insertResponse = await supabase.from(table).insert(fallbackPayload as any).select('id').single();
+          error = insertResponse.error;
         }
 
         if (error) {
@@ -3507,8 +3574,38 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           throw error;
         }
 
+        if (templateTaskSyncEnabled) {
+          try {
+            const { error: syncError } = await supabase.rpc('update_all_tasks_from_template', {
+              p_template_id: sourceTemplateId,
+              p_dry_run: false,
+            });
+            if (syncError) {
+              console.error('[ActivityDetails] Template task sync failed after create', syncError);
+            }
+          } catch (syncError) {
+            console.error('[ActivityDetails] Template task sync failed unexpectedly after create', syncError);
+          }
+        } else if (!activity.isExternal && insertResponse.data?.id && Array.isArray((template as any).subtasks)) {
+          const subtaskRows = ((template as any).subtasks ?? [])
+            .map((subtask: any, index: number) => ({
+              activity_task_id: String(insertResponse.data.id),
+              title: String(subtask?.title ?? '').trim(),
+              sort_order: index,
+            }))
+            .filter((row: any) => row.title.length > 0);
+
+          if (subtaskRows.length) {
+            const { error: subtaskError } = await supabase.from('activity_task_subtasks').insert(subtaskRows);
+            if (subtaskError) {
+              console.error('[ActivityDetails] Detached template subtask copy failed', subtaskError);
+            }
+          }
+        }
+
         setShowTemplateTaskModal(false);
         setTemplateTaskSearch('');
+        setTemplateTaskSyncEnabled(true);
         await refreshActivityTasks();
       } catch (error: any) {
         Alert.alert('Error', error?.message || 'Could not create task from template.');
@@ -3516,7 +3613,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         setIsTemplateTaskSaving(false);
       }
     },
-    [activity.id, activity.isExternal, currentUserId, isTemplateTaskSaving, refreshActivityTasks],
+    [activity.id, activity.isExternal, currentUserId, isTemplateTaskSaving, refreshActivityTasks, templateTaskSyncEnabled],
   );
 
   const formatTemplateTaskMeta = useCallback((template: Task): string => {
@@ -3944,6 +4041,8 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         hasLocalFeedbackMarker ||
         (!!templateId && hasFeedbackTemplateId);
       const canManageTask = !isFeedbackTaskLocal && canManageAssignedActivity;
+      const isTemplateLinkedTask = !isFeedbackTaskLocal && isRemoteTemplateLinkedTask(task);
+      const taskReceivesTemplateUpdates = getTaskTemplateSyncEnabled(task);
 
       const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
@@ -4011,6 +4110,39 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             >
               {translateLegacyDisplayText(task.title)}
             </Text>
+
+            {isTemplateLinkedTask ? (
+              <View
+                style={[
+                  styles.templateStatusPill,
+                  {
+                    backgroundColor: taskReceivesTemplateUpdates
+                      ? (isDark ? '#0f2b22' : '#ecfdf5')
+                      : (isDark ? '#30220d' : '#fff7ed'),
+                    borderColor: taskReceivesTemplateUpdates
+                      ? (isDark ? '#1f7a55' : '#86efac')
+                      : (isDark ? '#9a5a14' : '#fed7aa'),
+                  },
+                ]}
+                testID={`activity.details.task.templateSync.${String(task.id)}`}
+              >
+                <IconSymbol
+                  ios_icon_name={taskReceivesTemplateUpdates ? 'arrow.triangle.2.circlepath' : 'link.badge.plus'}
+                  android_material_icon_name={taskReceivesTemplateUpdates ? 'sync' : 'link_off'}
+                  size={13}
+                  color={taskReceivesTemplateUpdates ? '#16A34A' : '#F59E0B'}
+                />
+                <Text
+                  style={[
+                    styles.templateStatusText,
+                    { color: taskReceivesTemplateUpdates ? '#15803D' : '#C2410C' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {taskReceivesTemplateUpdates ? 'Følger skabelon' : 'Løsrevet fra skabelon'}
+                </Text>
+              </View>
+            ) : null}
 
             {isFeedbackTaskLocal && (
               <>
@@ -5290,8 +5422,50 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
             <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Select assignment template</Text>
             <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
-              Creates one task on this activity.
+              Opretter én opgave på denne aktivitet.
             </Text>
+
+            <View
+              style={[
+                styles.templateSyncCard,
+                {
+                  backgroundColor: templateTaskSyncEnabled
+                    ? (isDark ? '#0f2b22' : '#ecfdf5')
+                    : (isDark ? '#30220d' : '#fff7ed'),
+                  borderColor: templateTaskSyncEnabled
+                    ? (isDark ? '#1f7a55' : '#86efac')
+                    : (isDark ? '#9a5a14' : '#fed7aa'),
+                },
+              ]}
+              testID="activity.templateTask.syncCard"
+            >
+              <View style={styles.templateSyncIconWrap}>
+                <IconSymbol
+                  ios_icon_name={templateTaskSyncEnabled ? 'arrow.triangle.2.circlepath' : 'link.badge.plus'}
+                  android_material_icon_name={templateTaskSyncEnabled ? 'sync' : 'link_off'}
+                  size={20}
+                  color={templateTaskSyncEnabled ? '#16A34A' : '#F59E0B'}
+                />
+              </View>
+              <View style={styles.templateSyncTextWrap}>
+                <Text style={[styles.templateSyncTitle, { color: textColor }]}>
+                  {templateTaskSyncEnabled ? 'Følger skabelonen' : 'Løsrevet fra skabelonen'}
+                </Text>
+                <Text style={[styles.templateSyncSubtitle, { color: textSecondaryColor }]}>
+                  {templateTaskSyncEnabled
+                    ? 'Fremtidige ændringer i skabelonen opdaterer opgaven på aktiviteten.'
+                    : 'Denne opgave beholder sit nuværende indhold på aktiviteten.'}
+                </Text>
+              </View>
+              <Switch
+                value={templateTaskSyncEnabled}
+                onValueChange={setTemplateTaskSyncEnabled}
+                disabled={isTemplateTaskSaving}
+                trackColor={{ false: '#F59E0B', true: colors.primary }}
+                thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                testID="activity.templateTask.syncSwitch"
+              />
+            </View>
 
             <TextInput
               style={[
@@ -5541,6 +5715,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                     typeof editingActivityTask.taskDurationMinutes === 'number'
                       ? editingActivityTask.taskDurationMinutes
                       : (editingActivityTask as any).task_duration_minutes ?? null,
+                  template_sync_enabled:
+                    editingActivityTask.templateSyncEnabled ?? editingActivityTask.template_sync_enabled ?? true,
+                  task_template_source_folder:
+                    editingActivityTask.taskTemplateSourceFolder ??
+                    editingActivityTask.task_template_source_folder ??
+                    null,
+                  task_template_title:
+                    editingActivityTask.taskTemplateTitle ??
+                    editingActivityTask.task_template_title ??
+                    null,
                 }
               : undefined
           }
@@ -6365,6 +6549,21 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.6,
   },
+  templateStatusPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 6,
+  },
+  templateStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
   intensityTaskValue: {
     fontSize: 14,
     marginLeft: 8,
@@ -6462,6 +6661,37 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 12,
     fontSize: 13,
+    fontWeight: '500',
+  },
+  templateSyncCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    marginBottom: 12,
+  },
+  templateSyncIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  templateSyncTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  templateSyncTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  templateSyncSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '500',
   },
   templateTaskSearchInput: {
