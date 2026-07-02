@@ -1421,6 +1421,8 @@ describe('ActivityDetails add-task flow', () => {
         subtasks: [],
         videoUrl: instagramUrl,
         videoUrls: [instagramUrl, 'https://vimeo.com/123456'],
+        mediaNames: ['Instagram reel', 'Vimeo clip'],
+        media_names: ['Instagram reel', 'Vimeo clip'],
       },
     ];
 
@@ -1468,6 +1470,7 @@ describe('ActivityDetails add-task flow', () => {
               feedback_template_id: row.feedback_template_id ?? null,
               video_url: row.video_url ?? null,
               video_urls: row.video_urls ?? null,
+              media_names: row.media_names ?? null,
             })),
             error: null,
           }),
@@ -1516,6 +1519,7 @@ describe('ActivityDetails add-task flow', () => {
                 feedback_template_id: row.feedback_template_id ?? null,
                 video_url: row.video_url ?? null,
                 video_urls: row.video_urls ?? null,
+                media_names: row.media_names ?? null,
               })),
             },
             error: null,
@@ -1575,10 +1579,8 @@ describe('ActivityDetails add-task flow', () => {
     expect(insertedActivityTasks[0].template_sync_enabled).toBe(true);
     expect(insertedActivityTasks[0].video_url).toBeUndefined();
     expect(insertedActivityTasks[0].video_urls).toEqual([instagramUrl, 'https://vimeo.com/123456']);
-    expect(mockSupabaseRpc).toHaveBeenCalledWith('update_all_tasks_from_template', {
-      p_template_id: 'template-source-1',
-      p_dry_run: false,
-    });
+    expect(insertedActivityTasks[0].media_names).toEqual(['Instagram reel', 'Vimeo clip']);
+    expect(mockSupabaseRpc).not.toHaveBeenCalledWith('update_all_tasks_from_template', expect.anything());
 
     alertSpy.mockRestore();
   });

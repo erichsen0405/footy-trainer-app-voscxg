@@ -4,7 +4,7 @@ import { emitTaskCompletionEvent } from '@/utils/taskEvents';
 import type { TaskCompletionEvent } from '@/utils/taskEvents';
 import { Task } from '@/types';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { buildTaskVideoPayload } from '@/utils/taskVideos';
+import { buildTaskMediaNamePayload, buildTaskVideoPayload } from '@/utils/taskVideos';
 
 export interface CreateTaskData {
   title: string;
@@ -14,6 +14,8 @@ export interface CreateTaskData {
   videoUrl?: string | null;
   subtasks?: TaskSubtaskInput[];
   videoUrls?: string[] | null;
+  mediaNames?: string[] | null;
+  media_names?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -37,6 +39,8 @@ export interface UpdateTaskData {
   videoUrl?: string | null;
   subtasks?: TaskSubtaskInput[];
   videoUrls?: string[] | null;
+  mediaNames?: string[] | null;
+  media_names?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -359,6 +363,13 @@ export const taskService = {
       ('videoUrl' in sourceTask ? (sourceTask as any).videoUrl : (rawData as CreateTaskData).videoUrl) ?? null,
       ('video_url' in sourceTask ? (sourceTask as any).video_url : null) ?? null,
     ]);
+    const resolvedMediaNamePayload = buildTaskMediaNamePayload(
+      [
+        ('mediaNames' in sourceTask ? (sourceTask as any).mediaNames : (rawData as CreateTaskData).mediaNames) ?? [],
+        ('media_names' in sourceTask ? (sourceTask as any).media_names : (rawData as CreateTaskData).media_names) ?? [],
+      ],
+      resolvedVideoPayload.videoUrls,
+    );
     const resolvedAfterTrainingEnabled =
       ('afterTrainingEnabled' in sourceTask
         ? (sourceTask as any).afterTrainingEnabled
@@ -439,6 +450,7 @@ export const taskService = {
       reminder_minutes: resolvedReminder ?? null,
       video_url: resolvedVideoPayload.video_url,
       video_urls: resolvedVideoPayload.video_urls,
+      media_names: resolvedMediaNamePayload.media_names,
       after_training_enabled: resolvedAfterTrainingEnabled,
       after_training_delay_minutes: resolvedAfterTrainingDelay,
       after_training_feedback_enable_score: resolvedAfterTrainingFeedbackEnableScore,
@@ -456,7 +468,7 @@ export const taskService = {
       library_exercise_id: resolvedLibraryExerciseId,
     };
     const templateSelect =
-      'id, title, description, reminder_minutes, video_url, video_urls, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes, auto_add_to_activities';
+      'id, title, description, reminder_minutes, video_url, video_urls, media_names, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes, auto_add_to_activities';
 
     let template: any = null;
     let templateCreated = false;
@@ -547,6 +559,7 @@ export const taskService = {
     }
 
     const returnedVideoPayload = buildTaskVideoPayload((template as any).video_urls ?? template.video_url);
+    const returnedMediaNamePayload = buildTaskMediaNamePayload((template as any).media_names, returnedVideoPayload.videoUrls);
 
     // Return the created task in the expected format
     return {
@@ -564,6 +577,8 @@ export const taskService = {
       })),
       videoUrl: returnedVideoPayload.videoUrl ?? undefined,
       videoUrls: returnedVideoPayload.videoUrls,
+      mediaNames: returnedMediaNamePayload.mediaNames,
+      media_names: returnedMediaNamePayload.media_names,
       source_folder: template.source_folder ?? undefined,
       afterTrainingEnabled: template.after_training_enabled ?? false,
       afterTrainingDelayMinutes: template.after_training_delay_minutes ?? null,
@@ -609,14 +624,25 @@ export const taskService = {
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.reminder !== undefined) updateData.reminder_minutes = updates.reminder;
 
+    let nextMediaUrlsForNames: string[] | null = null;
     if ('videoUrl' in updates) {
       const videoPayload = buildTaskVideoPayload([updates.videoUrls ?? [], updates.videoUrl ?? null]);
       (updateData as any).video_url = videoPayload.video_url;
       (updateData as any).video_urls = videoPayload.video_urls;
+      nextMediaUrlsForNames = videoPayload.videoUrls;
     } else if ('videoUrls' in updates) {
       const videoPayload = buildTaskVideoPayload(updates.videoUrls ?? []);
       (updateData as any).video_url = videoPayload.video_url;
       (updateData as any).video_urls = videoPayload.video_urls;
+      nextMediaUrlsForNames = videoPayload.videoUrls;
+    }
+
+    if (nextMediaUrlsForNames !== null || 'mediaNames' in updates || 'media_names' in updates) {
+      const mediaNamePayload = buildTaskMediaNamePayload(
+        [updates.mediaNames ?? [], updates.media_names ?? []],
+        nextMediaUrlsForNames ?? updates.videoUrls ?? [],
+      );
+      (updateData as any).media_names = mediaNamePayload.media_names;
     }
 
     const shouldSyncSeriesFeedback =

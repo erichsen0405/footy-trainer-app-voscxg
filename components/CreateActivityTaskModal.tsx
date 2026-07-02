@@ -19,7 +19,17 @@ import type { TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 import { scheduleTaskReminderImmediate } from '@/utils/notificationScheduler';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
-import { buildTaskVideoPayload, getTaskMediaType, isTaskMediaUrl, mergeTaskVideoUrls } from '@/utils/taskVideos';
+import {
+  buildTaskMediaNamePayload,
+  buildTaskVideoPayload,
+  getTaskMediaType,
+  getTaskMediaNameFromFileName,
+  isTaskMediaUrl,
+  mergeTaskMedia,
+  normalizeTaskMediaNames,
+  removeTaskMediaAt,
+  replaceTaskMediaName,
+} from '@/utils/taskVideos';
 import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 
 /*
@@ -70,6 +80,7 @@ const TASK_LOCAL_OPTIONAL_COLUMNS = [
   'task_duration_enabled',
   'task_duration_minutes',
   'template_sync_enabled',
+  'media_names',
 ] as const;
 const TASK_FEEDBACK_OPTIONAL_COLUMNS = [
   'feedback_template_id',
@@ -124,6 +135,7 @@ const omitTaskLocalOptions = (payload: Record<string, any>): Record<string, any>
   delete next.task_duration_enabled;
   delete next.task_duration_minutes;
   delete next.template_sync_enabled;
+  delete next.media_names;
   return next;
 };
 
@@ -151,6 +163,7 @@ type LinkedTemplateSnapshot = {
   description: string;
   videoUrl: string | null;
   videoUrls: string[] | null;
+  mediaNames: string[] | null;
   reminderMinutes: number | null;
   afterTrainingEnabled: boolean;
   afterTrainingDelayMinutes: number | null;
@@ -243,6 +256,8 @@ export function CreateActivityTaskModal({
   const [taskDurationMinutes, setTaskDurationMinutes] = useState('0');
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [mediaNames, setMediaNames] = useState<string[]>([]);
+  const [mediaNameInput, setMediaNameInput] = useState('');
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [isMediaDragging, setIsMediaDragging] = useState(false);
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([{ id: createLocalId(), title: '' }]);
@@ -334,7 +349,9 @@ export function CreateActivityTaskModal({
       setHasTaskDuration(snapshot.taskDurationEnabled);
       setTaskDurationMinutes(String(normalizeDurationInput(String(snapshot.taskDurationMinutes ?? 0))));
       setVideoUrls(snapshot.videoUrls ?? []);
+      setMediaNames(normalizeTaskMediaNames(snapshot.mediaNames, snapshot.videoUrls ?? []));
       setVideoUrlInput('');
+      setMediaNameInput('');
       setSubtasks(snapshot.subtasks.length ? snapshot.subtasks : [{ id: createLocalId(), title: '' }]);
     },
     [normalizeDurationInput],
@@ -350,7 +367,7 @@ export function CreateActivityTaskModal({
       const { data: templateRow, error: templateError } = await supabase
         .from('task_templates')
         .select(
-          'title, description, reminder_minutes, video_url, video_urls, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes'
+          'title, description, reminder_minutes, video_url, video_urls, media_names, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes'
         )
         .eq('id', normalizedTemplateId)
         .maybeSingle();
@@ -377,6 +394,7 @@ export function CreateActivityTaskModal({
         (templateRow as any).video_urls,
         (templateRow as any).video_url,
       ]);
+      const mediaNamePayload = buildTaskMediaNamePayload((templateRow as any).media_names, videoPayload.videoUrls);
       const taskDurationEnabled = (templateRow as any).task_duration_enabled === true;
       const afterTrainingEnabled = (templateRow as any).after_training_enabled === true;
       const subtasksSnapshot = (Array.isArray(templateSubtasks) ? templateSubtasks : [])
@@ -391,6 +409,7 @@ export function CreateActivityTaskModal({
         description: String((templateRow as any).description ?? ''),
         videoUrl: videoPayload.videoUrl,
         videoUrls: videoPayload.video_urls,
+        mediaNames: mediaNamePayload.media_names,
         reminderMinutes:
           typeof (templateRow as any).reminder_minutes === 'number'
             ? Math.max(0, Math.round((templateRow as any).reminder_minutes))
@@ -436,6 +455,7 @@ export function CreateActivityTaskModal({
       templateDescription,
       templateVideoUrl,
       templateVideoUrls,
+      templateMediaNames,
       reminderMinutes,
       feedbackEnabled,
       feedbackDelayMinutes,
@@ -448,6 +468,7 @@ export function CreateActivityTaskModal({
       templateDescription: string;
       templateVideoUrl: string | null;
       templateVideoUrls: string[] | null;
+      templateMediaNames: string[] | null;
       reminderMinutes: number | null;
       feedbackEnabled: boolean;
       feedbackDelayMinutes: number | null;
@@ -482,6 +503,7 @@ export function CreateActivityTaskModal({
         description: templateDescription,
         video_url: templateVideoUrl,
         video_urls: templateVideoUrls,
+        media_names: templateMediaNames,
         reminder_minutes: reminderMinutes,
         after_training_enabled: feedbackEnabled,
         after_training_delay_minutes: feedbackEnabled ? feedbackDelayMinutes : null,
@@ -924,9 +946,14 @@ export function CreateActivityTaskModal({
       Alert.alert('Error', 'Invalid media. Use a video, image, or PDF link.');
       return;
     }
-    setVideoUrls(prev => mergeTaskVideoUrls(prev, trimmed));
+    setVideoUrls((prevUrls) => {
+      const nextMedia = mergeTaskMedia(prevUrls, mediaNames, trimmed, mediaNameInput);
+      setMediaNames(nextMedia.names);
+      return nextMedia.urls;
+    });
     setVideoUrlInput('');
-  }, [videoUrlInput]);
+    setMediaNameInput('');
+  }, [mediaNameInput, mediaNames, videoUrlInput]);
 
   const handlePickVideo = useCallback(async () => {
     if (!userId) {
@@ -938,14 +965,24 @@ export function CreateActivityTaskModal({
     try {
       const uploadedMedia = await pickAndUploadTaskMedia(userId);
       if (!uploadedMedia) return;
-      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedMedia.publicUrl));
+      setVideoUrls((prevUrls) => {
+        const nextMedia = mergeTaskMedia(
+          prevUrls,
+          mediaNames,
+          uploadedMedia.publicUrl,
+          mediaNameInput || getTaskMediaNameFromFileName(uploadedMedia.fileName),
+        );
+        setMediaNames(nextMedia.names);
+        return nextMedia.urls;
+      });
+      setMediaNameInput('');
       Alert.alert('File uploaded', 'The file has been added to the task.');
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'Failed to upload file.');
     } finally {
       setIsUploadingVideo(false);
     }
-  }, [userId]);
+  }, [mediaNameInput, mediaNames, userId]);
 
   useEffect(() => {
     if (!visible) return;
@@ -960,6 +997,8 @@ export function CreateActivityTaskModal({
       setTaskDurationMinutes('0');
       setVideoUrls([]);
       setVideoUrlInput('');
+      setMediaNames([]);
+      setMediaNameInput('');
       setSubtasks([{ id: createLocalId(), title: '' }]);
       setTemplateSyncEnabled(true);
       setIsTemplateSnapshotLoading(false);
@@ -992,13 +1031,16 @@ export function CreateActivityTaskModal({
       editingTask.template_sync_enabled !== false && editingTask.templateSyncEnabled !== false,
     );
     setIsTemplateSnapshotLoading(false);
-    setVideoUrls(buildTaskVideoPayload([
+    const taskMediaUrls = buildTaskVideoPayload([
       ...(Array.isArray(editingTask.videoUrls) ? editingTask.videoUrls : []),
       ...(Array.isArray(editingTask.video_urls) ? editingTask.video_urls : []),
       editingTask.videoUrl,
       editingTask.video_url,
-    ]).videoUrls);
+    ]).videoUrls;
+    setVideoUrls(taskMediaUrls);
+    setMediaNames(normalizeTaskMediaNames((editingTask as any).mediaNames ?? (editingTask as any).media_names, taskMediaUrls));
     setVideoUrlInput('');
+    setMediaNameInput('');
   }, [editingTask, isEditMode, normalizeDurationInput, visible]);
 
   useEffect(() => {
@@ -1177,7 +1219,11 @@ export function CreateActivityTaskModal({
       let saveFeedbackDelayPayload = feedbackDelayPayload;
       let saveTaskDurationEnabled = hasTaskDuration;
       let saveTaskDurationPayload = taskDurationPayload;
-      let saveVideoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
+      const mediaForSave = videoUrlInput.trim()
+        ? mergeTaskMedia(videoUrls, mediaNames, videoUrlInput, mediaNameInput)
+        : { urls: videoUrls, names: normalizeTaskMediaNames(mediaNames, videoUrls) };
+      let saveVideoPayload = buildTaskVideoPayload(mediaForSave.urls);
+      let saveMediaNamePayload = buildTaskMediaNamePayload(mediaForSave.names, saveVideoPayload.videoUrls);
       let saveSubtasks = subtasks;
       let taskTemplateId = linkedTemplateId;
       const usesSharedTemplateLink = isEditMode && isLinkedToSharedTemplate && !!linkedTemplateId;
@@ -1192,6 +1238,7 @@ export function CreateActivityTaskModal({
         saveTaskDurationEnabled = snapshot.taskDurationEnabled;
         saveTaskDurationPayload = snapshot.taskDurationMinutes;
         saveVideoPayload = buildTaskVideoPayload(snapshot.videoUrls ?? []);
+        saveMediaNamePayload = buildTaskMediaNamePayload(snapshot.mediaNames, saveVideoPayload.videoUrls);
         saveSubtasks = snapshot.subtasks.length ? snapshot.subtasks : [{ id: createLocalId(), title: '' }];
         applyTemplateSnapshotToForm(snapshot);
       }
@@ -1207,6 +1254,7 @@ export function CreateActivityTaskModal({
           templateDescription: saveDescription,
           templateVideoUrl: saveVideoPayload.videoUrl,
           templateVideoUrls: saveVideoPayload.video_urls,
+          templateMediaNames: saveMediaNamePayload.media_names,
           reminderMinutes: saveReminderPayload,
           feedbackEnabled: saveFeedbackEnabled,
           feedbackDelayMinutes: saveFeedbackDelayPayload,
@@ -1223,6 +1271,7 @@ export function CreateActivityTaskModal({
         title: saveTitle,
         description: saveDescription,
         video_urls: saveVideoPayload.video_urls,
+        media_names: saveMediaNamePayload.media_names,
         completed: false,
         reminder_minutes: saveReminderPayload,
         task_template_id: taskTemplateId,
@@ -1445,6 +1494,8 @@ export function CreateActivityTaskModal({
           reminder: saveReminderPayload ?? undefined,
           videoUrl: saveVideoPayload.videoUrl ?? undefined,
           videoUrls: saveVideoPayload.videoUrls,
+          mediaNames: saveMediaNamePayload.mediaNames,
+          media_names: saveMediaNamePayload.media_names,
           afterTrainingEnabled: saveFeedbackEnabled,
           afterTrainingDelayMinutes: saveFeedbackEnabled
             ? saveFeedbackDelayPayload
@@ -1469,6 +1520,8 @@ export function CreateActivityTaskModal({
       setTaskDurationMinutes('0');
       setVideoUrls([]);
       setVideoUrlInput('');
+      setMediaNames([]);
+      setMediaNameInput('');
       setSubtasks([{ id: createLocalId(), title: '' }]);
       setTemplateSyncEnabled(true);
       onClose();
@@ -1506,6 +1559,8 @@ export function CreateActivityTaskModal({
     taskDurationMinutes,
     videoUrls,
     videoUrlInput,
+    mediaNames,
+    mediaNameInput,
     normalizeDurationInput,
     linkedTemplateId,
     isLinkedToSharedTemplate,
@@ -1650,6 +1705,14 @@ export function CreateActivityTaskModal({
                 keyboardType="url"
                 editable={activityExists && !isUploadingVideo && !isTemplateControlled}
               />
+              <TextInput
+                style={styles.input}
+                value={mediaNameInput}
+                onChangeText={setMediaNameInput}
+                placeholder="Media name"
+                placeholderTextColor={colors.textSecondary}
+                editable={activityExists && !isUploadingVideo && !isTemplateControlled}
+              />
               <TouchableOpacity
                 style={[
                   styles.addVideoUrlButton,
@@ -1678,9 +1741,20 @@ export function CreateActivityTaskModal({
                 <>
                   <TaskMediaListEditor
                     urls={videoUrls}
-                    onChange={setVideoUrls}
+                    names={mediaNames}
+                    onChange={(nextUrls, nextNames) => {
+                      setVideoUrls(nextUrls);
+                      setMediaNames(nextNames);
+                    }}
                     getLabel={getTaskMediaLabel}
-                    onRemove={(index) => setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index))}
+                    onRemove={(index) => {
+                      setVideoUrls((prevUrls) => {
+                        const nextMedia = removeTaskMediaAt(prevUrls, mediaNames, index);
+                        setMediaNames(nextMedia.names);
+                        return nextMedia.urls;
+                      });
+                    }}
+                    onRename={(index, name) => setMediaNames((prevNames) => replaceTaskMediaName(prevNames, videoUrls, index, name))}
                     disabled={!activityExists || isUploadingVideo || isLoading || isTemplateControlled}
                     backgroundColor={colors.cardBackground}
                     borderColor={colors.border}

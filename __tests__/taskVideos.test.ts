@@ -1,9 +1,13 @@
 import {
+  buildTaskMediaNamePayload,
   buildTaskVideoPayload,
+  getTaskMediaNameFromFileName,
   getTaskMediaType,
   getTaskVideoUrls,
+  mergeTaskMedia,
   mergeTaskVideoUrls,
   normalizeTaskVideoUrls,
+  reorderTaskMedia,
 } from '@/utils/taskVideos';
 
 describe('taskVideos', () => {
@@ -60,5 +64,35 @@ describe('taskVideos', () => {
     expect(getTaskMediaType('https://example.com/file.png')).toBe('image');
     expect(getTaskMediaType('https://example.com/file.pdf')).toBe('pdf');
     expect(getTaskMediaType('file.pdf')).toBe('unknown');
+  });
+
+  it('keeps media names aligned when adding and reordering media', () => {
+    const media = mergeTaskMedia(
+      ['https://example.com/a.mp4'],
+      ['Warmup clip'],
+      'https://example.com/b.mp4',
+      'Sprint clip',
+    );
+
+    expect(media).toEqual({
+      urls: ['https://example.com/a.mp4', 'https://example.com/b.mp4'],
+      names: ['Warmup clip', 'Sprint clip'],
+    });
+
+    expect(reorderTaskMedia(media.urls, media.names, 0, 1)).toEqual({
+      urls: ['https://example.com/b.mp4', 'https://example.com/a.mp4'],
+      names: ['Sprint clip', 'Warmup clip'],
+    });
+  });
+
+  it('builds stable default names for media without custom names', () => {
+    expect(buildTaskMediaNamePayload([], ['https://example.com/a.mp4', 'https://example.com/b.mp4'])).toEqual({
+      mediaNames: ['Media 1', 'Media 2'],
+      media_names: ['Media 1', 'Media 2'],
+    });
+  });
+
+  it('turns uploaded storage filenames into readable media names', () => {
+    expect(getTaskMediaNameFromFileName('first-touch-drill-1783000000000-abcd1234.mp4')).toBe('first touch drill');
   });
 });

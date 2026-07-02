@@ -11,6 +11,7 @@ type TaskTemplateRow = {
   reminder_minutes: number | null;
   video_url: string | null;
   video_urls: string[] | null;
+  media_names: string[] | null;
   source_folder: string | null;
   after_training_enabled: boolean;
   after_training_delay_minutes: number | null;
@@ -72,6 +73,7 @@ jest.mock('@/integrations/supabase/client', () => {
             reminder_minutes: payload.reminder_minutes ?? null,
             video_url: payload.video_url ?? null,
             video_urls: payload.video_urls ?? null,
+            media_names: payload.media_names ?? null,
             source_folder: payload.source_folder ?? null,
             after_training_enabled: payload.after_training_enabled ?? false,
             after_training_delay_minutes: payload.after_training_delay_minutes ?? null,

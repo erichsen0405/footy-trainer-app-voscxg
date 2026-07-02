@@ -68,6 +68,8 @@ export interface Task {
   videoUrls?: string[];
   video_url?: string | null;
   video_urls?: string[] | null;
+  mediaNames?: string[];
+  media_names?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;

@@ -1,24 +1,29 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   PanResponder,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
-import { reorderTaskMediaUrls } from '@/utils/taskMediaOrder';
+import { normalizeTaskMediaNames, reorderTaskMedia } from '@/utils/taskVideos';
 
-const ROW_HEIGHT = 64;
+const ROW_HEIGHT = 72;
+const ROW_GAP = 8;
+const ROW_SLOT_HEIGHT = ROW_HEIGHT + ROW_GAP;
 
 type TaskMediaListEditorProps = {
   urls: string[];
-  onChange: (urls: string[]) => void;
+  names?: string[];
+  onChange: (urls: string[], names: string[]) => void;
   getLabel: (url: string) => string;
   onRemove: (index: number) => void;
   onPreview?: (index: number) => void;
+  onRename?: (index: number, name: string) => void;
   disabled?: boolean;
   backgroundColor: string;
   borderColor: string;
@@ -32,20 +37,47 @@ type TaskMediaListEditorProps = {
 
 type TaskMediaRowProps = TaskMediaListEditorProps & {
   url: string;
+  name: string;
   index: number;
   itemCount: number;
+  activeIndex: number | null;
+  hoverIndex: number | null;
   onMove: (fromIndex: number, toIndex: number) => void;
+  onHover: (fromIndex: number, toIndex: number) => void;
+  onDragEnd: () => void;
 };
+
+function getShiftForRow(rowIndex: number, activeIndex: number | null, hoverIndex: number | null): number {
+  if (activeIndex === null || hoverIndex === null || activeIndex === hoverIndex || rowIndex === activeIndex) {
+    return 0;
+  }
+
+  if (activeIndex < hoverIndex && rowIndex > activeIndex && rowIndex <= hoverIndex) {
+    return -ROW_SLOT_HEIGHT;
+  }
+
+  if (activeIndex > hoverIndex && rowIndex >= hoverIndex && rowIndex < activeIndex) {
+    return ROW_SLOT_HEIGHT;
+  }
+
+  return 0;
+}
 
 function TaskMediaRow(props: TaskMediaRowProps) {
   const {
     url,
+    name,
     index,
     itemCount,
+    activeIndex,
+    hoverIndex,
     getLabel,
     onMove,
+    onHover,
+    onDragEnd,
     onRemove,
     onPreview,
+    onRename,
     disabled,
     backgroundColor,
     borderColor,
@@ -60,6 +92,9 @@ function TaskMediaRow(props: TaskMediaRowProps) {
   const translateY = useRef(new Animated.Value(0)).current;
   const isDraggingRef = useRef(false);
   const canDrag = !disabled && itemCount > 1;
+  const rowShift = getShiftForRow(index, activeIndex, hoverIndex);
+  const canRename = !!onRename && !disabled;
+  const label = getLabel(url);
   const setDragging = useCallback(
     (isDragging: boolean) => {
       if (isDraggingRef.current === isDragging) return;
@@ -76,6 +111,13 @@ function TaskMediaRow(props: TaskMediaRowProps) {
       bounciness: 4,
     }).start();
   }, [translateY]);
+  const getTargetIndex = useCallback(
+    (dy: number) => {
+      const offset = Math.round(dy / ROW_SLOT_HEIGHT);
+      return Math.max(0, Math.min(itemCount - 1, index + offset));
+    },
+    [index, itemCount],
+  );
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -89,11 +131,12 @@ function TaskMediaRow(props: TaskMediaRowProps) {
         },
         onPanResponderMove: (_event, gesture) => {
           translateY.setValue(gesture.dy);
+          onHover(index, getTargetIndex(gesture.dy));
         },
         onPanResponderRelease: (_event, gesture) => {
-          const offset = Math.round(gesture.dy / ROW_HEIGHT);
-          const nextIndex = Math.max(0, Math.min(itemCount - 1, index + offset));
+          const nextIndex = getTargetIndex(gesture.dy);
           setDragging(false);
+          onDragEnd();
           resetPosition();
           if (nextIndex !== index) {
             onMove(index, nextIndex);
@@ -102,19 +145,25 @@ function TaskMediaRow(props: TaskMediaRowProps) {
         onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => {
           setDragging(false);
+          onDragEnd();
           resetPosition();
         },
         onShouldBlockNativeResponder: () => canDrag,
       }),
-    [canDrag, index, itemCount, onMove, resetPosition, setDragging, translateY],
+    [canDrag, getTargetIndex, index, onDragEnd, onHover, onMove, resetPosition, setDragging, translateY],
   );
 
   return (
     <Animated.View
       style={[
         styles.row,
-        { backgroundColor, borderColor, transform: [{ translateY }] },
+        {
+          backgroundColor,
+          borderColor,
+          transform: [{ translateY: rowShift }, { translateY }],
+        },
         canDrag && styles.rowDraggable,
+        activeIndex === index && styles.rowActive,
       ]}
       testID={testIDPrefix ? `${testIDPrefix}.row.${index}` : undefined}
     >
@@ -139,13 +188,28 @@ function TaskMediaRow(props: TaskMediaRowProps) {
           size={24}
           color={accentColor}
         />
-        <View style={styles.textWrap}>
-          <Text style={[styles.title, { color: textColor }]}>Media {index + 1}</Text>
-          <Text style={[styles.subtitle, { color: secondaryTextColor }]} numberOfLines={1}>
-            {getLabel(url)}
-          </Text>
-        </View>
       </TouchableOpacity>
+
+      <View style={styles.textWrap}>
+        {canRename ? (
+          <TextInput
+            style={[styles.titleInput, { color: textColor, borderColor }]}
+            value={name}
+            onChangeText={(nextName) => onRename?.(index, nextName)}
+            placeholder="Media name"
+            placeholderTextColor={secondaryTextColor}
+            selectTextOnFocus={false}
+            testID={testIDPrefix ? `${testIDPrefix}.nameInput.${index}` : undefined}
+          />
+        ) : (
+          <Text style={[styles.title, { color: textColor }]} numberOfLines={1}>
+            {name}
+          </Text>
+        )}
+        <Text style={[styles.subtitle, { color: secondaryTextColor }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
 
       <TouchableOpacity
         style={[styles.iconButton, disabled && styles.disabledControl]}
@@ -161,14 +225,39 @@ function TaskMediaRow(props: TaskMediaRowProps) {
 }
 
 export function TaskMediaListEditor(props: TaskMediaListEditorProps) {
-  const { urls, onChange } = props;
+  const { urls, names, onChange, onDragStateChange } = props;
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const normalizedUrls = useMemo(() => (Array.isArray(urls) ? urls : []), [urls]);
+  const normalizedNames = useMemo(
+    () => normalizeTaskMediaNames(names, normalizedUrls),
+    [names, normalizedUrls],
+  );
+  const handleDragStateChange = useCallback(
+    (isDragging: boolean) => {
+      if (!isDragging) {
+        setActiveIndex(null);
+        setHoverIndex(null);
+      }
+      onDragStateChange?.(isDragging);
+    },
+    [onDragStateChange],
+  );
+  const handleHover = useCallback((fromIndex: number, toIndex: number) => {
+    setActiveIndex(fromIndex);
+    setHoverIndex(toIndex);
+  }, []);
+  const handleDragEnd = useCallback(() => {
+    setActiveIndex(null);
+    setHoverIndex(null);
+  }, []);
   const handleMove = useMemo(
     () => (fromIndex: number, toIndex: number) => {
-      onChange(reorderTaskMediaUrls(normalizedUrls, fromIndex, toIndex));
+      const nextMedia = reorderTaskMedia(normalizedUrls, normalizedNames, fromIndex, toIndex);
+      onChange(nextMedia.urls, nextMedia.names);
     },
-    [normalizedUrls, onChange],
+    [normalizedNames, normalizedUrls, onChange],
   );
 
   if (!normalizedUrls.length) return null;
@@ -180,9 +269,15 @@ export function TaskMediaListEditor(props: TaskMediaListEditorProps) {
           key={`${url}-${index}`}
           {...props}
           url={url}
+          name={normalizedNames[index] ?? ''}
           index={index}
           itemCount={normalizedUrls.length}
+          activeIndex={activeIndex}
+          hoverIndex={hoverIndex}
           onMove={handleMove}
+          onHover={handleHover}
+          onDragEnd={handleDragEnd}
+          onDragStateChange={handleDragStateChange}
         />
       ))}
     </View>
@@ -191,12 +286,12 @@ export function TaskMediaListEditor(props: TaskMediaListEditorProps) {
 
 const styles = StyleSheet.create({
   list: {
-    gap: 8,
+    gap: ROW_GAP,
     marginTop: 10,
     marginBottom: 12,
   },
   row: {
-    minHeight: ROW_HEIGHT,
+    height: ROW_HEIGHT,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 8,
@@ -209,6 +304,14 @@ const styles = StyleSheet.create({
     zIndex: 2,
     elevation: 2,
   },
+  rowActive: {
+    zIndex: 4,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
   dragHandle: {
     width: 34,
     minHeight: 44,
@@ -216,11 +319,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   previewButton: {
-    flex: 1,
-    flexDirection: 'row',
+    width: 34,
+    minHeight: 44,
     alignItems: 'center',
-    gap: 10,
-    minWidth: 0,
+    justifyContent: 'center',
   },
   textWrap: {
     flex: 1,
@@ -230,10 +332,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  titleInput: {
+    height: 30,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   subtitle: {
     fontSize: 12,
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 3,
   },
   iconButton: {
     width: 34,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Animated, PanResponder } from 'react-native';
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 
@@ -42,7 +42,8 @@ describe('TaskMediaListEditor', () => {
     const onDragStateChange = jest.fn();
     const { getByTestId } = render(
       <TaskMediaListEditor
-        urls={['https://example.com/a.mp4', 'https://example.com/b.mp4']}
+        urls={['https://example.com/a.mp4', 'https://example.com/b.mp4', 'https://example.com/c.mp4']}
+        names={['Warmup clip', 'Sprint clip', 'Shape image']}
         onChange={onChange}
         getLabel={(url) => url}
         onRemove={() => {}}
@@ -72,10 +73,53 @@ describe('TaskMediaListEditor', () => {
 
     act(() => {
       handleProps.onResponderMove(event, { dy: 80, numberActiveTouches: 1 });
+    });
+
+    const rowStyleProp = getByTestId('test.media.row.1').props.style;
+    const rowStyles = Array.isArray(rowStyleProp) ? rowStyleProp : [rowStyleProp];
+    const transformStyle = rowStyles.find((style) => Array.isArray(style?.transform));
+    expect(transformStyle?.transform?.[0]).toEqual({ translateY: -80 });
+
+    act(() => {
       handleProps.onResponderRelease(event, { dy: 80, numberActiveTouches: 1 });
     });
 
     expect(onDragStateChange).toHaveBeenLastCalledWith(false);
-    expect(onChange).toHaveBeenCalledWith(['https://example.com/b.mp4', 'https://example.com/a.mp4']);
+    expect(onChange).toHaveBeenCalledWith(
+      ['https://example.com/b.mp4', 'https://example.com/a.mp4', 'https://example.com/c.mp4'],
+      ['Sprint clip', 'Warmup clip', 'Shape image'],
+    );
+  });
+
+  it('lets the caller rename and preview a media item without changing the stable title', () => {
+    const onRename = jest.fn();
+    const onPreview = jest.fn();
+    const { getByTestId, getByText } = render(
+      <TaskMediaListEditor
+        urls={['https://example.com/a.mp4']}
+        names={['Warmup clip']}
+        onChange={() => {}}
+        getLabel={() => 'Uploaded video'}
+        onRemove={() => {}}
+        onPreview={onPreview}
+        onRename={onRename}
+        disabled={false}
+        backgroundColor="#fff"
+        borderColor="#ddd"
+        textColor="#111"
+        secondaryTextColor="#666"
+        accentColor="#2563eb"
+        dangerColor="#dc2626"
+        testIDPrefix="test.media"
+      />
+    );
+
+    expect(getByText('Uploaded video')).toBeTruthy();
+
+    fireEvent.changeText(getByTestId('test.media.nameInput.0'), 'Finishing clip');
+    fireEvent.press(getByTestId('test.media.preview.0'));
+
+    expect(onRename).toHaveBeenCalledWith(0, 'Finishing clip');
+    expect(onPreview).toHaveBeenCalledWith(0);
   });
 });

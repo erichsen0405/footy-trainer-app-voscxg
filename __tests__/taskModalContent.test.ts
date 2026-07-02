@@ -66,6 +66,7 @@ describe('taskModalContent', () => {
           'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
           'https://vimeo.com/123456',
         ],
+        media_names: ['YouTube demo', 'Vimeo demo'],
       },
       error: null,
     });
@@ -86,5 +87,7 @@ describe('taskModalContent', () => {
       'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
       'https://vimeo.com/123456',
     ]);
+    expect((hydrated as any).mediaNames).toEqual(['YouTube demo', 'Vimeo demo']);
+    expect((hydrated as any).media_names).toEqual(['YouTube demo', 'Vimeo demo']);
   });
 });

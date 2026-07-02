@@ -1,4 +1,5 @@
 import { extractFirstPlayableVideoUrl, isPlayableVideoUrl } from '@/utils/videoUrlParser';
+import { reorderTaskMediaUrls } from '@/utils/taskMediaOrder';
 
 export type TaskMediaType = 'video' | 'image' | 'pdf' | 'unknown';
 
@@ -85,6 +86,127 @@ export function buildTaskVideoPayload(urls: unknown): {
 
 export function mergeTaskVideoUrls(existingUrls: unknown, nextUrl: unknown): string[] {
   return normalizeTaskVideoUrls([...normalizeTaskVideoUrls(existingUrls), ...normalizeTaskVideoUrls(nextUrl)]);
+}
+
+export function getDefaultTaskMediaName(index: number): string {
+  return `Media ${Math.max(0, Math.round(index)) + 1}`;
+}
+
+export function getTaskMediaNameFromFileName(value: unknown): string {
+  const fileName = typeof value === 'string' ? value.trim().split('/').pop() ?? '' : '';
+  const withoutExtension = fileName.replace(/\.[^/.]+$/, '');
+  const withoutUploadSuffix = withoutExtension.replace(/-\d{13}-[a-z0-9]{8}$/i, '');
+  return withoutUploadSuffix.replace(/[-_]+/g, ' ').trim();
+}
+
+function normalizeTaskMediaNameValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function normalizeTaskMediaNames(names: unknown, urls: unknown): string[] {
+  const normalizedUrls = normalizeTaskVideoUrls(urls);
+  if (!normalizedUrls.length) return [];
+
+  const rawNames = Array.isArray(names)
+    ? names
+    : typeof names === 'string' && names.trim().startsWith('[')
+      ? safelyParseArray(names)
+      : [];
+
+  return normalizedUrls.map((_, index) => {
+    const normalizedName = normalizeTaskMediaNameValue(rawNames[index]);
+    return normalizedName || getDefaultTaskMediaName(index);
+  });
+}
+
+export function buildTaskMediaNamePayload(
+  names: unknown,
+  urls: unknown,
+): {
+  mediaNames: string[];
+  media_names: string[] | null;
+} {
+  const normalizedUrls = normalizeTaskVideoUrls(urls);
+  const mediaNames = normalizeTaskMediaNames(names, normalizedUrls);
+
+  return {
+    mediaNames,
+    media_names: normalizedUrls.length ? mediaNames : null,
+  };
+}
+
+export function mergeTaskMedia(
+  existingUrls: unknown,
+  existingNames: unknown,
+  nextUrl: unknown,
+  nextName?: unknown,
+): { urls: string[]; names: string[] } {
+  const urls = normalizeTaskVideoUrls(existingUrls);
+  const names = normalizeTaskMediaNames(existingNames, urls);
+  const incomingUrls = normalizeTaskVideoUrls(nextUrl);
+  const incomingName = normalizeTaskMediaNameValue(nextName);
+
+  incomingUrls.forEach((url) => {
+    const duplicateIndex = urls.findIndex((existingUrl) => existingUrl.toLowerCase() === url.toLowerCase());
+    if (duplicateIndex >= 0) return;
+
+    urls.push(url);
+    names.push(incomingName || getDefaultTaskMediaName(urls.length - 1));
+  });
+
+  return {
+    urls,
+    names: normalizeTaskMediaNames(names, urls),
+  };
+}
+
+export function reorderTaskMedia(
+  urls: unknown,
+  names: unknown,
+  fromIndex: number,
+  toIndex: number,
+): { urls: string[]; names: string[] } {
+  const normalizedUrls = normalizeTaskVideoUrls(urls);
+  const normalizedNames = normalizeTaskMediaNames(names, normalizedUrls);
+
+  return {
+    urls: reorderTaskMediaUrls(normalizedUrls, fromIndex, toIndex),
+    names: reorderTaskMediaUrls(normalizedNames, fromIndex, toIndex),
+  };
+}
+
+export function replaceTaskMediaName(
+  names: unknown,
+  urls: unknown,
+  index: number,
+  nextName: unknown,
+): string[] {
+  const normalizedUrls = normalizeTaskVideoUrls(urls);
+  const nextNames = normalizeTaskMediaNames(names, normalizedUrls);
+  if (!Number.isInteger(index) || index < 0 || index >= nextNames.length) return nextNames;
+
+  const normalizedName = normalizeTaskMediaNameValue(nextName);
+  nextNames[index] = normalizedName || getDefaultTaskMediaName(index);
+  return nextNames;
+}
+
+export function removeTaskMediaAt(
+  urls: unknown,
+  names: unknown,
+  index: number,
+): { urls: string[]; names: string[] } {
+  const normalizedUrls = normalizeTaskVideoUrls(urls);
+  const normalizedNames = normalizeTaskMediaNames(names, normalizedUrls);
+  if (!Number.isInteger(index) || index < 0 || index >= normalizedUrls.length) {
+    return { urls: normalizedUrls, names: normalizedNames };
+  }
+
+  const nextUrls = normalizedUrls.filter((_, currentIndex) => currentIndex !== index);
+  const nextNames = normalizedNames.filter((_, currentIndex) => currentIndex !== index);
+  return {
+    urls: nextUrls,
+    names: normalizeTaskMediaNames(nextNames, nextUrls),
+  };
 }
 
 function safelyParseArray(value: string): unknown[] {

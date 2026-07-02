@@ -360,13 +360,13 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getAllByText, getByTestId, getByText, queryByDisplayValue } = render(<TasksScreen />);
+    const { getAllByText, getByDisplayValue, getByTestId, getByText, queryByDisplayValue } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
     expect(getByText('Media')).toBeTruthy();
     expect(getByText('Choose image, video, or PDF')).toBeTruthy();
-    expect(getByText('Media 1')).toBeTruthy();
+    expect(getByDisplayValue('Media 1')).toBeTruthy();
     expect(getAllByText('YouTube').length).toBeGreaterThan(0);
     expect(queryByDisplayValue('https://youtu.be/abc123')).toBeNull();
     fireEvent.press(getByTestId('tasks.modal.categoryOption.1'));
@@ -397,12 +397,12 @@ describe('Tasks redesigned template screen', () => {
       isLoading: false,
     });
 
-    const { getAllByText, getByTestId, getByText, queryByDisplayValue } = render(<TasksScreen />);
+    const { getAllByText, getByDisplayValue, getByTestId, queryByDisplayValue } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-ig-1'));
 
-    expect(getByText('Media 1')).toBeTruthy();
+    expect(getByDisplayValue('Media 1')).toBeTruthy();
     expect(getAllByText('Instagram').length).toBeGreaterThan(0);
     expect(queryByDisplayValue('https://www.instagram.com/reel/C7N2KQ2uV9x/?igsh=MWQ=')).toBeNull();
   });

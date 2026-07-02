@@ -69,7 +69,7 @@ import {
   hydrateTaskForModal,
   shouldHydrateTaskForModal,
 } from '@/utils/taskModalContent';
-import { buildTaskVideoPayload } from '@/utils/taskVideos';
+import { buildTaskMediaNamePayload, buildTaskVideoPayload } from '@/utils/taskVideos';
 import { deserializeActivitySnapshotFromRoute } from '@/utils/activityRouteSnapshot';
 import { appendVirtualScoredTasks } from '@/utils/virtualFeedbackTasks';
 import {
@@ -395,6 +395,7 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     feedback_template_id,
     template_sync_enabled,
     video_urls,
+    media_names,
     task_templates (
       source_folder,
       title
@@ -492,6 +493,7 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
     task_duration_minutes,
     template_sync_enabled,
     video_urls,
+    media_names,
     task_templates (
       source_folder,
       title
@@ -638,6 +640,7 @@ const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
   feedback_template_id,
   template_sync_enabled,
   video_urls,
+  media_names,
   task_templates (
     source_folder,
     title
@@ -825,7 +828,8 @@ async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]
       isMissingColumn(error, 'task_duration_minutes');
     const isMissingTemplateSync = isMissingColumn(error, 'template_sync_enabled');
     const isMissingVideo = isMissingColumn(error, 'video_url') || isMissingColumn(error, 'video_urls');
-    const shouldRetry = isMissingLocalOption || isMissingVideo || isMissingTemplateSync;
+    const isMissingMediaNames = isMissingColumn(error, 'media_names');
+    const shouldRetry = isMissingLocalOption || isMissingVideo || isMissingMediaNames || isMissingTemplateSync;
     if (!shouldRetry) {
       break;
     }
@@ -898,7 +902,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       eqColumn: 'id',
       eqValue: activityId,
       optionalColumnName: 'video_url',
-      optionalColumnNames: ['video_url', 'video_urls', 'template_sync_enabled'],
+      optionalColumnNames: ['video_url', 'video_urls', 'media_names', 'template_sync_enabled'],
       context: `activities.id=${activityId}`,
     });
 
@@ -917,6 +921,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
+        const mediaNamePayload = buildTaskMediaNamePayload(task.media_names, videoPayload.videoUrls);
         const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
         const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
         const taskTemplateTitle = getTaskTemplateTitle(task);
@@ -950,6 +955,8 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
+          mediaNames: mediaNamePayload.mediaNames,
+          media_names: mediaNamePayload.media_names,
           taskTemplateId: task.task_template_id,
           templateSyncEnabled,
           template_sync_enabled: templateSyncEnabled,
@@ -1154,6 +1161,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
+        const mediaNamePayload = buildTaskMediaNamePayload(task.media_names, videoPayload.videoUrls);
         const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
         const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
         const taskTemplateTitle = getTaskTemplateTitle(task);
@@ -1187,6 +1195,8 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
+          mediaNames: mediaNamePayload.mediaNames,
+          media_names: mediaNamePayload.media_names,
           taskTemplateId: task.task_template_id,
           templateSyncEnabled,
           template_sync_enabled: templateSyncEnabled,
@@ -1287,6 +1297,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const feedbackTemplateId = directFeedbackTemplateId ?? markerTemplateId ?? null;
         const isFeedbackTask = Boolean(feedbackTemplateId) || isFeedbackTitle(task.title);
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(task));
+        const mediaNamePayload = buildTaskMediaNamePayload(task.media_names, videoPayload.videoUrls);
         const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
         const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
         const taskTemplateTitle = getTaskTemplateTitle(task);
@@ -1320,6 +1331,8 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
+          mediaNames: mediaNamePayload.mediaNames,
+          media_names: mediaNamePayload.media_names,
           taskTemplateId: task.task_template_id,
           templateSyncEnabled,
           template_sync_enabled: templateSyncEnabled,
@@ -3506,6 +3519,10 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             ? clampMinutes(template.reminder)
             : null;
         const videoPayload = buildTaskVideoPayload(getTaskModalVideoUrls(template));
+        const mediaNamePayload = buildTaskMediaNamePayload(
+          (template as any).mediaNames ?? (template as any).media_names,
+          videoPayload.videoUrls,
+        );
         const afterTrainingEnabled = template.afterTrainingEnabled === true;
         const taskDurationEnabled =
           template.taskDurationEnabled === true || template.task_duration_enabled === true;
@@ -3520,6 +3537,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           completed: false,
           reminder_minutes: reminderValue,
           video_urls: videoPayload.video_urls,
+          media_names: mediaNamePayload.media_names,
           task_template_id: sourceTemplateId,
           template_sync_enabled: templateTaskSyncEnabled,
           after_training_enabled: afterTrainingEnabled,
@@ -3551,6 +3569,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           error &&
           (isMissingColumn(error, 'template_sync_enabled') ||
             isMissingColumn(error, 'video_urls') ||
+            isMissingColumn(error, 'media_names') ||
             isMissingColumn(error, 'after_training_enabled') ||
             isMissingColumn(error, 'after_training_delay_minutes') ||
             isMissingColumn(error, 'task_duration_enabled') ||
@@ -3558,6 +3577,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         ) {
           if (isMissingColumn(error, 'video_urls')) {
             delete fallbackBasePayload.video_urls;
+          }
+          if (isMissingColumn(error, 'media_names')) {
+            delete fallbackBasePayload.media_names;
           }
           const fallbackPayload = activity.isExternal
             ? { local_meta_id: activity.id, ...fallbackBasePayload }
@@ -3574,19 +3596,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           throw error;
         }
 
-        if (templateTaskSyncEnabled) {
-          try {
-            const { error: syncError } = await supabase.rpc('update_all_tasks_from_template', {
-              p_template_id: sourceTemplateId,
-              p_dry_run: false,
-            });
-            if (syncError) {
-              console.error('[ActivityDetails] Template task sync failed after create', syncError);
-            }
-          } catch (syncError) {
-            console.error('[ActivityDetails] Template task sync failed unexpectedly after create', syncError);
-          }
-        } else if (!activity.isExternal && insertResponse.data?.id && Array.isArray((template as any).subtasks)) {
+        if (!activity.isExternal && insertResponse.data?.id && Array.isArray((template as any).subtasks)) {
           const subtaskRows = ((template as any).subtasks ?? [])
             .map((subtask: any, index: number) => ({
               activity_task_id: String(insertResponse.data.id),
@@ -3598,7 +3608,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           if (subtaskRows.length) {
             const { error: subtaskError } = await supabase.from('activity_task_subtasks').insert(subtaskRows);
             if (subtaskError) {
-              console.error('[ActivityDetails] Detached template subtask copy failed', subtaskError);
+              console.error('[ActivityDetails] Template subtask copy failed', subtaskError);
             }
           }
         }

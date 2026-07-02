@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
-import { getPrimaryTaskVideoUrl, getTaskVideoUrls } from '@/utils/taskVideos';
+import { buildTaskMediaNamePayload, getPrimaryTaskVideoUrl, getTaskVideoUrls } from '@/utils/taskVideos';
 
 function trimString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -41,7 +41,13 @@ export function getTaskModalTemplateId(task: any): string | null {
 
 function normalizeTaskForModal<T extends Record<string, any>>(
   task: T,
-  fallback: { title?: string | null; description?: string | null; video_url?: string | null; video_urls?: string[] | null }
+  fallback: {
+    title?: string | null;
+    description?: string | null;
+    video_url?: string | null;
+    video_urls?: string[] | null;
+    media_names?: string[] | null;
+  }
 ): T {
   const localTitle = trimString(task.title);
   const localDescription = trimString(task.description);
@@ -52,6 +58,10 @@ function normalizeTaskForModal<T extends Record<string, any>>(
   const nextDescription = localDescription || trimString(fallback.description);
   const nextVideos = localVideos.length ? localVideos : fallbackVideos;
   const nextVideo = nextVideos[0] ?? null;
+  const nextMediaNamePayload = buildTaskMediaNamePayload(
+    localVideos.length ? (task.mediaNames ?? task.media_names) : fallback.media_names,
+    nextVideos,
+  );
 
   return {
     ...task,
@@ -61,6 +71,8 @@ function normalizeTaskForModal<T extends Record<string, any>>(
     videoUrl: nextVideo ?? undefined,
     video_urls: nextVideos.length ? nextVideos : null,
     videoUrls: nextVideos,
+    media_names: nextMediaNamePayload.media_names,
+    mediaNames: nextMediaNamePayload.mediaNames,
   };
 }
 
@@ -76,7 +88,7 @@ export async function hydrateTaskForModal<T extends Record<string, any>>(task: T
   try {
     const { data, error } = await supabase
       .from('task_templates')
-      .select('id, title, description, video_url, video_urls')
+      .select('id, title, description, video_url, video_urls, media_names')
       .eq('id', templateId)
       .maybeSingle();
 
@@ -90,6 +102,7 @@ export async function hydrateTaskForModal<T extends Record<string, any>>(task: T
       description: row.description ?? null,
       video_url: row.video_url ?? null,
       video_urls: Array.isArray(row.video_urls) ? row.video_urls : null,
+      media_names: Array.isArray(row.media_names) ? row.media_names : null,
     });
   } catch {
     return normalizeTaskForModal(task, {});

@@ -34,7 +34,7 @@ import {
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { isTaskVisibleForActivity, type TemplateVisibilityById } from '@/utils/taskTemplateVisibility';
 import { resolveCelebrationAfterCompletionFromDatabase } from '@/utils/celebrationRuntime';
-import { buildTaskVideoPayload } from '@/utils/taskVideos';
+import { buildTaskMediaNamePayload, buildTaskVideoPayload } from '@/utils/taskVideos';
 
 const NOTIFICATION_SYNC_THROTTLE_MS = 30 * 1000;
 
@@ -698,6 +698,7 @@ export const useFootballData = ({
           reminder_minutes,
           video_url,
           video_urls,
+          media_names,
           source_folder,
           after_training_enabled,
           after_training_delay_minutes,
@@ -766,6 +767,7 @@ export const useFootballData = ({
 
       const transformed: Task[] = (data || []).map((t: any) => {
         const videoPayload = buildTaskVideoPayload(t.video_urls ?? t.video_url);
+        const mediaNamePayload = buildTaskMediaNamePayload(t.media_names, videoPayload.videoUrls);
         return {
           id: t.id,
           userId: t.user_id ?? null,
@@ -791,6 +793,8 @@ export const useFootballData = ({
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
+          mediaNames: mediaNamePayload.mediaNames,
+          media_names: mediaNamePayload.media_names,
           source_folder: t.source_folder ?? undefined,
           afterTrainingEnabled: !!t.after_training_enabled,
           afterTrainingDelayMinutes: t.after_training_delay_minutes ?? null,
@@ -1641,6 +1645,8 @@ export const useFootballData = ({
           videoUrl: task.videoUrl,
           subtasks: task.subtasks ?? [],
           videoUrls: task.videoUrls,
+          mediaNames: task.mediaNames,
+          media_names: task.media_names,
           afterTrainingEnabled: !!task.afterTrainingEnabled,
           afterTrainingDelayMinutes: task.afterTrainingEnabled ? (task.afterTrainingDelayMinutes ?? 0) : null,
           afterTrainingFeedbackEnableScore: task.afterTrainingFeedbackEnableScore ?? true,
@@ -1814,6 +1820,8 @@ export const useFootballData = ({
         videoUrl: updates.videoUrl,
         subtasks: updates.subtasks,
         videoUrls: updates.videoUrls,
+        mediaNames: updates.mediaNames,
+        media_names: updates.media_names,
         afterTrainingEnabled: updates.afterTrainingEnabled,
         afterTrainingDelayMinutes: updates.afterTrainingEnabled ? (updates.afterTrainingDelayMinutes ?? 0) : null,
         afterTrainingFeedbackEnableScore: updates.afterTrainingFeedbackEnableScore,
@@ -1882,6 +1890,8 @@ export const useFootballData = ({
             completed: false,
           })),
           videoUrls: taskToDuplicate.videoUrls,
+          mediaNames: taskToDuplicate.mediaNames,
+          media_names: taskToDuplicate.media_names,
           afterTrainingEnabled: !!taskToDuplicate.afterTrainingEnabled,
           afterTrainingDelayMinutes: taskToDuplicate.afterTrainingEnabled ? (taskToDuplicate.afterTrainingDelayMinutes ?? 0) : null,
           afterTrainingFeedbackEnableScore: taskToDuplicate.afterTrainingFeedbackEnableScore ?? true,

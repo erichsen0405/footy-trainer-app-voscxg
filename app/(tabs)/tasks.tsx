@@ -36,11 +36,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getTaskModalVideoUrls } from '@/utils/taskModalContent';
 import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
 import {
+  buildTaskMediaNamePayload,
   buildTaskVideoPayload,
   getTaskMediaType,
+  getTaskMediaNameFromFileName,
   isTaskMediaUrl,
-  mergeTaskVideoUrls,
+  mergeTaskMedia,
   normalizeTaskVideoUrls,
+  normalizeTaskMediaNames,
+  removeTaskMediaAt,
+  replaceTaskMediaName,
 } from '@/utils/taskVideos';
 import { isDirectVideoUrl } from '@/utils/videoUrlParser';
 
@@ -662,6 +667,8 @@ export default function TasksScreen() {
 
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [mediaNames, setMediaNames] = useState<string[]>([]);
+  const [mediaNameInput, setMediaNameInput] = useState('');
 
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrls, setSelectedVideoUrls] = useState<string[]>([]);
@@ -775,8 +782,11 @@ export default function TasksScreen() {
     setIsCreating(creating);
     setIsSaving(false);
     setFormErrors({});
-    setVideoUrls(getTaskModalVideoUrls(task));
+    const taskMediaUrls = getTaskModalVideoUrls(task);
+    setVideoUrls(taskMediaUrls);
+    setMediaNames(normalizeTaskMediaNames((task as any)?.mediaNames ?? (task as any)?.media_names, taskMediaUrls));
     setVideoUrlInput('');
+    setMediaNameInput('');
     setIsModalVisible(true);
   }, []);
 
@@ -787,6 +797,8 @@ export default function TasksScreen() {
     setFormErrors({});
     setVideoUrls([]);
     setVideoUrlInput('');
+    setMediaNames([]);
+    setMediaNameInput('');
     setIsSaving(false);
     setIsUploadingVideo(false);
     setIsMediaDragging(false);
@@ -866,7 +878,11 @@ export default function TasksScreen() {
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
     const normalizedSubtasks = normalizeSubtasksForSave((selectedTask as any).subtasks);
     const successMessage = isCreating ? 'Task template created' : 'Task template updated';
-    const videoPayload = buildTaskVideoPayload([...videoUrls, videoUrlInput]);
+    const mediaForSave = videoUrlInput.trim()
+      ? mergeTaskMedia(videoUrls, mediaNames, videoUrlInput, mediaNameInput)
+      : { urls: videoUrls, names: normalizeTaskMediaNames(mediaNames, videoUrls) };
+    const videoPayload = buildTaskVideoPayload(mediaForSave.urls);
+    const mediaNamePayload = buildTaskMediaNamePayload(mediaForSave.names, videoPayload.videoUrls);
     setIsSaving(true);
 
     try {
@@ -880,6 +896,8 @@ export default function TasksScreen() {
         videoUrls: videoPayload.videoUrls,
         video_url: videoPayload.video_url,
         video_urls: videoPayload.video_urls,
+        mediaNames: mediaNamePayload.mediaNames,
+        media_names: mediaNamePayload.media_names,
         categoryIds,
         afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
         afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -913,6 +931,8 @@ export default function TasksScreen() {
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
+          mediaNames: mediaNamePayload.mediaNames,
+          media_names: mediaNamePayload.media_names,
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -939,7 +959,7 @@ export default function TasksScreen() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrls, videoUrlInput, isUploadingVideo, updateTask, refreshAll, closeTaskModal]);
+  }, [selectedTask, isCreating, adminMode, adminTargetId, adminTargetType, videoUrls, videoUrlInput, mediaNames, mediaNameInput, isUploadingVideo, updateTask, refreshAll, closeTaskModal]);
 
   const handleSaveTask = useCallback(async () => {
     if (!selectedTask) return;
@@ -1107,9 +1127,14 @@ export default function TasksScreen() {
       return;
     }
     setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
-    setVideoUrls(prev => mergeTaskVideoUrls(prev, trimmed));
+    setVideoUrls((prevUrls) => {
+      const nextMedia = mergeTaskMedia(prevUrls, mediaNames, trimmed, mediaNameInput);
+      setMediaNames(nextMedia.names);
+      return nextMedia.urls;
+    });
     setVideoUrlInput('');
-  }, [videoUrlInput]);
+    setMediaNameInput('');
+  }, [mediaNameInput, mediaNames, videoUrlInput]);
 
   const handlePickVideo = useCallback(async () => {
     if (!user?.id) {
@@ -1122,14 +1147,24 @@ export default function TasksScreen() {
       const uploadedMedia = await pickAndUploadTaskMedia(user.id);
       if (!uploadedMedia) return;
       setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
-      setVideoUrls(prev => mergeTaskVideoUrls(prev, uploadedMedia.publicUrl));
+      setVideoUrls((prevUrls) => {
+        const nextMedia = mergeTaskMedia(
+          prevUrls,
+          mediaNames,
+          uploadedMedia.publicUrl,
+          mediaNameInput || getTaskMediaNameFromFileName(uploadedMedia.fileName),
+        );
+        setMediaNames(nextMedia.names);
+        return nextMedia.urls;
+      });
+      setMediaNameInput('');
       Alert.alert('File uploaded', 'The file has been added to the task template.');
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'Failed to upload file.');
     } finally {
       setIsUploadingVideo(false);
     }
-  }, [user?.id]);
+  }, [mediaNameInput, mediaNames, user?.id]);
 
   const handleDeleteVideo = useCallback((index: number) => {
     Alert.alert('Remove file', 'Are you sure you want to remove the file from this task?', [
@@ -1138,12 +1173,16 @@ export default function TasksScreen() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          setVideoUrls(prev => prev.filter((_, currentIndex) => currentIndex !== index));
+          setVideoUrls((prevUrls) => {
+            const nextMedia = removeTaskMediaAt(prevUrls, mediaNames, index);
+            setMediaNames(nextMedia.names);
+            return nextMedia.urls;
+          });
           Alert.alert('File removed', 'Remember to save the task to confirm the change.');
         },
       },
     ]);
-  }, []);
+  }, [mediaNames]);
 
   const handleAfterTrainingToggle = useCallback((value: boolean) => {
     setSelectedTask(prev => {
@@ -1627,6 +1666,16 @@ export default function TasksScreen() {
                       testID="tasks.modal.videoUrlInput"
                     />
 
+                    <TextInput
+                      style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
+                      value={mediaNameInput}
+                      onChangeText={setMediaNameInput}
+                      placeholder="Media name"
+                      placeholderTextColor={textSecondaryColor}
+                      editable={!isSaving && !isUploadingVideo}
+                      testID="tasks.modal.mediaNameInput"
+                    />
+
                     <TouchableOpacity
                       style={[
                         styles.addVideoUrlButton,
@@ -1670,9 +1719,14 @@ export default function TasksScreen() {
                       <>
                         <TaskMediaListEditor
                           urls={videoUrls}
-                          onChange={setVideoUrls}
+                          names={mediaNames}
+                          onChange={(nextUrls, nextNames) => {
+                            setVideoUrls(nextUrls);
+                            setMediaNames(nextNames);
+                          }}
                           getLabel={getVideoSourceLabel}
                           onRemove={handleDeleteVideo}
+                          onRename={(index, name) => setMediaNames((prevNames) => replaceTaskMediaName(prevNames, videoUrls, index, name))}
                           onPreview={(index) => openVideoModal(videoUrls, index)}
                           disabled={isSaving || isUploadingVideo}
                           backgroundColor={bgColor}
