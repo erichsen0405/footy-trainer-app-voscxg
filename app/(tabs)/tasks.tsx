@@ -658,6 +658,7 @@ export default function TasksScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<{ title?: string; videoUrl?: string }>({});
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [isMediaDragging, setIsMediaDragging] = useState(false);
 
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [videoUrlInput, setVideoUrlInput] = useState('');
@@ -788,6 +789,7 @@ export default function TasksScreen() {
     setVideoUrlInput('');
     setIsSaving(false);
     setIsUploadingVideo(false);
+    setIsMediaDragging(false);
   }, []);
 
   const validateTaskForm = useCallback(() => {
@@ -1574,6 +1576,7 @@ export default function TasksScreen() {
             <FlatList
               data={[{ key: 'form' }]}
               keyExtractor={(item) => item.key}
+              scrollEnabled={!isMediaDragging}
               renderItem={() => (
                 <View style={styles.modalBody} testID="tasks.modal.formBody">
                   <Text style={[styles.label, { color: textColor }]}>Title</Text>
@@ -1679,6 +1682,7 @@ export default function TasksScreen() {
                           accentColor={colors.primary}
                           dangerColor={colors.error}
                           testIDPrefix="tasks.template.media"
+                          onDragStateChange={setIsMediaDragging}
                         />
                         {videoUrls.length > 1 ? (
                           <Text style={[styles.videoSwipeHelperText, { color: colors.secondary }]}>

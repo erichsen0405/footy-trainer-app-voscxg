@@ -244,6 +244,7 @@ export function CreateActivityTaskModal({
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [isMediaDragging, setIsMediaDragging] = useState(false);
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([{ id: createLocalId(), title: '' }]);
   const [isLoading, setIsLoading] = useState(false);
   const [templateSyncEnabled, setTemplateSyncEnabled] = useState(true);
@@ -1576,6 +1577,7 @@ export function CreateActivityTaskModal({
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            scrollEnabled={!isMediaDragging}
           >
             {isLinkedToSharedTemplate ? (
               <View
@@ -1687,6 +1689,7 @@ export function CreateActivityTaskModal({
                     accentColor={colors.primary}
                     dangerColor="#B91C1C"
                     testIDPrefix="activity.task.media"
+                    onDragStateChange={setIsMediaDragging}
                   />
                   {videoUrls.length > 1 ? (
                     <Text style={styles.videoSuccessText}>Drag a media row to change the display order.</Text>

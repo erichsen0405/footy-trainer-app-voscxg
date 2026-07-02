@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   Animated,
   PanResponder,
@@ -27,6 +27,7 @@ type TaskMediaListEditorProps = {
   accentColor: string;
   dangerColor: string;
   testIDPrefix?: string;
+  onDragStateChange?: (isDragging: boolean) => void;
 };
 
 type TaskMediaRowProps = TaskMediaListEditorProps & {
@@ -53,41 +54,59 @@ function TaskMediaRow(props: TaskMediaRowProps) {
     accentColor,
     dangerColor,
     testIDPrefix,
+    onDragStateChange,
   } = props;
 
   const translateY = useRef(new Animated.Value(0)).current;
+  const isDraggingRef = useRef(false);
   const canDrag = !disabled && itemCount > 1;
+  const setDragging = useCallback(
+    (isDragging: boolean) => {
+      if (isDraggingRef.current === isDragging) return;
+      isDraggingRef.current = isDragging;
+      onDragStateChange?.(isDragging);
+    },
+    [onDragStateChange],
+  );
+  const resetPosition = useCallback(() => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      speed: 24,
+      bounciness: 4,
+    }).start();
+  }, [translateY]);
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => canDrag,
+        onStartShouldSetPanResponderCapture: () => canDrag,
         onMoveShouldSetPanResponder: (_event, gesture) => canDrag && Math.abs(gesture.dy) > 4,
+        onMoveShouldSetPanResponderCapture: (_event, gesture) => canDrag && Math.abs(gesture.dy) > 4,
+        onPanResponderGrant: () => {
+          setDragging(true);
+          translateY.setValue(0);
+        },
         onPanResponderMove: (_event, gesture) => {
           translateY.setValue(gesture.dy);
         },
         onPanResponderRelease: (_event, gesture) => {
           const offset = Math.round(gesture.dy / ROW_HEIGHT);
           const nextIndex = Math.max(0, Math.min(itemCount - 1, index + offset));
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            speed: 24,
-            bounciness: 4,
-          }).start();
+          setDragging(false);
+          resetPosition();
           if (nextIndex !== index) {
             onMove(index, nextIndex);
           }
         },
+        onPanResponderTerminationRequest: () => false,
         onPanResponderTerminate: () => {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            speed: 24,
-            bounciness: 4,
-          }).start();
+          setDragging(false);
+          resetPosition();
         },
+        onShouldBlockNativeResponder: () => canDrag,
       }),
-    [canDrag, index, itemCount, onMove, translateY],
+    [canDrag, index, itemCount, onMove, resetPosition, setDragging, translateY],
   );
 
   return (
