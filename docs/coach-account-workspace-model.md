@@ -90,6 +90,6 @@ The service role can still perform controlled backfills and platform migrations.
 
 - #278 should harden RLS/API usage across new and existing coach data.
 - #279 should backfill existing trainer/player/club relations into coach
-  workspaces.
-- #283 should introduce `coach_players` or an equivalent CRM layer scoped by
-  `coach_account_id`.
+  workspaces and introduce the compatibility `coach_players` roster.
+- #283 should extend `coach_players` with CRM fields such as notes, status,
+  tags and parent/guardian metadata.
