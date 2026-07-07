@@ -95,9 +95,9 @@ For the current bridge, a coach account can access a legacy player only when:
 2. the player is linked through `admin_player_relationships` to an active coach
    account member.
 
-When #283 introduces the CRM/player layer, new player-scoped tables should use
-that first-class relation instead of adding more direct dependencies on
-`admin_player_relationships`.
+When #279 introduces `coach_players`, new player-scoped tables should use that
+first-class relation instead of adding more direct dependencies on
+`admin_player_relationships`. #283 should extend that roster with CRM fields.
 
 ## QA Matrix
 

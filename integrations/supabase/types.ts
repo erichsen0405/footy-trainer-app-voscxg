@@ -427,6 +427,7 @@ export type Database = {
           accepted_at: string | null
           accepted_by: string | null
           admin_id: string
+          coach_account_id: string | null
           created_at: string
           id: string
           player_id: string
@@ -437,6 +438,7 @@ export type Database = {
           accepted_at?: string | null
           accepted_by?: string | null
           admin_id: string
+          coach_account_id?: string | null
           created_at?: string
           id?: string
           player_id: string
@@ -447,6 +449,7 @@ export type Database = {
           accepted_at?: string | null
           accepted_by?: string | null
           admin_id?: string
+          coach_account_id?: string | null
           created_at?: string
           id?: string
           player_id?: string
@@ -454,6 +457,140 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      coach_accounts: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_user_id: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_user_id: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      coach_memberships: {
+        Row: {
+          added_by: string | null
+          coach_account_id: string
+          created_at: string
+          id: string
+          role: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          coach_account_id: string
+          created_at?: string
+          id?: string
+          role: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          coach_account_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_memberships_coach_account_id_fkey"
+            columns: ["coach_account_id"]
+            isOneToOne: false
+            referencedRelation: "coach_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_players: {
+        Row: {
+          coach_account_id: string
+          club_id: string | null
+          created_at: string
+          first_linked_at: string
+          id: string
+          invitation_id: string | null
+          last_synced_at: string
+          link_request_id: string | null
+          linked_by: string | null
+          player_id: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          coach_account_id: string
+          club_id?: string | null
+          created_at?: string
+          first_linked_at?: string
+          id?: string
+          invitation_id?: string | null
+          last_synced_at?: string
+          link_request_id?: string | null
+          linked_by?: string | null
+          player_id: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          coach_account_id?: string
+          club_id?: string | null
+          created_at?: string
+          first_linked_at?: string
+          id?: string
+          invitation_id?: string | null
+          last_synced_at?: string
+          link_request_id?: string | null
+          linked_by?: string | null
+          player_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_players_coach_account_id_fkey"
+            columns: ["coach_account_id"]
+            isOneToOne: false
+            referencedRelation: "coach_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_players_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       category_mappings: {
         Row: {
@@ -1101,6 +1238,7 @@ export type Database = {
         Row: {
           accepted_at: string | null
           admin_id: string
+          coach_account_id: string | null
           created_at: string | null
           email: string
           expires_at: string
@@ -1113,6 +1251,7 @@ export type Database = {
         Insert: {
           accepted_at?: string | null
           admin_id: string
+          coach_account_id?: string | null
           created_at?: string | null
           email: string
           expires_at: string
@@ -1125,6 +1264,7 @@ export type Database = {
         Update: {
           accepted_at?: string | null
           admin_id?: string
+          coach_account_id?: string | null
           created_at?: string | null
           email?: string
           expires_at?: string
@@ -1552,6 +1692,8 @@ export type Database = {
       teams: {
         Row: {
           admin_id: string
+          coach_account_id: string | null
+          club_id: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -1560,6 +1702,8 @@ export type Database = {
         }
         Insert: {
           admin_id: string
+          coach_account_id?: string | null
+          club_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -1568,13 +1712,23 @@ export type Database = {
         }
         Update: {
           admin_id?: string
+          coach_account_id?: string | null
+          club_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
           name?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "teams_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       training_reflections: {
         Row: {
@@ -1855,6 +2009,18 @@ export type Database = {
         Args: { p_local_meta_id: string }
         Returns: undefined
       }
+      can_coach_account_access_legacy_player: {
+        Args: {
+          p_actor_user_id: string
+          p_coach_account_id: string
+          p_player_id: string
+        }
+        Returns: boolean
+      }
+      ensure_migration_coach_account_for_user: {
+        Args: { p_user_id: string }
+        Returns: string | null
+      }
       fix_missing_activity_tasks: {
         Args: never
         Returns: {
@@ -1876,6 +2042,29 @@ export type Database = {
           entitlement: string
           source: string
           expires_at: string | null
+        }[]
+      }
+      get_coach_workspace_legacy_relationships: {
+        Args: { p_coach_account_id: string }
+        Returns: {
+          coach_account_id: string
+          coach_player_id: string
+          club_id: string | null
+          first_linked_at: string
+          invitation_id: string | null
+          link_request_id: string | null
+          linked_by: string | null
+          player_id: string
+          source: string
+          status: string
+        }[]
+      }
+      get_coach_workspace_migration_audit: {
+        Args: never
+        Returns: {
+          check_name: string
+          issue_count: number
+          sample_ids: Json
         }[]
       }
       get_subscription_status: {
