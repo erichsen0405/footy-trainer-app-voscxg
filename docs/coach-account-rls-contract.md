@@ -3,9 +3,10 @@
 ## Purpose
 
 Issue #278 hardens the multi-tenant boundary for the B2B coach platform. New
-coach-platform tables should be scoped by `coach_account_id`, and write APIs
-must validate that account scope on the server before touching player, report,
-goal, feedback, task or billing data.
+coach-platform tables were initially scoped by `coach_account_id`. After #313,
+new platform tables should use `owner_account_id`, and write APIs must validate
+that owner scope on the server before touching player, report, goal, feedback,
+task or billing data.
 
 This issue does not add a web UI. Base44 is not required for #278.
 
@@ -24,6 +25,34 @@ This issue does not add a web UI. Base44 is not required for #278.
 Parent/guardian access must never be inferred from email, profile text or a
 client-supplied role. It should remain denied until a dedicated relation table
 links the guardian user to the child player.
+
+## Owner Account Rules
+
+#313 adds owner-account helpers and tables:
+
+- `owner_accounts`
+- `owner_memberships`
+- `owner_membership_roles`
+- `owner_players`
+- `owner_player_guardians`
+
+Owner accounts can represent `club` or `private_coach_business` tenants. A user
+can have multiple active roles in the same owner account, for example `owner`,
+`admin` and `coach`. Permission checks should use the sum of active roles from
+`owner_membership_roles`.
+
+New B2B features should use these helpers:
+
+- `get_current_owner_account_roles(owner_account_id)`
+- `has_owner_account_role(owner_account_id, user_id, roles)`
+- `is_owner_account_admin(owner_account_id, user_id)`
+- `has_owner_account_coach_access(owner_account_id, user_id)`
+- `can_owner_account_access_player(owner_account_id, actor_user_id, player_id)`
+- `assert_current_owner_account_admin(owner_account_id)`
+- `assert_current_owner_account_coach_access(owner_account_id)`
+
+`owner_player_guardians` is the explicit parent/guardian relation. Guardian
+access remains denied unless an active guardian row exists for that player.
 
 ## Server-Side Rules
 
@@ -97,7 +126,8 @@ For the current bridge, a coach account can access a legacy player only when:
 
 When #279 introduces `coach_players`, new player-scoped tables should use that
 first-class relation instead of adding more direct dependencies on
-`admin_player_relationships`. #283 should extend that roster with CRM fields.
+`admin_player_relationships`. After #313, new product tables should use
+`owner_players` and `owner_account_id` as the primary tenant/player relation.
 
 ## QA Matrix
 
