@@ -1,12 +1,18 @@
 import {
   assertOwnerSeatAvailableAction,
+  createOwnerAccountAction,
   getOwnerSeatStatusAction,
   parseAssertOwnerSeatBody,
+  parseCreateOwnerAccountBody,
   parseOwnerSeatStatusBody,
+  parseUpsertOwnerSeatAdjustmentBody,
+  upsertOwnerSeatAdjustmentAction,
 } from '../supabase/functions/_shared/ownerLicensing';
 
 const actorUserId = '11111111-1111-4111-8111-111111111111';
 const ownerAccountId = '22222222-2222-4222-8222-222222222222';
+const ownerUserId = '33333333-3333-4333-8333-333333333333';
+const adjustmentId = '44444444-4444-4444-8444-444444444444';
 
 function createRpcClient(result: { data: unknown; error: { message?: string } | null }) {
   return {
@@ -64,6 +70,54 @@ describe('owner licensing backend helpers', () => {
     expect(parseAssertOwnerSeatBody({ ownerAccountId, role: 'assistant' })).toEqual({
       ownerAccountId,
       role: 'assistant_coach',
+    });
+  });
+
+  it('normalizes platform owner creation payloads', () => {
+    expect(
+      parseCreateOwnerAccountBody({
+        ownerType: 'private_coach_business',
+        ownerName: '  ME Training ',
+        ownerUserId,
+        planCode: ' trainer_standard ',
+        seatOverrides: {
+          owner: 1,
+          admin: 1,
+          assistant: 2,
+          player: 20,
+        },
+      })
+    ).toEqual({
+      ownerType: 'private_coach_business',
+      ownerName: 'ME Training',
+      ownerUserId,
+      planCode: 'trainer_standard',
+      seatOverrides: {
+        owner: 1,
+        admin: 1,
+        assistant_coach: 2,
+        player: 20,
+      },
+    });
+  });
+
+  it('normalizes platform seat adjustment payloads', () => {
+    expect(
+      parseUpsertOwnerSeatAdjustmentBody({
+        ownerAccountId,
+        role: 'assistant',
+        adjustmentType: 'add_on',
+        seats: 3,
+        reason: '  Manual add-on ',
+        validUntil: '2026-12-31T23:59:59.000Z',
+      })
+    ).toEqual({
+      ownerAccountId,
+      role: 'assistant_coach',
+      adjustmentType: 'add_on',
+      seats: 3,
+      reason: 'Manual add-on',
+      validUntil: '2026-12-31T23:59:59.000Z',
     });
   });
 
@@ -151,6 +205,73 @@ describe('owner licensing backend helpers', () => {
       ok: true,
       seat: { role: 'player', seatsAvailable: 8 },
       seatStatus: { ownerAccountId, canAddPlayers: true },
+    });
+  });
+
+  it('calls the platform owner creation RPC', async () => {
+    const client = createRpcClient({
+      data: ownerSeatStatusPayload,
+      error: null,
+    });
+
+    await expect(
+      createOwnerAccountAction(client, actorUserId, {
+        ownerType: 'club',
+        ownerName: 'B93',
+        ownerUserId: null,
+        planCode: 'club_pro',
+        seatOverrides: {
+          player: 100,
+        },
+      })
+    ).resolves.toMatchObject({
+      ownerAccountId,
+      canAddPlayers: true,
+    });
+
+    expect(client.rpc).toHaveBeenCalledWith('create_owner_account_as_platform_admin', {
+      p_actor_user_id: actorUserId,
+      p_owner_type: 'club',
+      p_owner_name: 'B93',
+      p_owner_user_id: null,
+      p_plan_code: 'club_pro',
+      p_seat_overrides: {
+        player: 100,
+      },
+    });
+  });
+
+  it('calls the platform owner seat adjustment RPC', async () => {
+    const client = createRpcClient({
+      data: {
+        ...ownerSeatStatusPayload,
+        adjustmentId,
+      },
+      error: null,
+    });
+
+    await expect(
+      upsertOwnerSeatAdjustmentAction(client, actorUserId, {
+        ownerAccountId,
+        role: 'assistant',
+        adjustmentType: 'override',
+        seats: 4,
+        reason: 'Manual provisioning',
+        validUntil: null,
+      })
+    ).resolves.toMatchObject({
+      ownerAccountId,
+      adjustmentId,
+    });
+
+    expect(client.rpc).toHaveBeenCalledWith('upsert_owner_seat_adjustment_as_platform_admin', {
+      p_actor_user_id: actorUserId,
+      p_owner_account_id: ownerAccountId,
+      p_role: 'assistant_coach',
+      p_adjustment_type: 'override',
+      p_seats: 4,
+      p_reason: 'Manual provisioning',
+      p_valid_until: null,
     });
   });
 });

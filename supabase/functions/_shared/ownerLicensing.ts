@@ -37,9 +37,27 @@ export type OwnerSeatStatus = {
   canAddPlayers: boolean;
 };
 
+export type CreateOwnerAccountInput = {
+  ownerType: 'club' | 'private_coach_business';
+  ownerName: string;
+  ownerUserId: string | null;
+  planCode: string | null;
+  seatOverrides: Partial<Record<OwnerSeatRole, number>>;
+};
+
+export type UpsertOwnerSeatAdjustmentInput = {
+  ownerAccountId: string;
+  role: OwnerSeatRole;
+  adjustmentType: 'override' | 'add_on';
+  seats: number;
+  reason: string | null;
+  validUntil: string | null;
+};
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const OWNER_TYPES = new Set(['club', 'private_coach_business']);
 const OWNER_SEAT_ROLES = new Set(['owner', 'admin', 'coach', 'assistant_coach', 'player', 'parent']);
+const OWNER_SEAT_ADJUSTMENT_TYPES = new Set(['override', 'add_on']);
 
 const RPC_ERROR_MAP: Record<string, { code: ErrorCode; message: string; status: number }> = {
   UNAUTHORIZED: { code: 'UNAUTHORIZED', message: 'Unauthorized.', status: 401 },
@@ -66,8 +84,37 @@ function requireUuid(value: unknown, fieldName: string): string {
   return value.trim();
 }
 
+function maybeUuid(value: unknown, fieldName: string): string | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  return requireUuid(value, fieldName);
+}
+
 function maybeString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
+}
+
+function optionalTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+function optionalIsoDateTimeString(value: unknown, fieldName: string): string | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
+    throw new AppError('VALIDATION_ERROR', `${fieldName} must be a valid ISO datetime string.`, 400);
+  }
+
+  return value.trim();
 }
 
 function requireString(value: unknown, fieldName: string): string {
@@ -86,12 +133,28 @@ function requireNumber(value: unknown, fieldName: string): number {
   return value;
 }
 
+function requireInputString(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new AppError('VALIDATION_ERROR', `${fieldName} is required.`, 400);
+  }
+
+  return value.trim();
+}
+
 function requireBoolean(value: unknown, fieldName: string): boolean {
   if (typeof value !== 'boolean') {
     throw new AppError('INTERNAL_ERROR', `${fieldName} is missing from backend response.`, 500);
   }
 
   return value;
+}
+
+function requireNonNegativeInteger(value: unknown, fieldName: string): number {
+  if (!Number.isInteger(value) || (value as number) < 0) {
+    throw new AppError('VALIDATION_ERROR', `${fieldName} must be a non-negative integer.`, 400);
+  }
+
+  return value as number;
 }
 
 function normalizeFeatureFlags(value: unknown): Record<string, boolean> {
@@ -151,6 +214,59 @@ export function parseAssertOwnerSeatBody(body: unknown): { ownerAccountId: strin
   };
 }
 
+export function parseCreateOwnerAccountBody(body: unknown): CreateOwnerAccountInput {
+  const record = asRecord(body);
+  const ownerType = record.ownerType;
+  if (typeof ownerType !== 'string' || !OWNER_TYPES.has(ownerType)) {
+    throw new AppError('VALIDATION_ERROR', 'ownerType must be club or private_coach_business.', 400);
+  }
+
+  const rawSeatOverrides = record.seatOverrides;
+  const seatOverrideRecord =
+    rawSeatOverrides && typeof rawSeatOverrides === 'object' && !Array.isArray(rawSeatOverrides)
+      ? (rawSeatOverrides as Record<string, unknown>)
+      : {};
+  const seatOverrides: Partial<Record<OwnerSeatRole, number>> = {};
+
+  for (const [rawRole, rawSeats] of Object.entries(seatOverrideRecord)) {
+    const role = rawRole === 'assistant' ? 'assistant_coach' : rawRole;
+    if (!OWNER_SEAT_ROLES.has(role)) {
+      throw new AppError('VALIDATION_ERROR', 'seatOverrides contains an invalid owner seat role.', 400);
+    }
+    seatOverrides[role as OwnerSeatRole] = requireNonNegativeInteger(rawSeats, `seatOverrides.${rawRole}`);
+  }
+
+  return {
+    ownerType: ownerType as CreateOwnerAccountInput['ownerType'],
+    ownerName: requireInputString(record.ownerName, 'ownerName'),
+    ownerUserId: maybeUuid(record.ownerUserId, 'ownerUserId'),
+    planCode: optionalTrimmedString(record.planCode),
+    seatOverrides,
+  };
+}
+
+export function parseUpsertOwnerSeatAdjustmentBody(body: unknown): UpsertOwnerSeatAdjustmentInput {
+  const record = asRecord(body);
+  const role = record.role === 'assistant' ? 'assistant_coach' : record.role;
+  const adjustmentType = record.adjustmentType;
+
+  if (typeof role !== 'string' || !OWNER_SEAT_ROLES.has(role)) {
+    throw new AppError('VALIDATION_ERROR', 'role must be a valid owner seat role.', 400);
+  }
+  if (typeof adjustmentType !== 'string' || !OWNER_SEAT_ADJUSTMENT_TYPES.has(adjustmentType)) {
+    throw new AppError('VALIDATION_ERROR', 'adjustmentType must be override or add_on.', 400);
+  }
+
+  return {
+    ownerAccountId: requireUuid(record.ownerAccountId, 'ownerAccountId'),
+    role: role as OwnerSeatRole,
+    adjustmentType: adjustmentType as UpsertOwnerSeatAdjustmentInput['adjustmentType'],
+    seats: requireNonNegativeInteger(record.seats, 'seats'),
+    reason: optionalTrimmedString(record.reason),
+    validUntil: optionalIsoDateTimeString(record.validUntil, 'validUntil'),
+  };
+}
+
 export function normalizeOwnerSeatLine(payload: unknown): OwnerSeatLine {
   const record = asRecord(payload);
   const role = record.role;
@@ -171,6 +287,46 @@ export function normalizeOwnerSeatLine(payload: unknown): OwnerSeatLine {
     seatsAvailable: requireNumber(record.seatsAvailable, 'seatsAvailable'),
     source: requireString(record.source, 'source'),
     planCode: maybeString(record.planCode),
+  };
+}
+
+export async function createOwnerAccountAction(
+  client: RpcClient,
+  actorUserId: string,
+  body: unknown
+): Promise<OwnerSeatStatus> {
+  const input = parseCreateOwnerAccountBody(body);
+  const payload = await callRpc<Record<string, unknown>>(client, 'create_owner_account_as_platform_admin', {
+    p_actor_user_id: actorUserId,
+    p_owner_type: input.ownerType,
+    p_owner_name: input.ownerName,
+    p_owner_user_id: input.ownerUserId,
+    p_plan_code: input.planCode,
+    p_seat_overrides: input.seatOverrides,
+  });
+
+  return normalizeOwnerSeatStatusPayload(payload);
+}
+
+export async function upsertOwnerSeatAdjustmentAction(
+  client: RpcClient,
+  actorUserId: string,
+  body: unknown
+): Promise<OwnerSeatStatus & { adjustmentId: string | null }> {
+  const input = parseUpsertOwnerSeatAdjustmentBody(body);
+  const payload = await callRpc<Record<string, unknown>>(client, 'upsert_owner_seat_adjustment_as_platform_admin', {
+    p_actor_user_id: actorUserId,
+    p_owner_account_id: input.ownerAccountId,
+    p_role: input.role,
+    p_adjustment_type: input.adjustmentType,
+    p_seats: input.seats,
+    p_reason: input.reason,
+    p_valid_until: input.validUntil,
+  });
+
+  return {
+    ...normalizeOwnerSeatStatusPayload(payload),
+    adjustmentId: maybeUuid(payload.adjustmentId, 'adjustmentId'),
   };
 }
 
