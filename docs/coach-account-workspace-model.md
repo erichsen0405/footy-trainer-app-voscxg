@@ -6,7 +6,7 @@ The B2B coach platform needs a first-class owner scope above players,
 activities and tasks:
 
 ```text
-CoachAccount -> Players -> Programs/Activities -> Tasks -> Feedback/Progression
+OwnerAccount -> Staff/Roles -> Players -> Programs/Activities -> Tasks -> Feedback/Progression
 ```
 
 The existing app remains player-friendly. Players should still experience the
@@ -49,6 +49,23 @@ The `coach_accounts.source` field reserves a `club_bridge` value for a later
 bridge if a club coach also needs a personal coach workspace, or if club-owned
 coach workspaces are introduced.
 
+## Owner Account Unification
+
+Issue #313 supersedes the two-track product direction with a unified owner
+account contract:
+
+```text
+owner_accounts
+  owner_type: club | private_coach_business
+```
+
+`coach_accounts` and `clubs` remain compatibility/source tables, but new B2B
+platform features should scope data by `owner_account_id`.
+
+The #313 owner layer supports multi-role users. A private coach business owner
+can be `owner`, `admin` and `coach` on the same email/user, and permission
+checks should use the sum of active roles from `owner_membership_roles`.
+
 ## Migration Path
 
 The migration should be incremental:
@@ -58,9 +75,11 @@ The migration should be incremental:
 2. Create an active `owner` row in `coach_memberships` for that user.
 3. Keep existing `admin_player_relationships`, `teams`, `team_members`,
    activity assignment RPCs and trainer feedback flows working as-is.
-4. Later issues can add `coach_account_id` to new B2B tables such as CRM,
+4. #313 adds `owner_account_id` as the new shared top-level scope for clubs and
+   private coach businesses.
+5. Later issues should add `owner_account_id` to new B2B tables such as CRM,
    programs, goals, reports, reminders, chat, tests, booking and payments.
-5. Existing player activity/task history should not be moved or rewritten until
+6. Existing player activity/task history should not be moved or rewritten until
    a dedicated migration issue explicitly handles that scope.
 
 This lets `Player -> Activities -> Tasks` continue to work while the new
@@ -91,5 +110,7 @@ The service role can still perform controlled backfills and platform migrations.
 - #278 should harden RLS/API usage across new and existing coach data.
 - #279 should backfill existing trainer/player/club relations into coach
   workspaces and introduce the compatibility `coach_players` roster.
-- #283 should extend `coach_players` with CRM fields such as notes, status,
-  tags and parent/guardian metadata.
+- #313 should introduce the unified `owner_accounts` layer for clubs and
+  private coach businesses.
+- #281, #280 and #283 should build on `owner_account_id` as their primary
+  tenant scope.

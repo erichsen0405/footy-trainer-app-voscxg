@@ -99,8 +99,8 @@ describe('coach workspace legacy migration contract', () => {
 
   it('updates existing docs now that #279 owns coach_players foundation', () => {
     expect(workspaceModel).toContain('introduce the compatibility `coach_players` roster');
-    expect(workspaceModel).toContain('#283 should extend `coach_players` with CRM fields');
+    expect(workspaceModel).toContain('#281, #280 and #283 should build on `owner_account_id`');
     expect(rlsContract).toContain('When #279 introduces `coach_players`');
-    expect(rlsContract).toContain('#283 should extend that roster with CRM fields');
+    expect(rlsContract).toContain('After #313, new product tables should use');
   });
 });
