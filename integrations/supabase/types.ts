@@ -427,6 +427,7 @@ export type Database = {
           accepted_at: string | null
           accepted_by: string | null
           admin_id: string
+          coach_account_id: string | null
           created_at: string
           id: string
           player_id: string
@@ -437,6 +438,7 @@ export type Database = {
           accepted_at?: string | null
           accepted_by?: string | null
           admin_id: string
+          coach_account_id?: string | null
           created_at?: string
           id?: string
           player_id: string
@@ -447,6 +449,7 @@ export type Database = {
           accepted_at?: string | null
           accepted_by?: string | null
           admin_id?: string
+          coach_account_id?: string | null
           created_at?: string
           id?: string
           player_id?: string
@@ -454,6 +457,140 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      coach_accounts: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_user_id: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_user_id: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_user_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      coach_memberships: {
+        Row: {
+          added_by: string | null
+          coach_account_id: string
+          created_at: string
+          id: string
+          role: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          coach_account_id: string
+          created_at?: string
+          id?: string
+          role: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          coach_account_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_memberships_coach_account_id_fkey"
+            columns: ["coach_account_id"]
+            isOneToOne: false
+            referencedRelation: "coach_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_players: {
+        Row: {
+          coach_account_id: string
+          club_id: string | null
+          created_at: string
+          first_linked_at: string
+          id: string
+          invitation_id: string | null
+          last_synced_at: string
+          link_request_id: string | null
+          linked_by: string | null
+          player_id: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          coach_account_id: string
+          club_id?: string | null
+          created_at?: string
+          first_linked_at?: string
+          id?: string
+          invitation_id?: string | null
+          last_synced_at?: string
+          link_request_id?: string | null
+          linked_by?: string | null
+          player_id: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          coach_account_id?: string
+          club_id?: string | null
+          created_at?: string
+          first_linked_at?: string
+          id?: string
+          invitation_id?: string | null
+          last_synced_at?: string
+          link_request_id?: string | null
+          linked_by?: string | null
+          player_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_players_coach_account_id_fkey"
+            columns: ["coach_account_id"]
+            isOneToOne: false
+            referencedRelation: "coach_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_players_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       category_mappings: {
         Row: {
@@ -1097,10 +1234,280 @@ export type Database = {
           },
         ]
       }
+      owner_accounts: {
+        Row: {
+          club_id: string | null
+          coach_account_id: string | null
+          created_at: string
+          id: string
+          name: string
+          owner_type: string
+          owner_user_id: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          club_id?: string | null
+          coach_account_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          owner_type: string
+          owner_user_id?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string | null
+          coach_account_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          owner_type?: string
+          owner_user_id?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_accounts_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: true
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owner_accounts_coach_account_id_fkey"
+            columns: ["coach_account_id"]
+            isOneToOne: true
+            referencedRelation: "coach_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_membership_roles: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          id: string
+          owner_account_id: string
+          role: string
+          source: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          owner_account_id: string
+          role: string
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          owner_account_id?: string
+          role?: string
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_membership_roles_membership_fkey"
+            columns: ["owner_account_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "owner_memberships"
+            referencedColumns: ["owner_account_id", "user_id"]
+          },
+        ]
+      }
+      owner_memberships: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          owner_account_id: string
+          source: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          owner_account_id: string
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          owner_account_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_memberships_owner_account_id_fkey"
+            columns: ["owner_account_id"]
+            isOneToOne: false
+            referencedRelation: "owner_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_player_guardians: {
+        Row: {
+          created_at: string
+          guardian_user_id: string
+          id: string
+          invited_by: string | null
+          owner_account_id: string
+          permissions: Json
+          player_id: string
+          relation: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          guardian_user_id: string
+          id?: string
+          invited_by?: string | null
+          owner_account_id: string
+          permissions?: Json
+          player_id: string
+          relation?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          guardian_user_id?: string
+          id?: string
+          invited_by?: string | null
+          owner_account_id?: string
+          permissions?: Json
+          player_id?: string
+          relation?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_player_guardians_owner_account_id_fkey"
+            columns: ["owner_account_id"]
+            isOneToOne: false
+            referencedRelation: "owner_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owner_players: {
+        Row: {
+          club_id: string | null
+          club_member_id: string | null
+          coach_player_id: string | null
+          created_at: string
+          first_linked_at: string
+          id: string
+          last_synced_at: string
+          linked_by: string | null
+          owner_account_id: string
+          player_id: string
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          club_id?: string | null
+          club_member_id?: string | null
+          coach_player_id?: string | null
+          created_at?: string
+          first_linked_at?: string
+          id?: string
+          last_synced_at?: string
+          linked_by?: string | null
+          owner_account_id: string
+          player_id: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          club_id?: string | null
+          club_member_id?: string | null
+          coach_player_id?: string | null
+          created_at?: string
+          first_linked_at?: string
+          id?: string
+          last_synced_at?: string
+          linked_by?: string | null
+          owner_account_id?: string
+          player_id?: string
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owner_players_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owner_players_coach_player_id_fkey"
+            columns: ["coach_player_id"]
+            isOneToOne: false
+            referencedRelation: "coach_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owner_players_club_member_id_fkey"
+            columns: ["club_member_id"]
+            isOneToOne: false
+            referencedRelation: "club_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owner_players_owner_account_id_fkey"
+            columns: ["owner_account_id"]
+            isOneToOne: false
+            referencedRelation: "owner_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_invitations: {
         Row: {
           accepted_at: string | null
           admin_id: string
+          coach_account_id: string | null
           created_at: string | null
           email: string
           expires_at: string
@@ -1113,6 +1520,7 @@ export type Database = {
         Insert: {
           accepted_at?: string | null
           admin_id: string
+          coach_account_id?: string | null
           created_at?: string | null
           email: string
           expires_at: string
@@ -1125,6 +1533,7 @@ export type Database = {
         Update: {
           accepted_at?: string | null
           admin_id?: string
+          coach_account_id?: string | null
           created_at?: string | null
           email?: string
           expires_at?: string
@@ -1405,6 +1814,7 @@ export type Database = {
           description: string | null
           id: string
           library_exercise_id: string | null
+          media_names: string[] | null
           player_id: string | null
           reminder_minutes: number | null
           task_duration_enabled: boolean
@@ -1415,6 +1825,7 @@ export type Database = {
           updated_at: string
           user_id: string
           video_url: string | null
+          video_urls: Json | null
         }
         Insert: {
           after_training_delay_minutes?: number | null
@@ -1428,6 +1839,7 @@ export type Database = {
           description?: string | null
           id?: string
           library_exercise_id?: string | null
+          media_names?: string[] | null
           player_id?: string | null
           reminder_minutes?: number | null
           task_duration_enabled?: boolean
@@ -1438,6 +1850,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           video_url?: string | null
+          video_urls?: Json | null
         }
         Update: {
           after_training_delay_minutes?: number | null
@@ -1451,6 +1864,7 @@ export type Database = {
           description?: string | null
           id?: string
           library_exercise_id?: string | null
+          media_names?: string[] | null
           player_id?: string | null
           reminder_minutes?: number | null
           task_duration_enabled?: boolean
@@ -1461,6 +1875,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           video_url?: string | null
+          video_urls?: Json | null
         }
         Relationships: [
           {
@@ -1546,6 +1961,8 @@ export type Database = {
       teams: {
         Row: {
           admin_id: string
+          coach_account_id: string | null
+          club_id: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -1554,6 +1971,8 @@ export type Database = {
         }
         Insert: {
           admin_id: string
+          coach_account_id?: string | null
+          club_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -1562,13 +1981,23 @@ export type Database = {
         }
         Update: {
           admin_id?: string
+          coach_account_id?: string | null
+          club_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
           name?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "teams_club_id_fkey"
+            columns: ["club_id"]
+            isOneToOne: false
+            referencedRelation: "clubs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       training_reflections: {
         Row: {
@@ -1849,6 +2278,106 @@ export type Database = {
         Args: { p_local_meta_id: string }
         Returns: undefined
       }
+      can_coach_account_access_legacy_player: {
+        Args: {
+          p_actor_user_id: string
+          p_coach_account_id: string
+          p_player_id: string
+        }
+        Returns: boolean
+      }
+      can_guardian_read_player_scoped_data: {
+        Args: { p_guardian_user_id: string; p_player_id: string }
+        Returns: boolean
+      }
+      can_owner_account_access_player: {
+        Args: {
+          p_actor_user_id: string
+          p_owner_account_id: string
+          p_player_id: string
+        }
+        Returns: boolean
+      }
+      can_owner_guardian_read_player: {
+        Args: {
+          p_guardian_user_id: string
+          p_owner_account_id: string
+          p_player_id: string
+        }
+        Returns: boolean
+      }
+      assert_current_owner_account_admin: {
+        Args: { p_owner_account_id: string }
+        Returns: undefined
+      }
+      assert_current_owner_account_coach_access: {
+        Args: { p_owner_account_id: string }
+        Returns: undefined
+      }
+      ensure_migration_coach_account_for_user: {
+        Args: { p_user_id: string }
+        Returns: string | null
+      }
+      ensure_owner_account_for_club: {
+        Args: { p_club_id: string }
+        Returns: string | null
+      }
+      ensure_owner_account_for_coach_account: {
+        Args: { p_coach_account_id: string }
+        Returns: string | null
+      }
+      get_current_owner_account_roles: {
+        Args: { p_owner_account_id: string }
+        Returns: string[]
+      }
+      get_owner_account_id_for_club: {
+        Args: { p_club_id: string }
+        Returns: string | null
+      }
+      get_owner_account_id_for_coach_account: {
+        Args: { p_coach_account_id: string }
+        Returns: string | null
+      }
+      get_owner_account_roles: {
+        Args: { p_owner_account_id: string; p_user_id: string }
+        Returns: string[]
+      }
+      get_owner_account_unification_audit: {
+        Args: never
+        Returns: {
+          check_name: string
+          issue_count: number
+          sample_ids: Json
+        }[]
+      }
+      has_owner_account_coach_access: {
+        Args: { p_owner_account_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      has_owner_account_role: {
+        Args: {
+          p_owner_account_id: string
+          p_roles: string[]
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      is_owner_account_admin: {
+        Args: { p_owner_account_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      is_owner_account_member: {
+        Args: { p_owner_account_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      is_owner_account_owner: {
+        Args: { p_owner_account_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      map_owner_membership_role: {
+        Args: { p_role: string }
+        Returns: string | null
+      }
       fix_missing_activity_tasks: {
         Args: never
         Returns: {
@@ -1870,6 +2399,29 @@ export type Database = {
           entitlement: string
           source: string
           expires_at: string | null
+        }[]
+      }
+      get_coach_workspace_legacy_relationships: {
+        Args: { p_coach_account_id: string }
+        Returns: {
+          coach_account_id: string
+          coach_player_id: string
+          club_id: string | null
+          first_linked_at: string
+          invitation_id: string | null
+          link_request_id: string | null
+          linked_by: string | null
+          player_id: string
+          source: string
+          status: string
+        }[]
+      }
+      get_coach_workspace_migration_audit: {
+        Args: never
+        Returns: {
+          check_name: string
+          issue_count: number
+          sample_ids: Json
         }[]
       }
       get_subscription_status: {

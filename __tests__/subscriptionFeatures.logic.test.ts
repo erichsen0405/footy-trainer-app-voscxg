@@ -11,11 +11,19 @@ jest.mock('@/contexts/AppleIAPContext', () => ({
 }));
 
 describe('subscription tier feature mapping', () => {
+  const lockedCoachFeatures = {
+    reports: false,
+    programs: false,
+    videoFeedback: false,
+    booking: false,
+  };
+
   it('locks all premium features for null tier', () => {
     expect(featureAccessForTier(null)).toEqual({
       library: false,
       calendarSync: false,
       trainerLinking: false,
+      ...lockedCoachFeatures,
     });
   });
 
@@ -24,6 +32,7 @@ describe('subscription tier feature mapping', () => {
       library: false,
       calendarSync: false,
       trainerLinking: false,
+      ...lockedCoachFeatures,
     });
   });
 
@@ -32,14 +41,31 @@ describe('subscription tier feature mapping', () => {
       library: true,
       calendarSync: true,
       trainerLinking: true,
+      ...lockedCoachFeatures,
     });
   });
 
-  it('unlocks premium features for trainer_basic', () => {
+  it('unlocks basic coach features for trainer_basic', () => {
     expect(featureAccessForTier('trainer_basic')).toEqual({
       library: true,
       calendarSync: true,
       trainerLinking: true,
+      reports: false,
+      programs: true,
+      videoFeedback: false,
+      booking: false,
+    });
+  });
+
+  it('unlocks standard coach features for trainer_standard', () => {
+    expect(featureAccessForTier('trainer_standard')).toEqual({
+      library: true,
+      calendarSync: true,
+      trainerLinking: true,
+      reports: true,
+      programs: true,
+      videoFeedback: true,
+      booking: false,
     });
   });
 
@@ -48,6 +74,10 @@ describe('subscription tier feature mapping', () => {
       library: true,
       calendarSync: true,
       trainerLinking: true,
+      reports: true,
+      programs: true,
+      videoFeedback: true,
+      booking: true,
     });
   });
 
