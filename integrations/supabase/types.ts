@@ -1405,6 +1405,7 @@ export type Database = {
           description: string | null
           id: string
           library_exercise_id: string | null
+          media_names: string[] | null
           player_id: string | null
           reminder_minutes: number | null
           task_duration_enabled: boolean
@@ -1415,6 +1416,7 @@ export type Database = {
           updated_at: string
           user_id: string
           video_url: string | null
+          video_urls: Json | null
         }
         Insert: {
           after_training_delay_minutes?: number | null
@@ -1428,6 +1430,7 @@ export type Database = {
           description?: string | null
           id?: string
           library_exercise_id?: string | null
+          media_names?: string[] | null
           player_id?: string | null
           reminder_minutes?: number | null
           task_duration_enabled?: boolean
@@ -1438,6 +1441,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           video_url?: string | null
+          video_urls?: Json | null
         }
         Update: {
           after_training_delay_minutes?: number | null
@@ -1451,6 +1455,7 @@ export type Database = {
           description?: string | null
           id?: string
           library_exercise_id?: string | null
+          media_names?: string[] | null
           player_id?: string | null
           reminder_minutes?: number | null
           task_duration_enabled?: boolean
@@ -1461,6 +1466,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           video_url?: string | null
+          video_urls?: Json | null
         }
         Relationships: [
           {

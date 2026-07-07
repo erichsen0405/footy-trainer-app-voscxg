@@ -63,7 +63,7 @@ const toActivityDateTimeMs = (activityDate: string | Date | null | undefined, ac
   const rawTime = typeof activityTime === 'string' ? activityTime.trim() : '';
   const hhmm = rawTime.length >= 5 ? rawTime.slice(0, 5) : '00:00';
 
-  const composed = `${isoDate}T${hhmm}:00`;
+  const composed = `${isoDate}T${hhmm}:00Z`;
   const ms = Date.parse(composed);
   return Number.isFinite(ms) ? ms : null;
 };
