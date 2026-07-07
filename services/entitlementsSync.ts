@@ -22,8 +22,12 @@ export type SyncEntitlementsSnapshotResult = {
   resolvedRole: 'player' | 'trainer';
   roleChanged: boolean;
   profileUpserted: boolean;
+  ownerProvisioned: boolean;
+  ownerAccountId?: string | null;
+  ownerSeatStatus?: Record<string, unknown> | null;
   profileError?: string | null;
   roleError?: string | null;
+  ownerSyncError?: string | null;
 };
 
 const roleFromTier = (tier: SubscriptionTier): 'player' | 'trainer' =>
@@ -42,8 +46,12 @@ export async function syncEntitlementsSnapshot(
 
   let profileError: string | null = null;
   let roleError: string | null = null;
+  let ownerSyncError: string | null = null;
   let profileUpserted = false;
   let roleChanged = false;
+  let ownerProvisioned = false;
+  let ownerAccountId: string | null = null;
+  let ownerSeatStatus: Record<string, unknown> | null = null;
 
   try {
     const payload = {
@@ -92,6 +100,36 @@ export async function syncEntitlementsSnapshot(
     roleError = error?.message ?? 'role-upsert-failed';
   }
 
+  if (resolvedRole === 'trainer') {
+    try {
+      const { data, error } = await supabase.rpc(
+        'sync_private_coach_owner_subscription' as never,
+        {
+          p_user_id: userId,
+          p_product_id: productId,
+          p_plan_code: subscriptionTier,
+          p_status: 'active',
+          p_expires_at: null,
+          p_receipt: receipt,
+          p_payload: {
+            source,
+            syncedFrom: 'client_entitlements_snapshot',
+          },
+        } as never
+      );
+
+      if (error) {
+        ownerSyncError = formatSupabaseError(error);
+      } else if (data && typeof data === 'object') {
+        ownerSeatStatus = data as Record<string, unknown>;
+        ownerAccountId = String(ownerSeatStatus.ownerAccountId ?? '') || null;
+        ownerProvisioned = ownerSeatStatus.skipped !== true && Boolean(ownerAccountId);
+      }
+    } catch (error: any) {
+      ownerSyncError = error?.message ?? 'owner-subscription-sync-failed';
+    }
+  }
+
   if (roleChanged) {
     forceUserRoleRefresh(`entitlements-sync:${source}`);
   }
@@ -108,8 +146,11 @@ export async function syncEntitlementsSnapshot(
       isCreator,
       roleChanged,
       profileUpserted,
+      ownerProvisioned,
+      ownerAccountId,
       profileError,
       roleError,
+      ownerSyncError,
     });
   }
 
@@ -118,7 +159,11 @@ export async function syncEntitlementsSnapshot(
     resolvedRole,
     roleChanged,
     profileUpserted,
+    ownerProvisioned,
+    ownerAccountId,
+    ownerSeatStatus,
     profileError,
     roleError,
+    ownerSyncError,
   };
 }

@@ -77,9 +77,11 @@ The migration should be incremental:
    activity assignment RPCs and trainer feedback flows working as-is.
 4. #313 adds `owner_account_id` as the new shared top-level scope for clubs and
    private coach businesses.
-5. Later issues should add `owner_account_id` to new B2B tables such as CRM,
+5. #281 adds owner-aware subscription plans, owner subscriptions, super admin
+   seat adjustments and effective seat RPCs on `owner_account_id`.
+6. Later issues should add `owner_account_id` to new B2B tables such as CRM,
    programs, goals, reports, reminders, chat, tests, booking and payments.
-6. Existing player activity/task history should not be moved or rewritten until
+7. Existing player activity/task history should not be moved or rewritten until
    a dedicated migration issue explicitly handles that scope.
 
 This lets `Player -> Activities -> Tasks` continue to work while the new
@@ -112,5 +114,7 @@ The service role can still perform controlled backfills and platform migrations.
   workspaces and introduce the compatibility `coach_players` roster.
 - #313 should introduce the unified `owner_accounts` layer for clubs and
   private coach businesses.
-- #281, #280 and #283 should build on `owner_account_id` as their primary
-  tenant scope.
+- #281 adds the owner subscription/seat/licensing contract on
+  `owner_account_id`.
+- #280 and #283 should build on `owner_account_id` as their primary tenant
+  scope.

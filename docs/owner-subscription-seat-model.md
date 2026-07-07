@@ -1,0 +1,143 @@
+# Owner Subscription And Seat Model
+
+## Purpose
+
+Issue #281 moves coach subscription, licensing and seat limits onto the
+`OwnerAccount` architecture from #313.
+
+The commercial owner scope is `owner_account_id`, not a standalone Base44
+entity and not only `user_id`, `trainer_id`, `coach_account_id` or `club_id`.
+
+## Plan Tiers
+
+The first private coach business tiers are:
+
+| Plan | Players | Admins | Coaches | Assistant coaches | Parents | Coach features |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `trainer_basic` | 5 | 1 | 1 | 0 | 0 | programs |
+| `trainer_standard` | 15 | 2 | 1 | 2 | 15 | reports, programs, video feedback |
+| `trainer_premium` | 50 | 4 | 3 | 6 | 50 | reports, programs, video feedback, booking |
+
+These are stored in `owner_subscription_plans.seat_limits` and
+`owner_subscription_plans.feature_flags`.
+
+Existing player subscription tiers stay user/profile-oriented. They are not
+moved into owner licensing by #281.
+
+## Effective Seats
+
+There is one effective seat truth:
+
+```text
+effective seats per role = super admin override ?? plan baseline
+effective seats per role += active super admin add-ons
+```
+
+This means Apple seats and super admin seats are not two independent truths.
+Apple provides the plan baseline for a private coach business. Super admin can
+replace that baseline for a role with an override, or add extra seats with an
+add-on.
+
+The function `get_owner_effective_seats(owner_account_id)` returns:
+
+- `plan_seats`
+- `override_seats`
+- `add_on_seats`
+- `effective_seats`
+- `seats_used`
+- `seats_available`
+- `source`
+
+The payload function `get_owner_seat_status_payload(owner_account_id)` wraps the
+seat rows with plan, subscription and feature flag metadata.
+
+## Apple Subscription To Owner Access
+
+When a trainer has an active Apple entitlement for a coach plan,
+`sync_private_coach_owner_subscription(...)` must:
+
+1. upsert `apple_entitlements`,
+2. ensure a personal `coach_accounts` row exists,
+3. ensure a `private_coach_business` owner account exists,
+4. grant the subscribing user active `owner`, `admin` and `coach` roles on that
+   owner account,
+5. upsert the Apple-backed `owner_subscriptions` row,
+6. return the owner seat-status payload.
+
+This is what lets the trainer log into the webapp as owner/admin/coach without a
+club invite.
+
+Expiry, cancellation or revocation must not delete users, owner accounts,
+memberships, players or historical data. It only changes the active commercial
+state used by effective seats and feature gating.
+
+## Super Admin Provisioning
+
+Super admin provisioning uses:
+
+- `create_owner_account_as_platform_admin(...)`
+- `upsert_owner_seat_adjustment_as_platform_admin(...)`
+
+Super admin can create `club` and `private_coach_business` owner accounts and
+set role limits for:
+
+- `owner`
+- `admin`
+- `coach`
+- `assistant_coach`
+- `player`
+- `parent`
+
+Legacy `club_licenses.seats_total` is mirrored into owner licensing as a
+`player` override so the existing club admin flow keeps working while the
+effective seat APIs become owner-aware.
+
+## Web And Mobile Gating
+
+Mobile can continue using tier-derived feature flags locally for immediate UI
+gating. Web/Base44 should read owner seat status from Supabase/Edge Functions
+and use `featureFlags` from the payload for owner-scoped coach features:
+
+- `reports`
+- `programs`
+- `video_feedback`
+- `booking`
+
+Before creating members, players or parent seats, server-side flows should call
+`assert_owner_seat_available(...)` or the `assertOwnerSeatAvailable` Edge
+Function. Client-side checks are UX only.
+
+## Base44 Rules
+
+Base44 is only the web UI layer. It must not create Base44-internal entities for
+plans, seats, subscriptions, owner accounts, players or memberships as source of
+truth.
+
+Use the existing login-protected webapp/`KlubAdmin` flow and adapt it to the
+owner account layer:
+
+- dashboard
+- members/staff/players
+- invites
+- activities
+- tasks
+- license/subscription
+- settings
+
+Cross-user writes still go through Supabase RPCs or service-backed Edge
+Functions that validate owner roles and RLS.
+
+## QA
+
+Minimum manual checks:
+
+- Active `trainer_basic` Apple entitlement creates a `private_coach_business`
+  owner account and gives the purchaser `owner`, `admin` and `coach`.
+- Owner seat status shows plan name, player limit, used players and remaining
+  players.
+- Adding a player is blocked with `SEAT_LIMIT_REACHED` when player seats are
+  exhausted.
+- Super admin override replaces the Apple baseline for a role.
+- Super admin add-on increases seats above the plan baseline.
+- Expired/revoked Apple entitlement does not delete historical data.
+- Existing player subscriptions and club license flows still work.

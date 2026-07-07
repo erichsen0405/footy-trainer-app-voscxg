@@ -1667,8 +1667,11 @@ export function AppleIAPProvider({
         success: result.success,
         resolvedRole: result.resolvedRole,
         roleChanged: result.roleChanged,
+        ownerProvisioned: result.ownerProvisioned,
+        ownerAccountId: result.ownerAccountId ?? null,
         profileError: result.profileError ?? null,
         roleError: result.roleError ?? null,
+        ownerSyncError: result.ownerSyncError ?? null,
       });
 
       console.log('[AppleIAP] FLOW PROFILE_UPSERT_DONE', {
@@ -1687,6 +1690,7 @@ export function AppleIAPProvider({
           reason,
           profileError: result.profileError,
           roleError: result.roleError,
+          ownerSyncError: result.ownerSyncError,
         });
       }
     } catch (error) {

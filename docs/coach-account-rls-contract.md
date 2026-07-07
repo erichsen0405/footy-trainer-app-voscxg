@@ -50,9 +50,16 @@ New B2B features should use these helpers:
 - `can_owner_account_access_player(owner_account_id, actor_user_id, player_id)`
 - `assert_current_owner_account_admin(owner_account_id)`
 - `assert_current_owner_account_coach_access(owner_account_id)`
+- `get_owner_seat_status(actor_user_id, owner_account_id)`
+- `assert_owner_seat_available(actor_user_id, owner_account_id, role)`
 
 `owner_player_guardians` is the explicit parent/guardian relation. Guardian
 access remains denied unless an active guardian row exists for that player.
+
+Subscription and seat writes are server-side only. Normal clients can read
+owner seat status through RPC/Edge helpers, but super admin provisioning and
+cross-user seat changes must go through service-backed flows that validate the
+actor first.
 
 ## Server-Side Rules
 

@@ -18,6 +18,10 @@ type FeatureAccess = {
   library: boolean;
   calendarSync: boolean;
   trainerLinking: boolean;
+  reports: boolean;
+  programs: boolean;
+  videoFeedback: boolean;
+  booking: boolean;
 };
 
 // Exported for unit tests; keep usage internal to this module in app code.
@@ -30,11 +34,48 @@ export const MAX_PLAYERS_BY_TIER: Record<SubscriptionTier, number> = {
 };
 
 export const featureAccessForTier = (tier: SubscriptionTier | null): FeatureAccess => {
-  if (!tier) return { library: false, calendarSync: false, trainerLinking: false };
-  const isTrainerTier = tier.startsWith('trainer');
-  const isPremiumPlayer = tier === 'player_premium';
-  const hasAccess = isTrainerTier || isPremiumPlayer;
-  return { library: hasAccess, calendarSync: hasAccess, trainerLinking: hasAccess };
+  const locked = {
+    library: false,
+    calendarSync: false,
+    trainerLinking: false,
+    reports: false,
+    programs: false,
+    videoFeedback: false,
+    booking: false,
+  };
+  if (!tier || tier === 'player_basic') return locked;
+  if (tier === 'player_premium') {
+    return { ...locked, library: true, calendarSync: true, trainerLinking: true };
+  }
+  if (tier === 'trainer_basic') {
+    return {
+      ...locked,
+      library: true,
+      calendarSync: true,
+      trainerLinking: true,
+      programs: true,
+    };
+  }
+  if (tier === 'trainer_standard') {
+    return {
+      ...locked,
+      library: true,
+      calendarSync: true,
+      trainerLinking: true,
+      reports: true,
+      programs: true,
+      videoFeedback: true,
+    };
+  }
+  return {
+    library: true,
+    calendarSync: true,
+    trainerLinking: true,
+    reports: true,
+    programs: true,
+    videoFeedback: true,
+    booking: true,
+  };
 };
 
 export function useSubscriptionFeatures(): SubscriptionFeatures {

@@ -45,6 +45,23 @@ owner_player_guardians
   player_id
   guardian_user_id
   relation: parent | guardian
+
+owner_subscription_plans
+  plan_code
+  owner_type
+  seat_limits
+  feature_flags
+
+owner_subscriptions
+  owner_account_id
+  source: apple_iap | super_admin | manual | migration
+  plan_code
+  status
+
+owner_seat_adjustments
+  owner_account_id
+  role
+  adjustment_type: override | add_on
 ```
 
 ## Multi-Role Users
@@ -111,8 +128,24 @@ issue.
 - New B2B tables should use `owner_account_id`.
 - Old `coach_account_id` helpers remain compatibility helpers for existing
   code.
-- Club-specific licensing data can stay in `club_licenses` until the
-  subscription/seat issue moves commercial logic onto owner accounts.
+- #281 moves subscription and seat logic onto owner accounts. Legacy
+  `club_licenses` is mirrored into owner licensing during the transition so
+  existing club flows keep working.
+
+## Subscription And Seats
+
+#281 defines the owner commercial model:
+
+- Apple coach plans provide the baseline seats for `private_coach_business`
+  owners.
+- Super admin provisioning can override a role baseline or add seats.
+- Effective seats are computed by `get_owner_effective_seats(owner_account_id)`.
+- Seat status and feature flags are exposed by
+  `get_owner_seat_status_payload(owner_account_id)`.
+- Active Apple trainer entitlements call
+  `sync_private_coach_owner_subscription(...)`, which creates/accesses a
+  `private_coach_business` owner account and grants `owner`, `admin` and
+  `coach` roles to the purchaser.
 
 ## Base44 And EAS
 
