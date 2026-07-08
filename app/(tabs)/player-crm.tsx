@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,8 +46,15 @@ import {
   cancelOwnerPlayerGuardianInvite,
   revokeOwnerPlayerGuardianAccess,
 } from '@/services/ownerPlayerCrmService';
+import {
+  OwnerBrandingInput,
+  OwnerBrandingProfile,
+  fetchOwnerBranding,
+  saveOwnerBranding,
+} from '@/services/ownerBrandingService';
+import { OwnerBrandAssetKind, pickAndUploadOwnerBrandAsset } from '@/utils/ownerBrandAssetUpload';
 
-type CrmTab = 'players' | 'teams' | 'tags';
+type CrmTab = 'players' | 'teams' | 'tags' | 'brand';
 
 type ProfileDraft = {
   crmStatus: OwnerCrmStatus;
@@ -69,6 +77,23 @@ type GuardianDraft = {
   notes: string;
 };
 
+type BrandDraft = {
+  displayName: string;
+  slug: string;
+  bio: string;
+  contactEmail: string;
+  contactPhone: string;
+  websiteUrl: string;
+  socialLinksText: string;
+  primaryColor: string;
+  accentColor: string;
+  logoPath: string | null;
+  logoUrl: string;
+  coverPath: string | null;
+  coverUrl: string;
+  isPublic: boolean;
+};
+
 const STATUS_OPTIONS: { value: OwnerCrmStatus; label: string; color: string }[] = [
   { value: 'active', label: 'Active', color: '#16a34a' },
   { value: 'trial', label: 'Trial', color: '#2563eb' },
@@ -77,6 +102,7 @@ const STATUS_OPTIONS: { value: OwnerCrmStatus; label: string; color: string }[] 
 ];
 
 const TAG_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2'];
+const DEFAULT_BRAND_COLORS = { primary: '#2563eb', accent: '#16a34a' };
 
 function createProfileDraft(player: OwnerPlayerCrmPlayer | null): ProfileDraft {
   return {
@@ -100,6 +126,58 @@ const emptyGuardianDraft: GuardianDraft = {
   status: 'active',
   notes: '',
 };
+
+function createBrandDraft(profile: OwnerBrandingProfile | null, fallbackName = ''): BrandDraft {
+  const socialLinks = profile?.socialLinks ?? {};
+  const socialLinksText = Object.entries(socialLinks)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
+
+  return {
+    displayName: profile?.displayName ?? fallbackName,
+    slug: profile?.slug ?? '',
+    bio: profile?.bio ?? '',
+    contactEmail: profile?.contactEmail ?? '',
+    contactPhone: profile?.contactPhone ?? '',
+    websiteUrl: profile?.websiteUrl ?? '',
+    socialLinksText,
+    primaryColor: profile?.brandColors.primary ?? DEFAULT_BRAND_COLORS.primary,
+    accentColor: profile?.brandColors.accent ?? DEFAULT_BRAND_COLORS.accent,
+    logoPath: profile?.logoPath ?? null,
+    logoUrl: profile?.logoUrl ?? '',
+    coverPath: profile?.coverPath ?? null,
+    coverUrl: profile?.coverUrl ?? '',
+    isPublic: profile?.isPublic ?? false,
+  };
+}
+
+function normalizeSlugDraft(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+    .replace(/-+$/g, '');
+}
+
+function parseSocialLinksDraft(value: string): Record<string, string> {
+  return Object.fromEntries(
+    value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
+        const equalsIndex = line.indexOf('=');
+        if (equalsIndex > 0) {
+          const key = line.slice(0, equalsIndex).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+          const url = line.slice(equalsIndex + 1).trim();
+          return key && url ? [key, url] : null;
+        }
+        return [`link_${index + 1}`, line];
+      })
+      .filter((entry): entry is [string, string] => Boolean(entry))
+  );
+}
 
 function compactDateLabel(value: string | null): string {
   if (!value) return '';
@@ -167,6 +245,11 @@ function PlayerCrmScreen() {
   const [tagNameDraft, setTagNameDraft] = useState('');
   const [tagColorDraft, setTagColorDraft] = useState(TAG_COLORS[0]);
   const [tagSaving, setTagSaving] = useState(false);
+  const [brandProfile, setBrandProfile] = useState<OwnerBrandingProfile | null>(null);
+  const [brandDraft, setBrandDraft] = useState<BrandDraft>(() => createBrandDraft(null));
+  const [brandLoading, setBrandLoading] = useState(false);
+  const [brandSaving, setBrandSaving] = useState(false);
+  const [brandUploadingKind, setBrandUploadingKind] = useState<OwnerBrandAssetKind | null>(null);
 
   const loadContext = useCallback(async () => {
     if (!canManagePlayers) {
@@ -200,6 +283,21 @@ function PlayerCrmScreen() {
     }
   }, []);
 
+  const loadBrand = useCallback(async (ownerAccountId: string, silent = false) => {
+    if (!silent) setBrandLoading(true);
+    try {
+      const payload = await fetchOwnerBranding(ownerAccountId);
+      setBrandProfile(payload);
+      setBrandDraft(createBrandDraft(payload, payload.ownerName));
+      return payload;
+    } catch (error: any) {
+      Alert.alert('Brand', error.message || 'Could not load brand profile.');
+      return null;
+    } finally {
+      if (!silent) setBrandLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadContext();
   }, [loadContext]);
@@ -207,11 +305,14 @@ function PlayerCrmScreen() {
   useEffect(() => {
     if (!activeOwnerAccountId) {
       setList(null);
+      setBrandProfile(null);
+      setBrandDraft(createBrandDraft(null));
       return;
     }
 
     void loadList(activeOwnerAccountId);
-  }, [activeOwnerAccountId, loadList]);
+    void loadBrand(activeOwnerAccountId);
+  }, [activeOwnerAccountId, loadBrand, loadList]);
 
   useEffect(() => {
     setProfileDraft(createProfileDraft(detail?.player ?? null));
@@ -264,11 +365,85 @@ function PlayerCrmScreen() {
     if (!activeOwnerAccountId) return;
     setRefreshing(true);
     try {
-      await loadList(activeOwnerAccountId, true);
+      await Promise.all([
+        loadList(activeOwnerAccountId, true),
+        loadBrand(activeOwnerAccountId, true),
+      ]);
     } finally {
       setRefreshing(false);
     }
-  }, [activeOwnerAccountId, loadList]);
+  }, [activeOwnerAccountId, loadBrand, loadList]);
+
+  const buildBrandInput = useCallback((): OwnerBrandingInput => {
+    const displayName = brandDraft.displayName.trim();
+    const slug = normalizeSlugDraft(brandDraft.slug || displayName);
+
+    return {
+      displayName,
+      slug,
+      bio: normalizeOptionalText(brandDraft.bio),
+      contactEmail: normalizeOptionalText(brandDraft.contactEmail),
+      contactPhone: normalizeOptionalText(brandDraft.contactPhone),
+      websiteUrl: normalizeOptionalText(brandDraft.websiteUrl),
+      socialLinks: parseSocialLinksDraft(brandDraft.socialLinksText),
+      brandColors: {
+        primary: brandDraft.primaryColor.trim() || DEFAULT_BRAND_COLORS.primary,
+        accent: brandDraft.accentColor.trim() || DEFAULT_BRAND_COLORS.accent,
+      },
+      logoPath: brandDraft.logoPath,
+      logoUrl: normalizeOptionalText(brandDraft.logoUrl),
+      coverPath: brandDraft.coverPath,
+      coverUrl: normalizeOptionalText(brandDraft.coverUrl),
+      isPublic: brandDraft.isPublic,
+    };
+  }, [brandDraft]);
+
+  const handleSaveBrand = useCallback(async () => {
+    if (!activeOwnerAccountId) return;
+    if (!brandDraft.displayName.trim()) {
+      Alert.alert('Brand', 'Display name is required.');
+      return;
+    }
+
+    setBrandSaving(true);
+    try {
+      const payload = await saveOwnerBranding({
+        ownerAccountId: activeOwnerAccountId,
+        profile: buildBrandInput(),
+      });
+      setBrandProfile(payload);
+      setBrandDraft(createBrandDraft(payload, payload.ownerName));
+      Alert.alert('Brand', 'Brand profile saved.');
+    } catch (error: any) {
+      Alert.alert('Brand', error.message || 'Could not save brand profile.');
+    } finally {
+      setBrandSaving(false);
+    }
+  }, [activeOwnerAccountId, brandDraft.displayName, buildBrandInput]);
+
+  const handleUploadBrandAsset = useCallback(
+    async (kind: OwnerBrandAssetKind, source: 'camera' | 'library' = 'library') => {
+      if (!activeOwnerAccountId || brandUploadingKind) return;
+
+      setBrandUploadingKind(kind);
+      try {
+        const uploaded = await pickAndUploadOwnerBrandAsset(activeOwnerAccountId, kind, source);
+        if (!uploaded) return;
+
+        setBrandDraft((current) => ({
+          ...current,
+          ...(kind === 'logo'
+            ? { logoPath: uploaded.path, logoUrl: uploaded.publicUrl }
+            : { coverPath: uploaded.path, coverUrl: uploaded.publicUrl }),
+        }));
+      } catch (error: any) {
+        Alert.alert('Brand', error.message || 'Could not upload brand image.');
+      } finally {
+        setBrandUploadingKind(null);
+      }
+    },
+    [activeOwnerAccountId, brandUploadingKind],
+  );
 
   const openPlayerDetail = useCallback(
     async (player: OwnerPlayerCrmPlayer) => {
@@ -852,6 +1027,20 @@ function PlayerCrmScreen() {
                 ))}
               </View>
             )}
+
+            {activeTab === 'brand' && (
+              <BrandSettingsPanel
+                colors={colors}
+                loading={brandLoading}
+                saving={brandSaving}
+                uploadingKind={brandUploadingKind}
+                profile={brandProfile}
+                draft={brandDraft}
+                setDraft={setBrandDraft}
+                onSave={handleSaveBrand}
+                onUploadAsset={handleUploadBrandAsset}
+              />
+            )}
           </>
         )}
       </ScrollView>
@@ -921,6 +1110,7 @@ function SegmentedTabs({
     { value: 'players', label: 'Players', icon: 'person.2.fill', materialIcon: 'groups' },
     { value: 'teams', label: 'Teams', icon: 'person.3.fill', materialIcon: 'groups' },
     { value: 'tags', label: 'Tags', icon: 'tag.fill', materialIcon: 'sell' },
+    { value: 'brand', label: 'Brand', icon: 'paintpalette.fill', materialIcon: 'palette' },
   ];
 
   return (
@@ -1496,6 +1686,233 @@ function ToggleRow({
   );
 }
 
+function BrandSettingsPanel({
+  colors,
+  loading,
+  saving,
+  uploadingKind,
+  profile,
+  draft,
+  setDraft,
+  onSave,
+  onUploadAsset,
+}: {
+  colors: ReturnType<typeof getColors>;
+  loading: boolean;
+  saving: boolean;
+  uploadingKind: OwnerBrandAssetKind | null;
+  profile: OwnerBrandingProfile | null;
+  draft: BrandDraft;
+  setDraft: React.Dispatch<React.SetStateAction<BrandDraft>>;
+  onSave: () => void;
+  onUploadAsset: (kind: OwnerBrandAssetKind, source?: 'camera' | 'library') => void;
+}) {
+  const logoUrl = draft.logoUrl.trim();
+  const coverUrl = draft.coverUrl.trim();
+  const initials = (draft.displayName.trim() || profile?.ownerName || 'FC')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+  const normalizedSlug = normalizeSlugDraft(draft.slug || draft.displayName);
+  const publicPath = normalizedSlug ? `/coach/${normalizedSlug}` : profile?.publicUrlPath;
+  const previewBio = draft.bio.trim() || (profile?.ownerType === 'club' ? 'Club player development' : 'Private coach programs');
+
+  if (loading) {
+    return (
+      <View style={styles.tabContent} testID="playerCrm.brandTab">
+        <View style={[styles.emptyPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[styles.emptyInline, { color: colors.textSecondary }]}>Loading brand profile</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.tabContent} testID="playerCrm.brandTab">
+      <View style={[styles.brandPreviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.brandPreviewCover, { backgroundColor: draft.primaryColor || colors.primary }]}>
+          {coverUrl ? <Image source={{ uri: coverUrl }} style={styles.brandCoverImage} resizeMode="cover" /> : null}
+        </View>
+        <View style={styles.brandPreviewBody}>
+          <View style={[styles.brandLogoFrame, { backgroundColor: colors.background, borderColor: colors.card }]}>
+            {logoUrl ? (
+              <Image source={{ uri: logoUrl }} style={styles.brandLogoImage} resizeMode="cover" />
+            ) : (
+              <Text style={[styles.brandLogoText, { color: draft.primaryColor || colors.primary }]}>{initials || 'FC'}</Text>
+            )}
+          </View>
+          <Text style={[styles.brandPreviewTitle, { color: colors.text }]} numberOfLines={2}>
+            {draft.displayName.trim() || profile?.ownerName || 'Coach brand'}
+          </Text>
+          <Text style={[styles.brandPreviewMeta, { color: colors.textSecondary }]} numberOfLines={3}>
+            {previewBio}
+          </Text>
+          <View style={styles.brandColorRow}>
+            <View style={[styles.brandColorChip, { backgroundColor: draft.primaryColor || DEFAULT_BRAND_COLORS.primary }]} />
+            <View style={[styles.brandColorChip, { backgroundColor: draft.accentColor || DEFAULT_BRAND_COLORS.accent }]} />
+            <Text style={[styles.brandPublicPath, { color: colors.textSecondary }]} numberOfLines={1}>
+              {publicPath ?? '/coach/...'}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={[styles.formPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.formHeaderRow}>
+          <Text style={[styles.formTitle, { color: colors.text }]}>Brand</Text>
+          <View style={[styles.statusBadge, { backgroundColor: draft.isPublic ? '#16a34a22' : `${colors.textSecondary}22` }]}>
+            <Text style={[styles.statusBadgeText, { color: draft.isPublic ? '#16a34a' : colors.textSecondary }]}>
+              {draft.isPublic ? 'Public' : 'Private'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.brandAssetActions}>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+            onPress={() => onUploadAsset('logo')}
+            disabled={Boolean(uploadingKind)}
+            activeOpacity={0.75}
+            testID="playerCrm.brand.uploadLogo"
+          >
+            {uploadingKind === 'logo' ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <>
+                <IconSymbol ios_icon_name="photo.fill" android_material_icon_name="image" size={18} color={colors.primary} />
+                <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Logo</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+            onPress={() => onUploadAsset('cover')}
+            disabled={Boolean(uploadingKind)}
+            activeOpacity={0.75}
+            testID="playerCrm.brand.uploadCover"
+          >
+            {uploadingKind === 'cover' ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <>
+                <IconSymbol ios_icon_name="rectangle.fill" android_material_icon_name="wallpaper" size={18} color={colors.primary} />
+                <Text style={[styles.secondaryButtonText, { color: colors.text }]}>Cover</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <LabeledInput
+          label="Display name"
+          colors={colors}
+          value={draft.displayName}
+          onChangeText={(value) => setDraft((current) => ({ ...current, displayName: value }))}
+          autoCapitalize="words"
+          testID="playerCrm.brand.displayName"
+        />
+        <LabeledInput
+          label="Public slug"
+          colors={colors}
+          value={draft.slug}
+          onChangeText={(value) => setDraft((current) => ({ ...current, slug: normalizeSlugDraft(value) }))}
+          autoCapitalize="none"
+          testID="playerCrm.brand.slug"
+        />
+        <LabeledInput
+          label="Bio"
+          colors={colors}
+          value={draft.bio}
+          onChangeText={(value) => setDraft((current) => ({ ...current, bio: value }))}
+          multiline
+          textAlignVertical="top"
+          style={styles.textArea}
+          testID="playerCrm.brand.bio"
+        />
+        <LabeledInput
+          label="Primary color"
+          colors={colors}
+          value={draft.primaryColor}
+          onChangeText={(value) => setDraft((current) => ({ ...current, primaryColor: value }))}
+          autoCapitalize="none"
+          style={styles.colorInput}
+          testID="playerCrm.brand.primaryColor"
+        />
+        <LabeledInput
+          label="Accent color"
+          colors={colors}
+          value={draft.accentColor}
+          onChangeText={(value) => setDraft((current) => ({ ...current, accentColor: value }))}
+          autoCapitalize="none"
+          style={styles.colorInput}
+          testID="playerCrm.brand.accentColor"
+        />
+        <LabeledInput
+          label="Contact email"
+          colors={colors}
+          value={draft.contactEmail}
+          onChangeText={(value) => setDraft((current) => ({ ...current, contactEmail: value }))}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          testID="playerCrm.brand.contactEmail"
+        />
+        <LabeledInput
+          label="Contact phone"
+          colors={colors}
+          value={draft.contactPhone}
+          onChangeText={(value) => setDraft((current) => ({ ...current, contactPhone: value }))}
+          keyboardType="phone-pad"
+          testID="playerCrm.brand.contactPhone"
+        />
+        <LabeledInput
+          label="Website"
+          colors={colors}
+          value={draft.websiteUrl}
+          onChangeText={(value) => setDraft((current) => ({ ...current, websiteUrl: value }))}
+          autoCapitalize="none"
+          keyboardType="url"
+          testID="playerCrm.brand.website"
+        />
+        <LabeledInput
+          label="Social links"
+          colors={colors}
+          value={draft.socialLinksText}
+          onChangeText={(value) => setDraft((current) => ({ ...current, socialLinksText: value }))}
+          multiline
+          textAlignVertical="top"
+          style={styles.textArea}
+          testID="playerCrm.brand.socialLinks"
+        />
+
+        <ToggleRow
+          label="Public landing"
+          value={draft.isPublic}
+          onValueChange={(value) => setDraft((current) => ({ ...current, isPublic: value }))}
+          colors={colors}
+        />
+
+        <TouchableOpacity
+          style={[styles.primaryButton, { backgroundColor: colors.primary }, saving && styles.disabledButton]}
+          onPress={onSave}
+          disabled={saving}
+          activeOpacity={0.8}
+          testID="playerCrm.brand.save"
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={18} color="#fff" />
+              <Text style={styles.primaryButtonText}>Save brand</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -1760,8 +2177,95 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
+  formHeaderRow: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   formTitle: {
     fontSize: 17,
+    fontWeight: '800',
+  },
+  brandPreviewCard: {
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  brandPreviewCover: {
+    width: '100%',
+    height: 132,
+  },
+  brandCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  brandPreviewBody: {
+    padding: 14,
+    paddingTop: 0,
+    gap: 8,
+  },
+  brandLogoFrame: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    marginTop: -36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  brandLogoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  brandLogoText: {
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  brandPreviewTitle: {
+    fontSize: 21,
+    fontWeight: '900',
+  },
+  brandPreviewMeta: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  brandColorRow: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  brandColorChip: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  brandPublicPath: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  brandAssetActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
     fontWeight: '800',
   },
   input: {
@@ -1779,6 +2283,9 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     fontWeight: '600',
+  },
+  colorInput: {
+    fontWeight: '800',
   },
   primaryButton: {
     minHeight: 48,
