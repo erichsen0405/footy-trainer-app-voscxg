@@ -1,11 +1,24 @@
 // @ts-ignore Deno edge functions require explicit file extensions for relative imports.
 import { AppError, type ErrorCode } from './http.ts';
+// @ts-ignore Deno edge functions require explicit file extensions for relative imports.
+import { deliverGuardianInviteEmail, type GuardianInviteEmailDeliveryResult, type GuardianInviteForEmail } from './guardianInviteDelivery.ts';
 
 type DbError = { message?: string } | null;
 
 type QueryClient = {
   rpc?: (fn: string, args?: Record<string, unknown>) => Promise<{ data: unknown; error: DbError }>;
   from: (table: string) => any;
+  auth?: {
+    admin?: {
+      generateLink?: (params: {
+        type: 'invite' | 'magiclink';
+        email: string;
+        options?: {
+          redirectTo?: string;
+        };
+      }) => Promise<{ data: unknown; error: DbError }>;
+    };
+  };
 };
 
 type OwnerCrmAction =
@@ -21,7 +34,11 @@ type OwnerCrmAction =
   | 'setPlayerTags'
   | 'createGuardianContact'
   | 'updateGuardianContact'
-  | 'deleteGuardianContact';
+  | 'deleteGuardianContact'
+  | 'inviteGuardianContact'
+  | 'resendGuardianInvite'
+  | 'cancelGuardianInvite'
+  | 'revokeGuardianAccess';
 
 type OwnerAccountRow = {
   id: string;
@@ -113,6 +130,41 @@ type GuardianContactRow = {
   updated_at: string;
 };
 
+type GuardianInviteRow = {
+  id: string;
+  owner_account_id: string;
+  player_id: string;
+  guardian_contact_id: string | null;
+  guardian_user_id: string | null;
+  email: string;
+  full_name: string;
+  relation: 'parent' | 'guardian' | 'other';
+  token_hash: string;
+  status: 'pending' | 'accepted' | 'cancelled' | 'expired' | 'revoked';
+  expires_at: string;
+  invited_by: string;
+  accepted_by: string | null;
+  accepted_at: string | null;
+  cancelled_at: string | null;
+  revoked_at: string | null;
+  last_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type GuardianAccessRow = {
+  id: string;
+  owner_account_id: string;
+  player_id: string;
+  guardian_user_id: string;
+  relation: 'parent' | 'guardian';
+  permissions: Record<string, unknown>;
+  status: 'active' | 'pending' | 'inactive' | 'removed';
+  invited_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type TeamRow = {
   id: string;
   admin_id: string;
@@ -148,6 +200,7 @@ const GUARDIAN_RELATIONS = new Set(['parent', 'guardian', 'other']);
 const GUARDIAN_STATUSES = new Set(['active', 'pending', 'inactive', 'removed']);
 const COACH_ACCESS_ROLES = new Set(['owner', 'admin', 'coach', 'assistant_coach']);
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
+const GUARDIAN_INVITE_TTL_DAYS = 14;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -191,9 +244,46 @@ function requiredTrimmedString(value: unknown, fieldName: string): string {
   return normalized;
 }
 
+function requiredLowerEmail(value: unknown, fieldName = 'email'): string {
+  const normalized = optionalLowerEmail(value);
+  if (!normalized || !normalized.includes('@')) {
+    throw new AppError('VALIDATION_ERROR', `${fieldName} must be a valid email address.`, 400);
+  }
+
+  return normalized;
+}
+
 function optionalLowerEmail(value: unknown): string | null {
   const normalized = optionalTrimmedString(value);
   return normalized ? normalized.toLowerCase() : null;
+}
+
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', encoded);
+  return toHex(hash);
+}
+
+function createSecureToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
 }
 
 function optionalBoolean(value: unknown, fallback: boolean): boolean {
@@ -317,6 +407,10 @@ function parseAction(body: unknown): { action: OwnerCrmAction; record: Record<st
     'createGuardianContact',
     'updateGuardianContact',
     'deleteGuardianContact',
+    'inviteGuardianContact',
+    'resendGuardianInvite',
+    'cancelGuardianInvite',
+    'revokeGuardianAccess',
   ]);
 
   if (!knownActions.has(action as OwnerCrmAction)) {
@@ -430,6 +524,33 @@ export function parseOwnerPlayerCrmBody(body: unknown) {
       relation,
       status,
       notes: optionalTrimmedString(record.notes),
+    };
+  }
+
+  if (action === 'inviteGuardianContact') {
+    return {
+      action,
+      ownerAccountId,
+      playerId: requireUuid(record.playerId, 'playerId'),
+      contactId: requireUuid(record.contactId, 'contactId'),
+    };
+  }
+
+  if (action === 'resendGuardianInvite' || action === 'cancelGuardianInvite') {
+    return {
+      action,
+      ownerAccountId,
+      playerId: requireUuid(record.playerId, 'playerId'),
+      inviteId: requireUuid(record.inviteId, 'inviteId'),
+    };
+  }
+
+  if (action === 'revokeGuardianAccess') {
+    return {
+      action,
+      ownerAccountId,
+      playerId: requireUuid(record.playerId, 'playerId'),
+      contactId: requireUuid(record.contactId, 'contactId'),
     };
   }
 
@@ -883,7 +1004,7 @@ async function loadOwnerPlayerCrmDetail(client: QueryClient, owner: OwnerAccount
     throw new AppError('PLAYER_NOT_FOUND', 'Player not found in this owner account.', 404);
   }
 
-  const [notesResult, guardiansResult, activitiesResult, reflectionsResult] = await Promise.all([
+  const [notesResult, guardiansResult, guardianInvitesResult, guardianAccessResult, activitiesResult, reflectionsResult] = await Promise.all([
     client
       .from('owner_player_notes')
       .select('id, owner_account_id, player_id, body, visibility, created_by, updated_by, created_at, updated_at')
@@ -898,6 +1019,18 @@ async function loadOwnerPlayerCrmDetail(client: QueryClient, owner: OwnerAccount
       .neq('status', 'removed')
       .order('created_at', { ascending: false }),
     client
+      .from('owner_player_guardian_invites')
+      .select('*')
+      .eq('owner_account_id', owner.id)
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false }),
+    client
+      .from('owner_player_guardians')
+      .select('id, owner_account_id, player_id, guardian_user_id, relation, permissions, status, invited_by, created_at, updated_at')
+      .eq('owner_account_id', owner.id)
+      .eq('player_id', playerId)
+      .neq('status', 'removed'),
+    client
       .from('activities')
       .select('id, title, activity_date, activity_time, created_at')
       .or(`user_id.eq.${playerId},player_id.eq.${playerId}`)
@@ -911,9 +1044,28 @@ async function loadOwnerPlayerCrmDetail(client: QueryClient, owner: OwnerAccount
       .limit(10),
   ]);
 
-  for (const result of [notesResult, guardiansResult, activitiesResult, reflectionsResult]) {
+  for (const result of [notesResult, guardiansResult, guardianInvitesResult, guardianAccessResult, activitiesResult, reflectionsResult]) {
     if (result.error) {
       throw new AppError('INTERNAL_ERROR', result.error.message || 'Could not load player CRM detail.', 500);
+    }
+  }
+
+  const guardianInvites = (guardianInvitesResult.data || []) as GuardianInviteRow[];
+  const latestInviteByContactId = new Map<string, GuardianInviteRow>();
+  const latestInviteByEmail = new Map<string, GuardianInviteRow>();
+  for (const invite of guardianInvites) {
+    if (invite.guardian_contact_id && !latestInviteByContactId.has(invite.guardian_contact_id)) {
+      latestInviteByContactId.set(invite.guardian_contact_id, invite);
+    }
+    if (invite.email && !latestInviteByEmail.has(invite.email)) {
+      latestInviteByEmail.set(invite.email, invite);
+    }
+  }
+
+  const guardianAccessByUserId = new Map<string, GuardianAccessRow>();
+  for (const access of (guardianAccessResult.data || []) as GuardianAccessRow[]) {
+    if (!guardianAccessByUserId.has(access.guardian_user_id) || access.status === 'active') {
+      guardianAccessByUserId.set(access.guardian_user_id, access);
     }
   }
 
@@ -948,19 +1100,30 @@ async function loadOwnerPlayerCrmDetail(client: QueryClient, owner: OwnerAccount
       createdAt: note.created_at,
       updatedAt: note.updated_at,
     })),
-    guardianContacts: ((guardiansResult.data || []) as GuardianContactRow[]).map((contact) => ({
-      id: contact.id,
-      guardianUserId: contact.guardian_user_id,
-      fullName: contact.full_name,
-      email: contact.email,
-      phoneNumber: contact.phone_number,
-      relation: contact.relation,
-      status: contact.status,
-      notes: contact.notes,
-      permissions: contact.permissions,
-      createdAt: contact.created_at,
-      updatedAt: contact.updated_at,
-    })),
+    guardianContacts: ((guardiansResult.data || []) as GuardianContactRow[]).map((contact) => {
+      const latestInvite =
+        latestInviteByContactId.get(contact.id) || (contact.email ? latestInviteByEmail.get(contact.email) : null);
+      const access = contact.guardian_user_id ? guardianAccessByUserId.get(contact.guardian_user_id) || null : null;
+      return {
+        id: contact.id,
+        guardianUserId: contact.guardian_user_id,
+        fullName: contact.full_name,
+        email: contact.email,
+        phoneNumber: contact.phone_number,
+        relation: contact.relation,
+        status: contact.status,
+        notes: contact.notes,
+        permissions: contact.permissions,
+        inviteId: latestInvite?.id ?? null,
+        inviteStatus: latestInvite?.status ?? null,
+        inviteExpiresAt: latestInvite?.expires_at ?? null,
+        inviteLastSentAt: latestInvite?.last_sent_at ?? null,
+        accessId: access?.id ?? null,
+        accessStatus: access?.status ?? null,
+        createdAt: contact.created_at,
+        updatedAt: contact.updated_at,
+      };
+    }),
     timeline,
   };
 }
@@ -1197,6 +1360,654 @@ async function deleteGuardianContact(client: QueryClient, actorUserId: string, i
   return loadOwnerPlayerCrmDetail(client, owner, input.playerId);
 }
 
+async function loadGuardianContact(
+  client: QueryClient,
+  ownerAccountId: string,
+  playerId: string,
+  contactId: string
+): Promise<GuardianContactRow> {
+  const { data, error } = await client
+    .from('owner_player_guardian_contacts')
+    .select('*')
+    .eq('id', contactId)
+    .eq('owner_account_id', ownerAccountId)
+    .eq('player_id', playerId)
+    .neq('status', 'removed')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load guardian contact.', 500);
+  }
+
+  if (!data) {
+    throw new AppError('GUARDIAN_CONTACT_NOT_FOUND', 'Guardian contact not found.', 404);
+  }
+
+  return data as GuardianContactRow;
+}
+
+async function loadPlayerDisplayName(client: QueryClient, playerId: string): Promise<string> {
+  const { data, error } = await client
+    .from('profiles')
+    .select('full_name')
+    .eq('user_id', playerId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load player name.', 500);
+  }
+
+  const fullName = typeof data?.full_name === 'string' ? data.full_name.trim() : '';
+  return fullName || 'Player';
+}
+
+async function resolveAuthUserIdByEmail(client: QueryClient, email: string): Promise<string | null> {
+  if (!client.rpc) {
+    return null;
+  }
+
+  const { data, error } = await client.rpc('get_auth_user_invite_state_by_email', {
+    p_email: email,
+  });
+
+  const mappedError = mapRpcError(error);
+  if (mappedError) {
+    throw mappedError;
+  }
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return null;
+  }
+
+  const id = (data as Record<string, unknown>).id;
+  return typeof id === 'string' && UUID_PATTERN.test(id) ? id : null;
+}
+
+async function expireStaleGuardianInvites(
+  client: QueryClient,
+  ownerAccountId: string,
+  playerId: string,
+  email?: string | null
+): Promise<void> {
+  let query = client
+    .from('owner_player_guardian_invites')
+    .update({ status: 'expired' })
+    .eq('owner_account_id', ownerAccountId)
+    .eq('player_id', playerId)
+    .eq('status', 'pending')
+    .lt('expires_at', new Date().toISOString());
+
+  if (email) {
+    query = query.eq('email', email);
+  }
+
+  const { error } = await query;
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not expire stale guardian invites.', 500);
+  }
+}
+
+async function loadGuardianInvite(
+  client: QueryClient,
+  ownerAccountId: string,
+  playerId: string,
+  inviteId: string
+): Promise<GuardianInviteRow> {
+  const { data, error } = await client
+    .from('owner_player_guardian_invites')
+    .select('*')
+    .eq('id', inviteId)
+    .eq('owner_account_id', ownerAccountId)
+    .eq('player_id', playerId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load guardian invite.', 500);
+  }
+
+  if (!data) {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite not found.', 404);
+  }
+
+  return data as GuardianInviteRow;
+}
+
+async function loadPendingGuardianInviteByEmail(
+  client: QueryClient,
+  ownerAccountId: string,
+  playerId: string,
+  email: string
+): Promise<GuardianInviteRow | null> {
+  const { data, error } = await client
+    .from('owner_player_guardian_invites')
+    .select('*')
+    .eq('owner_account_id', ownerAccountId)
+    .eq('player_id', playerId)
+    .eq('email', email)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load pending guardian invite.', 500);
+  }
+
+  return (data as GuardianInviteRow | null) ?? null;
+}
+
+async function loadGuardianAccessForPlayer(
+  client: QueryClient,
+  ownerAccountId: string,
+  playerId: string,
+  guardianUserId: string
+): Promise<GuardianAccessRow | null> {
+  const { data, error } = await client
+    .from('owner_player_guardians')
+    .select('id, owner_account_id, player_id, guardian_user_id, relation, permissions, status, invited_by, created_at, updated_at')
+    .eq('owner_account_id', ownerAccountId)
+    .eq('player_id', playerId)
+    .eq('guardian_user_id', guardianUserId)
+    .neq('status', 'removed')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load guardian access.', 500);
+  }
+
+  return (data as GuardianAccessRow | null) ?? null;
+}
+
+async function guardianAlreadyUsesParentSeat(
+  client: QueryClient,
+  ownerAccountId: string,
+  guardianUserId: string
+): Promise<boolean> {
+  const { data, error } = await client
+    .from('owner_player_guardians')
+    .select('id')
+    .eq('owner_account_id', ownerAccountId)
+    .eq('guardian_user_id', guardianUserId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load guardian seat usage.', 500);
+  }
+
+  return Boolean(data);
+}
+
+function relationForGuardianAccess(relation: GuardianContactRow['relation'] | GuardianInviteRow['relation']): 'parent' | 'guardian' {
+  return relation === 'parent' ? 'parent' : 'guardian';
+}
+
+function normalizeGuardianInvitePayload(invite: GuardianInviteRow) {
+  return {
+    id: invite.id,
+    ownerAccountId: invite.owner_account_id,
+    playerId: invite.player_id,
+    guardianContactId: invite.guardian_contact_id,
+    guardianUserId: invite.guardian_user_id,
+    email: invite.email,
+    fullName: invite.full_name,
+    relation: invite.relation,
+    status: invite.status,
+    expiresAt: invite.expires_at,
+    invitedBy: invite.invited_by,
+    acceptedBy: invite.accepted_by,
+    acceptedAt: invite.accepted_at,
+    cancelledAt: invite.cancelled_at,
+    revokedAt: invite.revoked_at,
+    lastSentAt: invite.last_sent_at,
+    createdAt: invite.created_at,
+    updatedAt: invite.updated_at,
+  };
+}
+
+function normalizeGuardianAccessPayload(access: GuardianAccessRow) {
+  return {
+    id: access.id,
+    ownerAccountId: access.owner_account_id,
+    playerId: access.player_id,
+    guardianUserId: access.guardian_user_id,
+    relation: access.relation,
+    permissions: access.permissions,
+    status: access.status,
+    invitedBy: access.invited_by,
+    createdAt: access.created_at,
+    updatedAt: access.updated_at,
+  };
+}
+
+async function detailWithGuardianInviteDelivery(
+  client: QueryClient,
+  owner: OwnerAccountRow,
+  playerId: string,
+  guardianInviteDelivery: GuardianInviteEmailDeliveryResult | null
+) {
+  const detail = (await loadOwnerPlayerCrmDetail(client, owner, playerId)) as Record<string, unknown>;
+  return {
+    ...detail,
+    guardianInviteDelivery,
+  };
+}
+
+async function deliverGuardianInviteForContact(
+  client: QueryClient,
+  owner: OwnerAccountRow,
+  invite: GuardianInviteRow,
+  token: string
+): Promise<GuardianInviteEmailDeliveryResult> {
+  const playerName = await loadPlayerDisplayName(client, invite.player_id);
+  const inviteForEmail: GuardianInviteForEmail = {
+    id: invite.id,
+    ownerName: owner.name,
+    playerName,
+    email: invite.email,
+    fullName: invite.full_name,
+    relation: invite.relation,
+    token,
+  };
+
+  return deliverGuardianInviteEmail(client as any, inviteForEmail);
+}
+
+async function insertGuardianInviteFromContact(
+  client: QueryClient,
+  actorUserId: string,
+  owner: OwnerAccountRow,
+  contact: GuardianContactRow
+): Promise<{ invite: GuardianInviteRow; token: string }> {
+  const email = requiredLowerEmail(contact.email, 'guardian contact email');
+  await expireStaleGuardianInvites(client, owner.id, contact.player_id, email);
+
+  const pendingInvite = await loadPendingGuardianInviteByEmail(client, owner.id, contact.player_id, email);
+  if (pendingInvite) {
+    throw new AppError('INVITE_ALREADY_PENDING', 'A pending guardian invite already exists for this email.', 409);
+  }
+
+  const guardianUserId = contact.guardian_user_id || (await resolveAuthUserIdByEmail(client, email));
+  if (guardianUserId) {
+    const existingAccess = await loadGuardianAccessForPlayer(client, owner.id, contact.player_id, guardianUserId);
+    if (existingAccess?.status === 'active') {
+      throw new AppError('MEMBER_ALREADY_EXISTS', 'This guardian already has active access to the player.', 409);
+    }
+  }
+
+  const token = createSecureToken();
+  const now = new Date();
+  const payload = {
+    owner_account_id: owner.id,
+    player_id: contact.player_id,
+    guardian_contact_id: contact.id,
+    guardian_user_id: guardianUserId,
+    email,
+    full_name: contact.full_name,
+    relation: contact.relation,
+    token_hash: await sha256Hex(token),
+    status: 'pending',
+    expires_at: addDays(now, GUARDIAN_INVITE_TTL_DAYS).toISOString(),
+    invited_by: actorUserId,
+    last_sent_at: now.toISOString(),
+  };
+
+  const { data, error } = await client
+    .from('owner_player_guardian_invites')
+    .insert(payload)
+    .select('*')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    const message = error.message || 'Could not create guardian invite.';
+    if (message.includes('owner_player_guardian_invites_pending_email_unique')) {
+      throw new AppError('INVITE_ALREADY_PENDING', 'A pending guardian invite already exists for this email.', 409);
+    }
+    throw new AppError('INTERNAL_ERROR', message, 500);
+  }
+
+  if (!data) {
+    throw new AppError('INTERNAL_ERROR', 'Could not create guardian invite.', 500);
+  }
+
+  const { error: contactError } = await client
+    .from('owner_player_guardian_contacts')
+    .update({
+      guardian_user_id: guardianUserId,
+      status: 'pending',
+      permissions: { read: false },
+    })
+    .eq('id', contact.id)
+    .eq('owner_account_id', owner.id)
+    .eq('player_id', contact.player_id);
+
+  if (contactError) {
+    throw new AppError('INTERNAL_ERROR', contactError.message || 'Could not update guardian contact.', 500);
+  }
+
+  return { invite: data as GuardianInviteRow, token };
+}
+
+async function inviteGuardianContact(client: QueryClient, actorUserId: string, input: ReturnType<typeof parseOwnerPlayerCrmBody>) {
+  if (input.action !== 'inviteGuardianContact') throw new AppError('VALIDATION_ERROR', 'Invalid action.', 400);
+  const owner = await assertOwnerCoachAccess(client, actorUserId, input.ownerAccountId);
+  await assertOwnerPlayerExists(client, owner.id, input.playerId);
+  const contact = await loadGuardianContact(client, owner.id, input.playerId, input.contactId);
+  const { invite, token } = await insertGuardianInviteFromContact(client, actorUserId, owner, contact);
+  const guardianInviteDelivery = await deliverGuardianInviteForContact(client, owner, invite, token);
+  return detailWithGuardianInviteDelivery(client, owner, input.playerId, guardianInviteDelivery);
+}
+
+async function resendGuardianInvite(client: QueryClient, actorUserId: string, input: ReturnType<typeof parseOwnerPlayerCrmBody>) {
+  if (input.action !== 'resendGuardianInvite') throw new AppError('VALIDATION_ERROR', 'Invalid action.', 400);
+  const owner = await assertOwnerCoachAccess(client, actorUserId, input.ownerAccountId);
+  await assertOwnerPlayerExists(client, owner.id, input.playerId);
+  await expireStaleGuardianInvites(client, owner.id, input.playerId);
+
+  const existing = await loadGuardianInvite(client, owner.id, input.playerId, input.inviteId);
+  if (existing.status !== 'pending') {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite is not pending.', 404);
+  }
+  if (Date.parse(existing.expires_at) <= Date.now()) {
+    await client.from('owner_player_guardian_invites').update({ status: 'expired' }).eq('id', existing.id);
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite has expired.', 404);
+  }
+
+  const token = createSecureToken();
+  const now = new Date();
+  const { data, error } = await client
+    .from('owner_player_guardian_invites')
+    .update({
+      token_hash: await sha256Hex(token),
+      expires_at: addDays(now, GUARDIAN_INVITE_TTL_DAYS).toISOString(),
+      last_sent_at: now.toISOString(),
+    })
+    .eq('id', existing.id)
+    .eq('owner_account_id', owner.id)
+    .eq('player_id', input.playerId)
+    .select('*')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not resend guardian invite.', 500);
+  }
+  if (!data) {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite not found.', 404);
+  }
+
+  const guardianInviteDelivery = await deliverGuardianInviteForContact(client, owner, data as GuardianInviteRow, token);
+  return detailWithGuardianInviteDelivery(client, owner, input.playerId, guardianInviteDelivery);
+}
+
+async function cancelGuardianInvite(client: QueryClient, actorUserId: string, input: ReturnType<typeof parseOwnerPlayerCrmBody>) {
+  if (input.action !== 'cancelGuardianInvite') throw new AppError('VALIDATION_ERROR', 'Invalid action.', 400);
+  const owner = await assertOwnerCoachAccess(client, actorUserId, input.ownerAccountId);
+  await assertOwnerPlayerExists(client, owner.id, input.playerId);
+  const invite = await loadGuardianInvite(client, owner.id, input.playerId, input.inviteId);
+
+  if (invite.status !== 'pending') {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite is not pending.', 404);
+  }
+
+  const { error } = await client
+    .from('owner_player_guardian_invites')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('id', invite.id)
+    .eq('owner_account_id', owner.id)
+    .eq('player_id', input.playerId);
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not cancel guardian invite.', 500);
+  }
+
+  if (invite.guardian_contact_id) {
+    const { error: contactError } = await client
+      .from('owner_player_guardian_contacts')
+      .update({ status: 'inactive', permissions: { read: false } })
+      .eq('id', invite.guardian_contact_id)
+      .eq('owner_account_id', owner.id)
+      .eq('player_id', input.playerId);
+
+    if (contactError) {
+      throw new AppError('INTERNAL_ERROR', contactError.message || 'Could not update guardian contact.', 500);
+    }
+  }
+
+  return loadOwnerPlayerCrmDetail(client, owner, input.playerId);
+}
+
+async function revokeGuardianAccess(client: QueryClient, actorUserId: string, input: ReturnType<typeof parseOwnerPlayerCrmBody>) {
+  if (input.action !== 'revokeGuardianAccess') throw new AppError('VALIDATION_ERROR', 'Invalid action.', 400);
+  const owner = await assertOwnerCoachAccess(client, actorUserId, input.ownerAccountId);
+  await assertOwnerPlayerExists(client, owner.id, input.playerId);
+  const contact = await loadGuardianContact(client, owner.id, input.playerId, input.contactId);
+  if (!contact.guardian_user_id) {
+    throw new AppError('GUARDIAN_CONTACT_NOT_FOUND', 'Guardian contact has no active user access.', 404);
+  }
+
+  const now = new Date().toISOString();
+  const { error: accessError } = await client
+    .from('owner_player_guardians')
+    .update({ status: 'removed' })
+    .eq('owner_account_id', owner.id)
+    .eq('player_id', input.playerId)
+    .eq('guardian_user_id', contact.guardian_user_id);
+
+  if (accessError) {
+    throw new AppError('INTERNAL_ERROR', accessError.message || 'Could not revoke guardian access.', 500);
+  }
+
+  const { error: contactError } = await client
+    .from('owner_player_guardian_contacts')
+    .update({ status: 'inactive', permissions: { read: false } })
+    .eq('id', contact.id)
+    .eq('owner_account_id', owner.id)
+    .eq('player_id', input.playerId);
+
+  if (contactError) {
+    throw new AppError('INTERNAL_ERROR', contactError.message || 'Could not update guardian contact.', 500);
+  }
+
+  let inviteQuery = client
+    .from('owner_player_guardian_invites')
+    .update({ status: 'revoked', revoked_at: now })
+    .eq('owner_account_id', owner.id)
+    .eq('player_id', input.playerId)
+    .in('status', ['pending', 'accepted']);
+
+  if (contact.email) {
+    inviteQuery = inviteQuery.eq('email', contact.email);
+  } else {
+    inviteQuery = inviteQuery.eq('guardian_contact_id', contact.id);
+  }
+
+  const { error: inviteError } = await inviteQuery;
+  if (inviteError) {
+    throw new AppError('INTERNAL_ERROR', inviteError.message || 'Could not revoke guardian invite state.', 500);
+  }
+
+  return loadOwnerPlayerCrmDetail(client, owner, input.playerId);
+}
+
+function parseAcceptGuardianInviteBody(body: unknown) {
+  const record = asRecord(body);
+  return {
+    token: requiredTrimmedString(record.token, 'token'),
+    fullName: optionalTrimmedString(record.fullName),
+  };
+}
+
+async function loadGuardianInviteByToken(client: QueryClient, token: string): Promise<GuardianInviteRow> {
+  const tokenHash = await sha256Hex(token);
+  const { data, error } = await client
+    .from('owner_player_guardian_invites')
+    .select('*')
+    .eq('token_hash', tokenHash)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load guardian invite.', 500);
+  }
+  if (!data) {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite not found.', 404);
+  }
+
+  return data as GuardianInviteRow;
+}
+
+async function loadOwnerSeatStatusPayload(client: QueryClient, ownerAccountId: string): Promise<Record<string, unknown>> {
+  const payload = await callRpc<Record<string, unknown>>(client, 'get_owner_seat_status_payload', {
+    p_owner_account_id: ownerAccountId,
+  });
+
+  if (!payload || typeof payload !== 'object') {
+    throw new AppError('INTERNAL_ERROR', 'Could not load owner seat status.', 500);
+  }
+
+  return payload;
+}
+
+async function assertGuardianParentSeatAvailable(
+  client: QueryClient,
+  ownerAccountId: string,
+  guardianUserId: string
+): Promise<Record<string, unknown>> {
+  const seatStatus = await loadOwnerSeatStatusPayload(client, ownerAccountId);
+  const seats = Array.isArray(seatStatus.seats) ? seatStatus.seats : [];
+  const parentSeat = seats.find((entry) => {
+    return entry && typeof entry === 'object' && (entry as Record<string, unknown>).role === 'parent';
+  }) as Record<string, unknown> | undefined;
+
+  if (!parentSeat) {
+    throw new AppError('SEAT_LIMIT_REACHED', 'The owner account has no available seats for this role.', 409);
+  }
+
+  const effectiveSeats = Number(parentSeat.effectiveSeats ?? 0);
+  const seatsAvailable = Number(parentSeat.seatsAvailable ?? 0);
+  if (effectiveSeats <= 0) {
+    throw new AppError('LICENSE_INACTIVE', 'The owner account license is not active.', 409);
+  }
+
+  const alreadyUsesSeat = await guardianAlreadyUsesParentSeat(client, ownerAccountId, guardianUserId);
+  if (!alreadyUsesSeat && seatsAvailable <= 0) {
+    throw new AppError('SEAT_LIMIT_REACHED', 'The owner account has no available seats for this role.', 409);
+  }
+
+  return seatStatus;
+}
+
+export async function acceptOwnerPlayerGuardianInviteAction(
+  client: QueryClient,
+  actorUserId: string,
+  actorEmail: string | null,
+  body: unknown
+) {
+  const input = parseAcceptGuardianInviteBody(body);
+  const invite = await loadGuardianInviteByToken(client, input.token);
+
+  if (invite.status !== 'pending') {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite is not pending.', 404);
+  }
+
+  if (Date.parse(invite.expires_at) <= Date.now()) {
+    await client.from('owner_player_guardian_invites').update({ status: 'expired' }).eq('id', invite.id);
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite has expired.', 404);
+  }
+
+  const normalizedActorEmail = actorEmail?.trim().toLowerCase() ?? null;
+  if (!normalizedActorEmail || normalizedActorEmail !== invite.email) {
+    throw new AppError('FORBIDDEN', 'This guardian invite belongs to a different email address.', 403);
+  }
+
+  const owner = await loadOwnerAccount(client, invite.owner_account_id);
+  await assertOwnerPlayerExists(client, owner.id, invite.player_id);
+  const seatStatus = await assertGuardianParentSeatAvailable(client, owner.id, actorUserId);
+  const relation = relationForGuardianAccess(invite.relation);
+  const now = new Date().toISOString();
+
+  const { data: accessData, error: accessError } = await client
+    .from('owner_player_guardians')
+    .upsert(
+      {
+        owner_account_id: owner.id,
+        player_id: invite.player_id,
+        guardian_user_id: actorUserId,
+        relation,
+        permissions: { read: true },
+        status: 'active',
+        invited_by: invite.invited_by,
+      },
+      { onConflict: 'owner_account_id,player_id,guardian_user_id' }
+    )
+    .select('id, owner_account_id, player_id, guardian_user_id, relation, permissions, status, invited_by, created_at, updated_at')
+    .limit(1)
+    .maybeSingle();
+
+  if (accessError) {
+    throw new AppError('INTERNAL_ERROR', accessError.message || 'Could not accept guardian invite.', 500);
+  }
+  if (!accessData) {
+    throw new AppError('INTERNAL_ERROR', 'Could not accept guardian invite.', 500);
+  }
+
+  const { data: inviteData, error: inviteError } = await client
+    .from('owner_player_guardian_invites')
+    .update({
+      guardian_user_id: actorUserId,
+      status: 'accepted',
+      accepted_by: actorUserId,
+      accepted_at: now,
+    })
+    .eq('id', invite.id)
+    .eq('status', 'pending')
+    .select('*')
+    .limit(1)
+    .maybeSingle();
+
+  if (inviteError) {
+    throw new AppError('INTERNAL_ERROR', inviteError.message || 'Could not update guardian invite.', 500);
+  }
+  if (!inviteData) {
+    throw new AppError('INVITE_NOT_FOUND', 'Guardian invite is no longer pending.', 404);
+  }
+
+  if (invite.guardian_contact_id) {
+    const updatePayload: Record<string, unknown> = {
+      guardian_user_id: actorUserId,
+      status: 'active',
+      permissions: { read: true },
+    };
+    if (input.fullName) {
+      updatePayload.full_name = input.fullName;
+    }
+
+    const { error: contactError } = await client
+      .from('owner_player_guardian_contacts')
+      .update(updatePayload)
+      .eq('id', invite.guardian_contact_id)
+      .eq('owner_account_id', owner.id)
+      .eq('player_id', invite.player_id);
+
+    if (contactError) {
+      throw new AppError('INTERNAL_ERROR', contactError.message || 'Could not update guardian contact.', 500);
+    }
+  }
+
+  return {
+    invite: normalizeGuardianInvitePayload(inviteData as GuardianInviteRow),
+    guardianAccess: normalizeGuardianAccessPayload(accessData as GuardianAccessRow),
+    seatStatus,
+  };
+}
+
 export async function ownerPlayerCrmAction(client: QueryClient, actorUserId: string, body: unknown): Promise<unknown> {
   const input = parseOwnerPlayerCrmBody(body);
 
@@ -1244,6 +2055,22 @@ export async function ownerPlayerCrmAction(client: QueryClient, actorUserId: str
 
   if (input.action === 'createGuardianContact' || input.action === 'updateGuardianContact') {
     return saveGuardianContact(client, actorUserId, input);
+  }
+
+  if (input.action === 'inviteGuardianContact') {
+    return inviteGuardianContact(client, actorUserId, input);
+  }
+
+  if (input.action === 'resendGuardianInvite') {
+    return resendGuardianInvite(client, actorUserId, input);
+  }
+
+  if (input.action === 'cancelGuardianInvite') {
+    return cancelGuardianInvite(client, actorUserId, input);
+  }
+
+  if (input.action === 'revokeGuardianAccess') {
+    return revokeGuardianAccess(client, actorUserId, input);
   }
 
   return deleteGuardianContact(client, actorUserId, input);

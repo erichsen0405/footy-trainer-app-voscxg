@@ -14,20 +14,32 @@ const tagFkHardeningMigrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20260708144500_owner_player_crm_tag_fk_hardening.sql'
 );
+const guardianInviteMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260708152000_owner_player_guardian_invites.sql'
+);
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-player-crm-prompt.md');
 const mobileCrmPath = path.join(process.cwd(), 'app/(tabs)/player-crm.tsx');
 const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
 const profilePath = path.join(process.cwd(), 'app/(tabs)/profile.tsx');
 const createPlayerPath = path.join(process.cwd(), 'supabase/functions/create-player/index.ts');
+const authCallbackPath = path.join(process.cwd(), 'app/auth/callback.tsx');
+const acceptGuardianInvitePath = path.join(
+  process.cwd(),
+  'supabase/functions/acceptOwnerPlayerGuardianInvite/index.ts'
+);
 
 describe('owner player CRM contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
   const tagFkHardeningMigration = fs.readFileSync(tagFkHardeningMigrationPath, 'utf8');
+  const guardianInviteMigration = fs.readFileSync(guardianInviteMigrationPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
   const mobileCrm = fs.readFileSync(mobileCrmPath, 'utf8');
   const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
   const profile = fs.readFileSync(profilePath, 'utf8');
   const createPlayer = fs.readFileSync(createPlayerPath, 'utf8');
+  const authCallback = fs.readFileSync(authCallbackPath, 'utf8');
+  const acceptGuardianInvite = fs.readFileSync(acceptGuardianInvitePath, 'utf8');
 
   it('creates owner-scoped CRM tables without granting player or guardian note access', () => {
     expect(migration).toContain('create table if not exists public.owner_player_crm_profiles');
@@ -56,6 +68,17 @@ describe('owner player CRM contract', () => {
     expect(tagFkHardeningMigration).toContain('owner_player_tag_links_owner_tag_fkey');
     expect(tagFkHardeningMigration).toContain('foreign key (owner_account_id, tag_id)');
     expect(tagFkHardeningMigration).toContain('references public.owner_player_tags(owner_account_id, id)');
+  });
+
+  it('creates secure owner-scoped guardian invite lifecycle storage', () => {
+    expect(guardianInviteMigration).toContain('create table if not exists public.owner_player_guardian_invites');
+    expect(guardianInviteMigration).toContain('token_hash text not null unique');
+    expect(guardianInviteMigration).toContain("status in ('pending', 'accepted', 'cancelled', 'expired', 'revoked')");
+    expect(guardianInviteMigration).toContain('owner_player_guardian_invites_pending_email_unique');
+    expect(guardianInviteMigration).toContain('references public.owner_players(owner_account_id, player_id)');
+    expect(guardianInviteMigration).toContain('alter table public.owner_player_guardian_invites enable row level security');
+    expect(guardianInviteMigration).toContain('public.has_owner_account_coach_access(owner_account_id, (select auth.uid()))');
+    expect(guardianInviteMigration).toContain('revoke all on public.owner_player_guardian_invites from anon');
   });
 
   it('parses CRM profile, tag and guardian action payloads', () => {
@@ -129,6 +152,34 @@ describe('owner player CRM contract', () => {
       status: 'active',
       notes: null,
     });
+
+    expect(
+      parseOwnerPlayerCrmBody({
+        action: 'inviteGuardianContact',
+        ownerAccountId,
+        playerId,
+        contactId: tagId,
+      })
+    ).toEqual({
+      action: 'inviteGuardianContact',
+      ownerAccountId,
+      playerId,
+      contactId: tagId,
+    });
+
+    expect(
+      parseOwnerPlayerCrmBody({
+        action: 'resendGuardianInvite',
+        ownerAccountId,
+        playerId,
+        inviteId: tagId,
+      })
+    ).toEqual({
+      action: 'resendGuardianInvite',
+      ownerAccountId,
+      playerId,
+      inviteId: tagId,
+    });
   });
 
   it('documents Base44 reuse, owner scope and web/mobile parity', () => {
@@ -137,6 +188,9 @@ describe('owner player CRM contract', () => {
     expect(base44Prompt).toContain('owner_account_id');
     expect(base44Prompt).toContain('Mobil og web skal have funktionsparitet');
     expect(base44Prompt).toContain('manageOwnerPlayerCrm');
+    expect(base44Prompt).toContain('acceptOwnerPlayerGuardianInvite');
+    expect(base44Prompt).toContain('inviteGuardianContact');
+    expect(base44Prompt).toContain('revokeGuardianAccess');
     expect(base44Prompt).toContain('create-player');
     expect(base44Prompt).toContain('ownerAccountId');
     expect(base44Prompt).toContain('SEAT_LIMIT_REACHED');
@@ -149,6 +203,9 @@ describe('owner player CRM contract', () => {
     expect(mobileCrm).toContain('TeamManagement');
     expect(mobileCrm).toContain('CreatePlayerModal');
     expect(mobileCrm).toContain('ownerAccountId={activeOwnerAccountId}');
+    expect(mobileCrm).toContain('inviteOwnerPlayerGuardianContact');
+    expect(mobileCrm).toContain('resendOwnerPlayerGuardianInvite');
+    expect(mobileCrm).toContain('revokeOwnerPlayerGuardianAccess');
     expect(profile).toContain("router.push('/(tabs)/player-crm'");
     expect(profile).toContain('profile.openPlayerCrmButton');
     expect(profile).not.toContain('<PlayersList');
@@ -161,5 +218,13 @@ describe('owner player CRM contract', () => {
     expect(createPlayer).toContain("p_role: 'player'");
     expect(createPlayer).toContain('SEAT_LIMIT_REACHED');
     expect(createPlayer).toContain('LICENSE_INACTIVE');
+  });
+
+  it('accepts guardian invites through the mobile auth callback', () => {
+    expect(acceptGuardianInvite).toContain('acceptOwnerPlayerGuardianInviteAction');
+    expect(acceptGuardianInvite).toContain('requireAuthContext');
+    expect(authCallback).toContain('guardianInviteToken');
+    expect(authCallback).toContain('acceptOwnerPlayerGuardianInvite');
+    expect(authCallback).toContain('acceptInvitesIfPresent');
   });
 });

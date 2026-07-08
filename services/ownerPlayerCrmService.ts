@@ -5,6 +5,8 @@ export type OwnerCrmStatus = 'active' | 'paused' | 'former' | 'trial';
 export type OwnerType = 'club' | 'private_coach_business';
 export type GuardianRelation = 'parent' | 'guardian' | 'other';
 export type GuardianStatus = 'active' | 'pending' | 'inactive' | 'removed';
+export type GuardianInviteStatus = 'pending' | 'accepted' | 'cancelled' | 'expired' | 'revoked';
+export type GuardianAccessStatus = 'active' | 'pending' | 'inactive' | 'removed';
 
 export interface OwnerPlayerCrmOwner {
   ownerAccountId: string;
@@ -78,8 +80,24 @@ export interface OwnerPlayerCrmGuardianContact {
   status: GuardianStatus;
   notes: string | null;
   permissions: Record<string, unknown>;
+  inviteId: string | null;
+  inviteStatus: GuardianInviteStatus | null;
+  inviteExpiresAt: string | null;
+  inviteLastSentAt: string | null;
+  accessId: string | null;
+  accessStatus: GuardianAccessStatus | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GuardianInviteDeliveryResult {
+  status: 'sent' | 'skipped' | 'failed';
+  authLinkType: 'invite' | 'magiclink' | null;
+  ownerName: string | null;
+  playerName: string | null;
+  landingUrl: string | null;
+  provider: 'aws_ses' | 'none';
+  warning: string | null;
 }
 
 export interface OwnerPlayerCrmTimelineEntry {
@@ -108,6 +126,7 @@ export interface OwnerPlayerCrmDetail extends OwnerPlayerCrmList {
   notes: OwnerPlayerCrmNote[];
   guardianContacts: OwnerPlayerCrmGuardianContact[];
   timeline: OwnerPlayerCrmTimelineEntry[];
+  guardianInviteDelivery?: GuardianInviteDeliveryResult | null;
 }
 
 export interface OwnerPlayerCrmProfileInput {
@@ -304,6 +323,58 @@ export function deleteOwnerPlayerGuardianContact(args: {
 }): Promise<OwnerPlayerCrmDetail> {
   return invokeOwnerPlayerCrm<OwnerPlayerCrmDetail>({
     action: 'deleteGuardianContact',
+    ownerAccountId: args.ownerAccountId,
+    playerId: args.playerId,
+    contactId: args.contactId,
+  });
+}
+
+export function inviteOwnerPlayerGuardianContact(args: {
+  ownerAccountId: string;
+  playerId: string;
+  contactId: string;
+}): Promise<OwnerPlayerCrmDetail> {
+  return invokeOwnerPlayerCrm<OwnerPlayerCrmDetail>({
+    action: 'inviteGuardianContact',
+    ownerAccountId: args.ownerAccountId,
+    playerId: args.playerId,
+    contactId: args.contactId,
+  });
+}
+
+export function resendOwnerPlayerGuardianInvite(args: {
+  ownerAccountId: string;
+  playerId: string;
+  inviteId: string;
+}): Promise<OwnerPlayerCrmDetail> {
+  return invokeOwnerPlayerCrm<OwnerPlayerCrmDetail>({
+    action: 'resendGuardianInvite',
+    ownerAccountId: args.ownerAccountId,
+    playerId: args.playerId,
+    inviteId: args.inviteId,
+  });
+}
+
+export function cancelOwnerPlayerGuardianInvite(args: {
+  ownerAccountId: string;
+  playerId: string;
+  inviteId: string;
+}): Promise<OwnerPlayerCrmDetail> {
+  return invokeOwnerPlayerCrm<OwnerPlayerCrmDetail>({
+    action: 'cancelGuardianInvite',
+    ownerAccountId: args.ownerAccountId,
+    playerId: args.playerId,
+    inviteId: args.inviteId,
+  });
+}
+
+export function revokeOwnerPlayerGuardianAccess(args: {
+  ownerAccountId: string;
+  playerId: string;
+  contactId: string;
+}): Promise<OwnerPlayerCrmDetail> {
+  return invokeOwnerPlayerCrm<OwnerPlayerCrmDetail>({
+    action: 'revokeGuardianAccess',
     ownerAccountId: args.ownerAccountId,
     playerId: args.playerId,
     contactId: args.contactId,

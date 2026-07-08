@@ -39,6 +39,7 @@ matche samme informationsarkitektur:
 - tags
 - coach-private noter
 - guardian/parent kontaktdata
+- guardian invite, resend, cancel og revoke access
 - hold/team-overblik og teammedlemskaber
 
 ## Supabase API
@@ -60,9 +61,13 @@ Remote status per 2026-07-08:
 - Migrations `20260708143000_owner_player_crm` and
   `20260708144500_owner_player_crm_tag_fk_hardening` are applied on project
   `lhpczofddvwcyrgotzha`.
-- `manageOwnerPlayerCrm` is deployed and active.
+- Migration `20260708152000_owner_player_guardian_invites` is applied on
+  project `lhpczofddvwcyrgotzha`.
+- `manageOwnerPlayerCrm` is deployed and active with guardian invite actions.
+- `acceptOwnerPlayerGuardianInvite` is deployed and active.
 - `create-player` is deployed with `ownerAccountId` seat-check support.
-- No-auth smoke test returns `401`, not `404`, for both endpoints.
+- No-auth smoke test returns `401`, not `404`, for `manageOwnerPlayerCrm`,
+  `acceptOwnerPlayerGuardianInvite` and `create-player`.
 
 Hvis Base44 bruger Supabase JS:
 
@@ -218,6 +223,12 @@ Response er samme som `list`, plus:
     status: 'active' | 'pending' | 'inactive' | 'removed';
     notes: string | null;
     permissions: Record<string, unknown>;
+    inviteId: string | null;
+    inviteStatus: 'pending' | 'accepted' | 'cancelled' | 'expired' | 'revoked' | null;
+    inviteExpiresAt: string | null;
+    inviteLastSentAt: string | null;
+    accessId: string | null;
+    accessStatus: 'active' | 'pending' | 'inactive' | 'removed' | null;
     createdAt: string;
     updatedAt: string;
   }>;
@@ -319,10 +330,10 @@ await supabase.functions.invoke('manageOwnerPlayerCrm', {
 
 ## Actions: Guardian Contacts
 
-Guardian contacts er CRM-kontaktdata. De giver ikke i sig selv parent/guardian
-app-adgang. Hvis Base44 senere giver guardian app-adgang, skal det ske via et
-server-side flow, der seat-checker rollen `parent` og opretter de relevante
-owner guardian/access rows.
+Guardian contacts er CRM-kontaktdata og adgangsstyringens udgangspunkt.
+Kontaktdata giver ikke i sig selv parent/guardian app-adgang. Adgang aktiveres
+kun naar en guardian accepterer en sikker invite-mail. Accept-flowet opretter en
+aktiv `owner_player_guardians` relation og seat-checker rollen `parent`.
 
 ```ts
 await supabase.functions.invoke('manageOwnerPlayerCrm', {
@@ -367,6 +378,97 @@ await supabase.functions.invoke('manageOwnerPlayerCrm', {
   },
 });
 ```
+
+### Invite Guardian
+
+Vis kun invite-knappen naar kontakten har email, ikke allerede har
+`accessStatus: 'active'`, og ikke har `inviteStatus: 'pending'`.
+
+```ts
+await supabase.functions.invoke('manageOwnerPlayerCrm', {
+  body: {
+    action: 'inviteGuardianContact',
+    ownerAccountId: '<owner_account uuid>',
+    playerId: '<player user uuid>',
+    contactId: '<guardian contact uuid>',
+  },
+});
+```
+
+Response returnerer opdateret `detail` plus:
+
+```ts
+guardianInviteDelivery?: {
+  status: 'sent' | 'skipped' | 'failed';
+  authLinkType: 'invite' | 'magiclink' | null;
+  ownerName: string | null;
+  playerName: string | null;
+  landingUrl: string | null;
+  provider: 'aws_ses' | 'none';
+  warning: string | null;
+};
+```
+
+Hvis `status !== 'sent'`, skal Base44 vise warningen til traeneren. Inviten er
+stadig oprettet, men mailen blev ikke sendt.
+
+### Resend / Cancel Pending Invite
+
+```ts
+await supabase.functions.invoke('manageOwnerPlayerCrm', {
+  body: {
+    action: 'resendGuardianInvite',
+    ownerAccountId: '<owner_account uuid>',
+    playerId: '<player user uuid>',
+    inviteId: '<guardian invite uuid>',
+  },
+});
+```
+
+```ts
+await supabase.functions.invoke('manageOwnerPlayerCrm', {
+  body: {
+    action: 'cancelGuardianInvite',
+    ownerAccountId: '<owner_account uuid>',
+    playerId: '<player user uuid>',
+    inviteId: '<guardian invite uuid>',
+  },
+});
+```
+
+### Revoke Guardian Access
+
+Vis revoke naar `accessStatus: 'active'`.
+
+```ts
+await supabase.functions.invoke('manageOwnerPlayerCrm', {
+  body: {
+    action: 'revokeGuardianAccess',
+    ownerAccountId: '<owner_account uuid>',
+    playerId: '<player user uuid>',
+    contactId: '<guardian contact uuid>',
+  },
+});
+```
+
+### Accept Guardian Invite
+
+Mailen sender brugeren gennem Supabase auth-link med redirect-param
+`guardianInviteToken`. Efter login skal Base44 kalde:
+
+```ts
+await supabase.functions.invoke('acceptOwnerPlayerGuardianInvite', {
+  body: {
+    token: '<guardian invite token>',
+    fullName: null,
+  },
+});
+```
+
+Accept kræver at den loggede brugers email matcher invite-emailen. Ved accept
+oprettes/reaktiveres `owner_player_guardians`, guardian contact opdateres til
+`status: 'active'`, og parent-seat kontrolleres. Ved seat/licens-fejl skal UI
+vise `LICENSE_INACTIVE` eller `SEAT_LIMIT_REACHED`.
 
 ## Add/Invite Player
 
@@ -432,6 +534,8 @@ Haandter mindst:
 - `NOTE_NOT_FOUND`
 - `TAG_NOT_FOUND`
 - `GUARDIAN_CONTACT_NOT_FOUND`
+- `INVITE_ALREADY_PENDING`
+- `INVITE_NOT_FOUND`
 - `VALIDATION_ERROR`
 - `LICENSE_INACTIVE`
 - `SEAT_LIMIT_REACHED`
@@ -452,6 +556,9 @@ Test mindst:
 - spillerkort update paa mobil vises i web efter refresh
 - note oprettet paa web vises kun for staff, ikke spiller/guardian
 - guardian contact oprettet paa web vises i mobil CRM
+- guardian invite oprettet paa web vises som pending i mobil CRM
+- guardian invite oprettet paa mobil vises som pending i web
+- accept-link opretter aktiv guardian access og access kan revokes fra web/mobil
 - `create-player` med `ownerAccountId` blokerer ved seat limit
 
 Efter writes skal Base44 altid refetche fra Supabase. Optimistic UI er ok, men
