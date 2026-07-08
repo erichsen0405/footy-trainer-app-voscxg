@@ -154,6 +154,14 @@ function FloatingTabsLayout({
       label: 'Library',
     };
 
+    const playerCrmTab: TabBarItem = {
+      name: 'player-crm',
+      route: '/(tabs)/player-crm',
+      icon: 'person.2.fill',
+      materialIcon: 'groups',
+      label: 'CRM',
+    };
+
     const profileTab: TabBarItem = {
       name: 'profile',
       route: '/(tabs)/profile',
@@ -166,6 +174,10 @@ function FloatingTabsLayout({
 
     if (isPlayer || isTrainer) {
       tabsForRole.push(performanceTab);
+    }
+
+    if (isTrainer) {
+      tabsForRole.push(playerCrmTab);
     }
 
     tabsForRole.push(libraryTab, profileTab);
@@ -185,6 +197,7 @@ function FloatingTabsLayout({
         <Stack.Screen name="(home)" />
         <Stack.Screen name="tasks" />
         <Stack.Screen name="performance" />
+        <Stack.Screen name="player-crm" />
         <Stack.Screen name="library" />
         <Stack.Screen name="profile" />
       </Stack>

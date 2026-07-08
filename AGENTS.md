@@ -17,6 +17,9 @@
 
 ## B2B Coach Master Backlog (#308)
 
+- Når brugeren skriver `start issue xxx`, skal arbejdet altid starte med en opgaveløsning/beskrivelse til brugerens godkendelse.
+  - Implementering må først begynde, når brugeren har godkendt opgaveløsningen.
+  - Dette gælder også, selvom issue-scope virker tydeligt.
 - Før arbejde på B2B Coach issues (#277-#307), skal GitHub master issue #308 læses inkl. kommentarer:
   - `gh issue view 308 --repo erichsen0405/footy-trainer-app-voscxg --json body,comments,labels,state,title,url`
 - Den konkrete issue skal derefter læses med kommentarer, og arbejdet skal krydstjekkes mod #308 før det meldes klar.

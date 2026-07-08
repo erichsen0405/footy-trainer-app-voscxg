@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type PushPayload = {
   title: string;
@@ -88,6 +89,35 @@ async function getDisplayName(supabaseAdmin: any, userId: string, fallback = 'Yo
   }
 }
 
+async function assertOwnerPlayerSeatAvailable(
+  supabaseAdmin: any,
+  actorUserId: string,
+  ownerAccountId: string,
+) {
+  if (!ownerAccountId) return null;
+
+  if (!UUID_PATTERN.test(ownerAccountId)) {
+    return {
+      status: 400,
+      error: 'ownerAccountId must be a valid UUID',
+    };
+  }
+
+  const { error: seatError } = await supabaseAdmin.rpc('assert_owner_seat_available', {
+    p_actor_user_id: actorUserId,
+    p_owner_account_id: ownerAccountId,
+    p_role: 'player',
+  });
+
+  if (!seatError) return null;
+
+  const message = seatError.message || 'Could not verify owner player seats';
+  return {
+    status: message === 'SEAT_LIMIT_REACHED' || message === 'LICENSE_INACTIVE' ? 409 : 403,
+    error: message,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -115,6 +145,7 @@ Deno.serve(async (req) => {
     const action = typeof requestBody.action === 'string' ? requestBody.action : '';
     const email = typeof requestBody.email === 'string' ? requestBody.email.trim().toLowerCase() : '';
     const playerId = typeof requestBody.playerId === 'string' ? requestBody.playerId : '';
+    const ownerAccountId = typeof requestBody.ownerAccountId === 'string' ? requestBody.ownerAccountId.trim() : '';
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
@@ -268,6 +299,14 @@ Deno.serve(async (req) => {
           });
         }
 
+        const seatAvailability = await assertOwnerPlayerSeatAvailable(supabaseAdmin, user.id, ownerAccountId);
+        if (seatAvailability) {
+          return jsonResponse(seatAvailability.status, {
+            success: false,
+            error: seatAvailability.error,
+          });
+        }
+
         const { error: updateRequestError } = await supabaseAdmin
           .from('admin_player_link_requests')
           .update({
@@ -285,6 +324,14 @@ Deno.serve(async (req) => {
           });
         }
       } else {
+        const seatAvailability = await assertOwnerPlayerSeatAvailable(supabaseAdmin, user.id, ownerAccountId);
+        if (seatAvailability) {
+          return jsonResponse(seatAvailability.status, {
+            success: false,
+            error: seatAvailability.error,
+          });
+        }
+
         const { data: insertedRequest, error: insertRequestError } = await supabaseAdmin
           .from('admin_player_link_requests')
           .insert({
