@@ -72,6 +72,7 @@ import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
+import { HomeBrandHeader } from '@/components/HomeBrandHeader';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { WeeklySummaryCard } from '@/components/WeeklySummaryCard';
@@ -2960,22 +2961,7 @@ export default function HomeScreen() {
   // List header component
   const ListHeaderComponent = useCallback(() => (
     <>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.logoContainer}>
-          <Image
-            source={require('../../../assets/images/fc_logo_blue.png')}
-            style={styles.headerLogo}
-            resizeMode="stretch"
-            accessibilityLabel="Football Coach logo"
-            testID="home-header-logo"
-          />
-        </View>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Football Coach</Text>
-          <Text style={styles.headerSubtitle}>Train like a Pro</Text>
-        </View>
-      </View>
+      <HomeBrandHeader />
 
       {/* STEP E: Static inline info-box when adminMode !== 'self' */}
       {adminMode !== 'self' && (

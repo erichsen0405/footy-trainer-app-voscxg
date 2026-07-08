@@ -8,20 +8,40 @@ const migrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20260708170000_owner_brand_profiles.sql'
 );
+const currentBrandMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260708185000_current_owner_brand_profile.sql'
+);
+const currentBrandAuthGateMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260708190000_current_owner_brand_auth_gate.sql'
+);
 const sharedFunctionPath = path.join(process.cwd(), 'supabase/functions/_shared/ownerBranding.ts');
 const edgeFunctionPath = path.join(process.cwd(), 'supabase/functions/manageOwnerBranding/index.ts');
 const servicePath = path.join(process.cwd(), 'services/ownerBrandingService.ts');
+const currentBrandServicePath = path.join(process.cwd(), 'services/currentOwnerBrandingService.ts');
+const currentBrandHookPath = path.join(process.cwd(), 'hooks/useCurrentOwnerBranding.ts');
 const uploadPath = path.join(process.cwd(), 'utils/ownerBrandAssetUpload.ts');
 const mobileCrmPath = path.join(process.cwd(), 'app/(tabs)/player-crm.tsx');
+const homeBrandHeaderPath = path.join(process.cwd(), 'components/HomeBrandHeader.tsx');
+const homePath = path.join(process.cwd(), 'app/(tabs)/(home)/index.tsx');
+const homeIosPath = path.join(process.cwd(), 'app/(tabs)/(home)/index.ios.tsx');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-branding-prompt.md');
 
 describe('owner coach branding contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
+  const currentBrandMigration = fs.readFileSync(currentBrandMigrationPath, 'utf8');
+  const currentBrandAuthGateMigration = fs.readFileSync(currentBrandAuthGateMigrationPath, 'utf8');
   const sharedFunction = fs.readFileSync(sharedFunctionPath, 'utf8');
   const edgeFunction = fs.readFileSync(edgeFunctionPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
+  const currentBrandService = fs.readFileSync(currentBrandServicePath, 'utf8');
+  const currentBrandHook = fs.readFileSync(currentBrandHookPath, 'utf8');
   const upload = fs.readFileSync(uploadPath, 'utf8');
   const mobileCrm = fs.readFileSync(mobileCrmPath, 'utf8');
+  const homeBrandHeader = fs.readFileSync(homeBrandHeaderPath, 'utf8');
+  const home = fs.readFileSync(homePath, 'utf8');
+  const homeIos = fs.readFileSync(homeIosPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
 
   it('creates owner-scoped brand profiles and public-safe landing data', () => {
@@ -45,6 +65,23 @@ describe('owner coach branding contract', () => {
     expect(migration).toContain('public.owner_brand_asset_owner_id(name)');
     expect(migration).toContain("to authenticated");
     expect(migration).toContain("array['owner', 'admin', 'coach']");
+  });
+
+  it('exposes safe current-owner branding for linked staff, players and guardians', () => {
+    expect(currentBrandMigration).toContain('create or replace function public.get_current_owner_brand_profile');
+    expect(currentBrandMigration).toContain('from public.owner_memberships om');
+    expect(currentBrandMigration).toContain('from public.owner_players op');
+    expect(currentBrandMigration).toContain('from public.owner_player_guardians opg');
+    expect(currentBrandMigration).toContain("and oa.status = 'active'");
+    expect(currentBrandMigration).toContain("'displayName', coalesce(obp.display_name, oa.name)");
+    expect(currentBrandMigration).toContain("'brandColors', coalesce(obp.brand_colors");
+    expect(currentBrandMigration).toContain('grant execute on function public.get_current_owner_brand_profile() to authenticated, service_role');
+    expect(currentBrandMigration).not.toContain("'ownerAccountId'");
+    expect(currentBrandAuthGateMigration).toContain('v_user_id uuid := auth.uid()');
+    expect(currentBrandAuthGateMigration).toContain("raise exception 'UNAUTHENTICATED'");
+    expect(currentBrandAuthGateMigration).toContain('where om.user_id = v_user_id');
+    expect(currentBrandAuthGateMigration).toContain('where op.player_id = v_user_id');
+    expect(currentBrandAuthGateMigration).toContain('where opg.guardian_user_id = v_user_id');
   });
 
   it('parses get and upsert Edge Function payloads', () => {
@@ -89,6 +126,19 @@ describe('owner coach branding contract', () => {
     expect(service).toContain("supabase.functions.invoke('manageOwnerBranding'");
     expect(service).toContain('fetchOwnerBranding');
     expect(service).toContain('saveOwnerBranding');
+  });
+
+  it('uses current owner branding for the mobile home topbar', () => {
+    expect(currentBrandService).toContain("supabase.rpc('get_current_owner_brand_profile'");
+    expect(currentBrandHook).toContain('fetchCurrentOwnerBranding');
+    expect(currentBrandHook).toContain('useAuthSession');
+    expect(homeBrandHeader).toContain('useCurrentOwnerBranding');
+    expect(homeBrandHeader).toContain('useFocusEffect');
+    expect(homeBrandHeader).toContain('branding?.brandColors.primary');
+    expect(homeBrandHeader).toContain('branding?.logoUrl');
+    expect(homeBrandHeader).toContain('branding?.coverUrl');
+    expect(home).toContain('<HomeBrandHeader />');
+    expect(homeIos).toContain('<HomeBrandHeader paddingTop={headerPaddingTop} paddingBottom={headerPaddingBottom} />');
   });
 
   it('documents Base44 reuse, owner scope, storage and web/mobile parity', () => {
