@@ -189,6 +189,9 @@ describe('owner player CRM contract', () => {
     expect(base44Prompt).toContain('Mobil og web skal have funktionsparitet');
     expect(base44Prompt).toContain('manageOwnerPlayerCrm');
     expect(base44Prompt).toContain('acceptOwnerPlayerGuardianInvite');
+    expect(base44Prompt).toContain('guardianInviteToken`, ikke');
+    expect(base44Prompt).toContain('GUARDIAN_INVITE_AUTH_REDIRECT_URL=https://footballcoach.online/AuthCallback');
+    expect(base44Prompt).toContain('Parent/guardian adgang er ubegrænset');
     expect(base44Prompt).toContain('inviteGuardianContact');
     expect(base44Prompt).toContain('revokeGuardianAccess');
     expect(base44Prompt).toContain('create-player');
@@ -224,6 +227,10 @@ describe('owner player CRM contract', () => {
     expect(acceptGuardianInvite).toContain('acceptOwnerPlayerGuardianInviteAction');
     expect(acceptGuardianInvite).toContain('requireAuthContext');
     expect(authCallback).toContain('guardianInviteToken');
+    expect(authCallback).toContain('INVITE_TOKEN_PARAM_KEYS');
+    expect(authCallback).toContain('hasAnyCallbackParam');
+    expect(authCallback).toContain('shouldRetryCallbackParams');
+    expect(authCallback).toContain("otpType === 'magiclink'");
     expect(authCallback).toContain('acceptOwnerPlayerGuardianInvite');
     expect(authCallback).toContain('acceptInvitesIfPresent');
   });

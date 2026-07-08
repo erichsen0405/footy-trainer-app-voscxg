@@ -81,10 +81,12 @@ function envWithFallback(primary: string, fallback?: string): string | null {
 }
 
 export function getGuardianInviteEmailConfigFromEnv(): GuardianInviteEmailConfigResolution {
+  const guardianAuthRedirectUrl = getEnv('GUARDIAN_INVITE_AUTH_REDIRECT_URL');
+  const guardianLandingUrl = getEnv('GUARDIAN_INVITE_LANDING_URL') ?? guardianAuthRedirectUrl;
   const requiredEnv = {
-    authRedirectUrl: envWithFallback('GUARDIAN_INVITE_AUTH_REDIRECT_URL', 'CLUB_INVITE_AUTH_REDIRECT_URL'),
+    authRedirectUrl: guardianAuthRedirectUrl,
     fromEmail: envWithFallback('GUARDIAN_INVITE_FROM_EMAIL', 'CLUB_INVITE_FROM_EMAIL'),
-    landingUrl: envWithFallback('GUARDIAN_INVITE_LANDING_URL', 'CLUB_INVITE_LANDING_URL'),
+    landingUrl: guardianLandingUrl,
     awsRegion: getEnv('AWS_SES_REGION'),
     awsAccessKeyId: getEnv('AWS_SES_ACCESS_KEY_ID'),
     awsSecretAccessKey: getEnv('AWS_SES_SECRET_ACCESS_KEY'),
@@ -95,11 +97,11 @@ export function getGuardianInviteEmailConfigFromEnv(): GuardianInviteEmailConfig
     .map(([key]) => {
       switch (key) {
         case 'authRedirectUrl':
-          return 'GUARDIAN_INVITE_AUTH_REDIRECT_URL or CLUB_INVITE_AUTH_REDIRECT_URL';
+          return 'GUARDIAN_INVITE_AUTH_REDIRECT_URL';
         case 'fromEmail':
           return 'GUARDIAN_INVITE_FROM_EMAIL or CLUB_INVITE_FROM_EMAIL';
         case 'landingUrl':
-          return 'GUARDIAN_INVITE_LANDING_URL or CLUB_INVITE_LANDING_URL';
+          return 'GUARDIAN_INVITE_LANDING_URL or GUARDIAN_INVITE_AUTH_REDIRECT_URL';
         case 'awsRegion':
           return 'AWS_SES_REGION';
         case 'awsAccessKeyId':
@@ -139,7 +141,7 @@ export function buildGuardianInviteLandingUrl(
   invite: Pick<GuardianInviteForEmail, 'token'>
 ): string {
   const url = new URL(baseUrl);
-  url.searchParams.set('token', invite.token);
+  url.searchParams.set('guardianInviteToken', invite.token);
   return url.toString();
 }
 

@@ -333,7 +333,8 @@ await supabase.functions.invoke('manageOwnerPlayerCrm', {
 Guardian contacts er CRM-kontaktdata og adgangsstyringens udgangspunkt.
 Kontaktdata giver ikke i sig selv parent/guardian app-adgang. Adgang aktiveres
 kun naar en guardian accepterer en sikker invite-mail. Accept-flowet opretter en
-aktiv `owner_player_guardians` relation og seat-checker rollen `parent`.
+aktiv `owner_player_guardians` relation. Parent/guardian adgang er ubegrænset
+og count-only, saa accept-flowet maa ikke blokere paa parent seats.
 
 ```ts
 await supabase.functions.invoke('manageOwnerPlayerCrm', {
@@ -453,8 +454,32 @@ await supabase.functions.invoke('manageOwnerPlayerCrm', {
 
 ### Accept Guardian Invite
 
-Mailen sender brugeren gennem Supabase auth-link med redirect-param
-`guardianInviteToken`. Efter login skal Base44 kalde:
+Guardian invite maa ikke bruge det eksisterende club invite landing-flow med
+`token=<value>`. Guardian-links skal altid bruge `guardianInviteToken`, ikke
+`token`, ellers lander brugeren i den forkerte "Invitation til Klub" UI.
+
+Supabase guardian invite-mailen sender brugeren gennem Supabase auth-link med
+redirect-parametrene:
+
+- `guardianInviteToken`
+- `guardianInviteAuthType=invite | magiclink`
+
+Base44 skal opdatere den eksisterende `AuthCallback`/invite-callback til at
+kunne kende guardian-flowet fra club-flowet:
+
+- Hvis URL'en har `guardianInviteToken`, er det guardian/parent invite.
+- Hvis URL'en har `clubInviteToken` eller legacy `token`, er det club invite.
+- Base44 maa ikke vise club invite cardet ("Invitation til Klub") for
+  guardian-links.
+- Hvis Supabase magiclink/invite returnerer `access_token`/`refresh_token` i
+  hash eller query, skal Base44 først kalde `supabase.auth.setSession(...)`.
+- Hvis Supabase returnerer `code`, skal Base44 kalde
+  `supabase.auth.exchangeCodeForSession(code)`.
+- Hvis der kun er `guardianInviteToken` og ingen session, skal Base44 sende
+  brugeren til login/opret konto og gemme tokenet midlertidigt, saa accept
+  fortsætter efter login.
+
+Efter login/session skal Base44 kalde:
 
 ```ts
 await supabase.functions.invoke('acceptOwnerPlayerGuardianInvite', {
@@ -467,8 +492,17 @@ await supabase.functions.invoke('acceptOwnerPlayerGuardianInvite', {
 
 Accept kræver at den loggede brugers email matcher invite-emailen. Ved accept
 oprettes/reaktiveres `owner_player_guardians`, guardian contact opdateres til
-`status: 'active'`, og parent-seat kontrolleres. Ved seat/licens-fejl skal UI
-vise `LICENSE_INACTIVE` eller `SEAT_LIMIT_REACHED`.
+`status: 'active'`. Parent/guardian har ikke seat-loft, saa UI maa ikke forvente
+`LICENSE_INACTIVE` eller `SEAT_LIMIT_REACHED` for parent-cap.
+
+For guardian invite-mails skal Supabase secrets være guardian-specifikke:
+
+- `GUARDIAN_INVITE_AUTH_REDIRECT_URL=https://footballcoach.online/AuthCallback`
+- `GUARDIAN_INVITE_LANDING_URL=https://footballcoach.online/AuthCallback`
+
+De maa ikke pege paa club invite landing-siden. Backend sender ikke længere
+guardian-mails med `CLUB_INVITE_LANDING_URL` som fallback, fordi det giver den
+forkerte "Invitation til Klub" oplevelse.
 
 ## Add/Invite Player
 
@@ -493,8 +527,9 @@ await supabase.functions.invoke('create-player', {
 ```
 
 Hvis backend returnerer `SEAT_LIMIT_REACHED` eller `LICENSE_INACTIVE`, skal UI
-blokere oprettelsen og vise en tydelig seat/licens state. Fald ikke tilbage til
-lokal oprettelse.
+blokere oprettelsen og vise en tydelig seat/licens state. De fejl gælder
+player-limit, ikke guardian/parent access. Fald ikke tilbage til lokal
+oprettelse.
 
 ## Teams
 

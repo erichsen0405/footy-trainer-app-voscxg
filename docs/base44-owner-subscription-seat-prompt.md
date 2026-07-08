@@ -62,15 +62,18 @@ License/subscription view skal vise:
 - owner type
 - subscription status
 - player seats used/available
-- role seat rows for owner/admin/coach/assistant/player/parent
+- role seat rows for owner/admin/player
+- count-only rows for coach/assistant_coach/parent
 - feature flags for reports/programs/video feedback/booking
 
 Brug `getOwnerSeatStatus` som læse-API.
 
-Før Base44 opretter en spiller, staff seat eller parent seat, skal den kalde
-`assertOwnerSeatAvailable`. Hvis svaret er `SEAT_LIMIT_REACHED`, skal UI blokere
-flowet og vise upsell/kontakt super admin. Hvis svaret er `LICENSE_INACTIVE`,
-skal UI vise at licensen ikke er aktiv.
+Før Base44 opretter en spiller eller anden begrænset seat, skal den kalde
+`assertOwnerSeatAvailable`. Base44 maa ikke kalde seat assertion for `coach`,
+`assistant_coach` eller `parent`, da de er ubegrænsede count-only roller. Hvis
+svaret er `SEAT_LIMIT_REACHED`, skal UI blokere player-flowet og vise
+upsell/kontakt super admin. Hvis svaret er `LICENSE_INACTIVE`, skal UI vise at
+licensen ikke er aktiv.
 
 ## Apple Trainer Subscription
 

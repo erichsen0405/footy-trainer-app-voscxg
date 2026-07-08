@@ -13,10 +13,10 @@ entity and not only `user_id`, `trainer_id`, `coach_account_id` or `club_id`.
 The first private coach business tiers are:
 
 | Plan | Players | Admins | Coaches | Assistant coaches | Parents | Coach features |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `trainer_basic` | 5 | 1 | 1 | 0 | 0 | programs |
-| `trainer_standard` | 15 | 2 | 1 | 2 | 15 | reports, programs, video feedback |
-| `trainer_premium` | 50 | 4 | 3 | 6 | 50 | reports, programs, video feedback, booking |
+| --- | ---: | ---: | --- | --- | --- | --- |
+| `trainer_basic` | 5 | 1 | Unlimited | Unlimited | Unlimited | programs |
+| `trainer_standard` | 15 | 2 | Unlimited | Unlimited | Unlimited | reports, programs, video feedback |
+| `trainer_premium` | 50 | 4 | Unlimited | Unlimited | Unlimited | reports, programs, video feedback, booking |
 
 These are stored in `owner_subscription_plans.seat_limits` and
 `owner_subscription_plans.feature_flags`.
@@ -51,6 +51,10 @@ The function `get_owner_effective_seats(owner_account_id)` returns:
 The payload function `get_owner_seat_status_payload(owner_account_id)` wraps the
 seat rows with plan, subscription and feature flag metadata.
 
+`coach`, `assistant_coach` and `parent` are count-only rows. They have
+`isUnlimited: true`, keep reporting `seatsUsed`, and expose no numeric
+`effectiveSeats` or `seatsAvailable` cap in the payload.
+
 ## Apple Subscription To Owner Access
 
 When a trainer has an active Apple entitlement for a coach plan,
@@ -83,10 +87,10 @@ set role limits for:
 
 - `owner`
 - `admin`
-- `coach`
-- `assistant_coach`
 - `player`
-- `parent`
+
+`coach`, `assistant_coach` and `parent` are not provisioned as limited seats.
+They are shown as counts only.
 
 Legacy `club_licenses.seats_total` is mirrored into owner licensing as a
 `player` override so the existing club admin flow keeps working while the
@@ -103,9 +107,11 @@ and use `featureFlags` from the payload for owner-scoped coach features:
 - `video_feedback`
 - `booking`
 
-Before creating members, players or parent seats, server-side flows should call
+Before creating players or other capped seats, server-side flows should call
 `assert_owner_seat_available(...)` or the `assertOwnerSeatAvailable` Edge
-Function. Client-side checks are UX only.
+Function. Client-side checks are UX only. Do not use seat assertions for
+`coach`, `assistant_coach` or `parent`; those roles are unlimited count-only
+roles.
 
 ## Base44 Rules
 
@@ -133,11 +139,11 @@ Minimum manual checks:
 
 - Active `trainer_basic` Apple entitlement creates a `private_coach_business`
   owner account and gives the purchaser `owner`, `admin` and `coach`.
-- Owner seat status shows plan name, player limit, used players and remaining
-  players.
+- Owner seat status shows plan name, player limit, used players, remaining
+  players and count-only totals for coaches, assistant coaches and parents.
 - Adding a player is blocked with `SEAT_LIMIT_REACHED` when player seats are
   exhausted.
-- Super admin override replaces the Apple baseline for a role.
-- Super admin add-on increases seats above the plan baseline.
+- Super admin override replaces the Apple baseline for capped roles.
+- Super admin add-on increases seats above the plan baseline for capped roles.
 - Expired/revoked Apple entitlement does not delete historical data.
 - Existing player subscriptions and club license flows still work.

@@ -141,6 +141,10 @@ Tilladte roller:
 Alias:
 
 - `assistant` maa sendes, men normaliseres til `assistant_coach`.
+- `coach`, `assistant_coach` og `parent` er ubegrænsede count-only roller.
+  Seat-status viser `isUnlimited: true`, `seatsUsed` og `null` for loft/ledig.
+  Base44 skal ikke vise provisioning-controls eller kalde
+  `assertOwnerSeatAvailable` for de roller.
 
 Success response:
 
@@ -151,9 +155,10 @@ Success response:
     ok: true;
     seat: {
       role: string;
-      seatsAvailable: number;
-      effectiveSeats: number;
+      seatsAvailable: number | null;
+      effectiveSeats: number | null;
       seatsUsed: number;
+      isUnlimited: boolean;
     };
     seatStatus: OwnerSeatStatus;
   };
@@ -189,10 +194,7 @@ await supabase.functions.invoke('createOwnerAccount', {
     seatOverrides: {
       owner: 1,
       admin: 3,
-      coach: 10,
-      assistant_coach: 5,
       player: 200,
-      parent: 0,
     },
   },
 });
@@ -210,8 +212,6 @@ await supabase.functions.invoke('createOwnerAccount', {
     seatOverrides: {
       owner: 1,
       admin: 1,
-      coach: 1,
-      assistant_coach: 0,
       player: 20,
     },
   },

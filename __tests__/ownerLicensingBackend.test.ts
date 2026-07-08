@@ -4,6 +4,7 @@ import {
   deleteOwnerAccountAction,
   getOwnerSeatStatusAction,
   listPlatformAdminOwnerAccountsAction,
+  normalizeOwnerSeatLine,
   parseAssertOwnerSeatBody,
   parseCreateOwnerAccountBody,
   parseDeleteOwnerAccountBody,
@@ -151,6 +152,7 @@ describe('owner licensing backend helpers', () => {
       seats: [
         {
           role: 'player',
+          isUnlimited: false,
           planSeats: 15,
           overrideSeats: null,
           addOnSeats: 5,
@@ -163,6 +165,7 @@ describe('owner licensing backend helpers', () => {
       ],
       playerSeats: {
         role: 'player',
+        isUnlimited: false,
         planSeats: 15,
         overrideSeats: null,
         addOnSeats: 5,
@@ -173,6 +176,34 @@ describe('owner licensing backend helpers', () => {
         planCode: 'trainer_standard',
       },
       canAddPlayers: true,
+    });
+  });
+
+  it('normalizes unlimited count-only seat rows', () => {
+    expect(
+      normalizeOwnerSeatLine({
+        role: 'parent',
+        isUnlimited: true,
+        planSeats: null,
+        overrideSeats: null,
+        addOnSeats: null,
+        effectiveSeats: null,
+        seatsUsed: 18,
+        seatsAvailable: null,
+        source: 'unlimited',
+        planCode: 'trainer_basic',
+      })
+    ).toEqual({
+      role: 'parent',
+      isUnlimited: true,
+      planSeats: null,
+      overrideSeats: null,
+      addOnSeats: null,
+      effectiveSeats: null,
+      seatsUsed: 18,
+      seatsAvailable: null,
+      source: 'unlimited',
+      planCode: 'trainer_basic',
     });
   });
 

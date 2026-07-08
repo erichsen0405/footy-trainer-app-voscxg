@@ -5,15 +5,22 @@ const migrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20260707133000_owner_subscription_seats.sql'
 );
+const unlimitedStaffParentSeatsMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260708161000_unlimited_staff_parent_seats.sql'
+);
 const modelDocPath = path.join(process.cwd(), 'docs/owner-subscription-seat-model.md');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-subscription-seat-prompt.md');
+const base44UnlimitedPromptPath = path.join(process.cwd(), 'docs/base44-unlimited-staff-parent-seats-prompt.md');
 const architecturePath = path.join(process.cwd(), 'docs/owner-account-architecture.md');
 const entitlementsSyncPath = path.join(process.cwd(), 'services/entitlementsSync.ts');
 
 describe('owner subscription and seat model contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
+  const unlimitedStaffParentSeatsMigration = fs.readFileSync(unlimitedStaffParentSeatsMigrationPath, 'utf8');
   const modelDoc = fs.readFileSync(modelDocPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
+  const base44UnlimitedPrompt = fs.readFileSync(base44UnlimitedPromptPath, 'utf8');
   const architecture = fs.readFileSync(architecturePath, 'utf8');
   const entitlementsSync = fs.readFileSync(entitlementsSyncPath, 'utf8');
 
@@ -30,6 +37,10 @@ describe('owner subscription and seat model contract', () => {
     expect(migration).toContain("'trainer_basic'");
     expect(migration).toContain("'fc_trainer_basic_monthly'");
     expect(migration).toContain('"player": 5');
+    expect(unlimitedStaffParentSeatsMigration).toContain("seat_limits - 'coach' - 'assistant_coach' - 'parent'");
+    expect(unlimitedStaffParentSeatsMigration).toContain("'isUnlimited', es.role in ('coach', 'assistant_coach', 'parent')");
+    expect(unlimitedStaffParentSeatsMigration).toContain("if v_role in ('coach', 'assistant_coach', 'parent') then");
+    expect(modelDoc).toContain('| `trainer_basic` | 5 | 1 | Unlimited | Unlimited | Unlimited | programs |');
     expect(migration).toContain("'trainer_standard'");
     expect(migration).toContain('"player": 15');
     expect(migration).toContain('"video_feedback": true');
@@ -63,7 +74,8 @@ describe('owner subscription and seat model contract', () => {
     expect(migration).toContain('public.get_current_owner_seat_status');
     expect(migration).toContain('public.assert_owner_seat_available');
     expect(migration).toContain('SEAT_LIMIT_REACHED');
-    expect(modelDoc).toContain('assertOwnerSeatAvailable');
+    expect(modelDoc).toContain('Do not use seat assertions for');
+    expect(modelDoc).toContain('unlimited count-only');
   });
 
   it('keeps Base44 on the existing owner-aware webapp path', () => {
@@ -72,6 +84,8 @@ describe('owner subscription and seat model contract', () => {
     expect(base44Prompt).toContain('owner_account_id');
     expect(base44Prompt).toContain('Supabase Er Source Of Truth');
     expect(base44Prompt).toContain('sync_private_coach_owner_subscription');
+    expect(base44UnlimitedPrompt).toContain('coach`, `assistant_coach` og `parent` er ubegrænsede count-only roller');
+    expect(base44UnlimitedPrompt).toContain('Base44 maa ikke kalde `assertOwnerSeatAvailable`');
     expect(architecture).toContain('#281 moves subscription and seat logic onto owner accounts');
   });
 });
