@@ -11,7 +11,7 @@ type RpcClient = {
   rpc: <T>(fn: string, args?: Record<string, unknown>) => Promise<{ data: T | null; error: RpcError | null }>;
 };
 
-type AuthLinkType = 'invite' | 'magiclink';
+export type AuthLinkType = 'invite' | 'magiclink';
 
 type GenerateLinkSuccess = {
   properties: {
@@ -61,7 +61,7 @@ type AuthUserInviteState = {
   invitedAt: string | null;
 };
 
-type ClubInviteEmailContent = {
+export type InviteEmailContent = {
   subject: string;
   html: string;
   text: string;
@@ -89,7 +89,7 @@ function getInviteRoleLabel(role: ClubInvite['role']): string {
   }
 }
 
-function getEnv(name: string): string | null {
+export function getEnv(name: string): string | null {
   const deno = (globalThis as { Deno?: { env?: { get: (key: string) => string | undefined } } }).Deno;
   if (deno?.env) {
     return deno.env.get(name)?.trim() ?? null;
@@ -103,7 +103,7 @@ function getEnv(name: string): string | null {
   return null;
 }
 
-function optionalEnv(name: string, fallback: string): string {
+export function optionalEnv(name: string, fallback: string): string {
   return getEnv(name) ?? fallback;
 }
 
@@ -142,7 +142,7 @@ async function callNullableRpc<T>(
   return data ?? null;
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -255,7 +255,7 @@ function normalizeAuthUserInviteState(payload: unknown): AuthUserInviteState | n
   };
 }
 
-async function resolveAuthUserInviteState(
+export async function resolveAuthUserInviteState(
   client: RpcClient,
   email: string
 ): Promise<AuthUserInviteState | null> {
@@ -309,7 +309,7 @@ export function buildClubInviteEmailContent(
   invite: Pick<ClubInvite, 'email' | 'role'>,
   context: ClubInviteDeliveryContext,
   config: Pick<ClubInviteEmailConfig, 'appName'>
-): ClubInviteEmailContent {
+): InviteEmailContent {
   const roleLabel = getInviteRoleLabel(invite.role);
   const subject = `${context.clubName}: invitation as ${roleLabel}`;
   const primaryActionLabel =
@@ -434,8 +434,8 @@ async function createAwsSesAuthorizationHeader(
   ].join(', ');
 }
 
-async function sendWithAwsSes(
-  content: ClubInviteEmailContent,
+export async function sendWithAwsSes(
+  content: InviteEmailContent,
   invite: Pick<ClubInvite, 'email'>,
   config: Pick<
     ClubInviteEmailConfig,

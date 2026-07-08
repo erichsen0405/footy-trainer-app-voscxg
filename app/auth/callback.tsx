@@ -94,6 +94,12 @@ const getFunctionErrorMessage = async (error: any, fallback: string) => {
       if (typeof payload?.error === 'string' && payload.error.trim()) {
         return payload.error;
       }
+      if (payload?.error && typeof payload.error === 'object') {
+        const errorMessage = (payload.error as Record<string, unknown>).message;
+        if (typeof errorMessage === 'string' && errorMessage.trim()) {
+          return errorMessage;
+        }
+      }
     } catch {
       // Fall back to the Supabase error message below.
     }
@@ -104,6 +110,11 @@ const getFunctionErrorMessage = async (error: any, fallback: string) => {
 
 const getClubInviteToken = (params: URLSearchParams) => {
   const token = params.get('clubInviteToken')?.trim();
+  return token || null;
+};
+
+const getGuardianInviteToken = (params: URLSearchParams) => {
+  const token = params.get('guardianInviteToken')?.trim();
   return token || null;
 };
 
@@ -125,6 +136,32 @@ const acceptClubInviteIfPresent = async (params: URLSearchParams) => {
   }
 
   return true;
+};
+
+const acceptGuardianInviteIfPresent = async (params: URLSearchParams) => {
+  const guardianInviteToken = getGuardianInviteToken(params);
+  if (!guardianInviteToken) {
+    return false;
+  }
+
+  const { error } = await supabase.functions.invoke('acceptOwnerPlayerGuardianInvite', {
+    body: {
+      token: guardianInviteToken,
+      fullName: null,
+    },
+  });
+
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error, 'Could not accept guardian invitation.'));
+  }
+
+  return true;
+};
+
+const acceptInvitesIfPresent = async (params: URLSearchParams) => {
+  const clubAccepted = await acceptClubInviteIfPresent(params);
+  const guardianAccepted = await acceptGuardianInviteIfPresent(params);
+  return clubAccepted || guardianAccepted;
 };
 
 export default function AuthCallbackScreen() {
@@ -206,7 +243,7 @@ export default function AuthCallbackScreen() {
           if (!cancelled) {
             if (hasSession) {
               setMessage('Accepting invitation...');
-              await acceptClubInviteIfPresent(effectiveParams);
+              await acceptInvitesIfPresent(effectiveParams);
               router.replace('/(tabs)/profile');
             } else {
               router.replace({ pathname: '/(tabs)/profile', params: { authMode: 'login' } });
@@ -222,7 +259,7 @@ export default function AuthCallbackScreen() {
             router.replace('/update-password');
           } else {
             setMessage('Accepting invitation...');
-            await acceptClubInviteIfPresent(effectiveParams);
+            await acceptInvitesIfPresent(effectiveParams);
             router.replace('/(tabs)/profile');
           }
         }

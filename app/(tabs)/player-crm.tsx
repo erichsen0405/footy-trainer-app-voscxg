@@ -40,6 +40,10 @@ import {
   setOwnerPlayerCrmTags,
   saveOwnerPlayerGuardianContact,
   deleteOwnerPlayerGuardianContact,
+  inviteOwnerPlayerGuardianContact,
+  resendOwnerPlayerGuardianInvite,
+  cancelOwnerPlayerGuardianInvite,
+  revokeOwnerPlayerGuardianAccess,
 } from '@/services/ownerPlayerCrmService';
 
 type CrmTab = 'players' | 'teams' | 'tags';
@@ -110,6 +114,23 @@ function compactDateLabel(value: string | null): string {
 
 function getStatusMeta(status: OwnerCrmStatus) {
   return STATUS_OPTIONS.find((option) => option.value === status) ?? STATUS_OPTIONS[0];
+}
+
+function getGuardianInviteLabel(contact: OwnerPlayerCrmGuardianContact): string {
+  if (contact.accessStatus === 'active') return 'Access active';
+  if (contact.inviteStatus === 'pending') return 'Invite pending';
+  if (contact.inviteStatus === 'accepted') return 'Accepted';
+  if (contact.inviteStatus === 'cancelled') return 'Cancelled';
+  if (contact.inviteStatus === 'expired') return 'Expired';
+  if (contact.inviteStatus === 'revoked') return 'Revoked';
+  return 'No access';
+}
+
+function getGuardianInviteColor(contact: OwnerPlayerCrmGuardianContact, colors: ReturnType<typeof getColors>): string {
+  if (contact.accessStatus === 'active' || contact.inviteStatus === 'accepted') return '#16a34a';
+  if (contact.inviteStatus === 'pending') return '#f59e0b';
+  if (contact.inviteStatus === 'revoked' || contact.inviteStatus === 'cancelled') return colors.error;
+  return colors.textSecondary;
 }
 
 function normalizeOptionalText(value: string): string | null {
@@ -287,6 +308,21 @@ function PlayerCrmScreen() {
     [activeOwnerAccountId, selectedPlayerId],
   );
 
+  const showGuardianInviteDeliveryAlert = useCallback((payload: OwnerPlayerCrmDetail, fallbackMessage: string) => {
+    const delivery = payload.guardianInviteDelivery;
+    if (!delivery) {
+      Alert.alert('Guardian invite', fallbackMessage);
+      return;
+    }
+
+    if (delivery.status === 'sent') {
+      Alert.alert('Guardian invite', 'Invitation email sent.');
+      return;
+    }
+
+    Alert.alert('Guardian invite', delivery.warning || 'Invitation was saved, but the email could not be sent.');
+  }, []);
+
   const handleSaveProfile = useCallback(async () => {
     if (!activeOwnerAccountId || !selectedPlayerId) return;
     setDetailSaving(true);
@@ -440,6 +476,110 @@ function PlayerCrmScreen() {
               setList(payload);
             } catch (error: any) {
               Alert.alert('CRM', error.message || 'Could not remove guardian contact.');
+            } finally {
+              setDetailSaving(false);
+            }
+          },
+        },
+      ]);
+    },
+    [activeOwnerAccountId, selectedPlayerId],
+  );
+
+  const handleInviteGuardian = useCallback(
+    async (contact: OwnerPlayerCrmGuardianContact) => {
+      if (!activeOwnerAccountId || !selectedPlayerId || !contact.email) return;
+      setDetailSaving(true);
+      try {
+        const payload = await inviteOwnerPlayerGuardianContact({
+          ownerAccountId: activeOwnerAccountId,
+          playerId: selectedPlayerId,
+          contactId: contact.id,
+        });
+        setDetail(payload);
+        setList(payload);
+        showGuardianInviteDeliveryAlert(payload, 'Invitation created.');
+      } catch (error: any) {
+        Alert.alert('Guardian invite', error.message || 'Could not invite guardian.');
+      } finally {
+        setDetailSaving(false);
+      }
+    },
+    [activeOwnerAccountId, selectedPlayerId, showGuardianInviteDeliveryAlert],
+  );
+
+  const handleResendGuardianInvite = useCallback(
+    async (contact: OwnerPlayerCrmGuardianContact) => {
+      if (!activeOwnerAccountId || !selectedPlayerId || !contact.inviteId) return;
+      setDetailSaving(true);
+      try {
+        const payload = await resendOwnerPlayerGuardianInvite({
+          ownerAccountId: activeOwnerAccountId,
+          playerId: selectedPlayerId,
+          inviteId: contact.inviteId,
+        });
+        setDetail(payload);
+        setList(payload);
+        showGuardianInviteDeliveryAlert(payload, 'Invitation resent.');
+      } catch (error: any) {
+        Alert.alert('Guardian invite', error.message || 'Could not resend guardian invite.');
+      } finally {
+        setDetailSaving(false);
+      }
+    },
+    [activeOwnerAccountId, selectedPlayerId, showGuardianInviteDeliveryAlert],
+  );
+
+  const handleCancelGuardianInvite = useCallback(
+    (contact: OwnerPlayerCrmGuardianContact) => {
+      if (!activeOwnerAccountId || !selectedPlayerId || !contact.inviteId) return;
+      Alert.alert('Cancel invite', `Cancel invitation for ${contact.fullName}?`, [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Cancel invite',
+          style: 'destructive',
+          onPress: async () => {
+            setDetailSaving(true);
+            try {
+              const payload = await cancelOwnerPlayerGuardianInvite({
+                ownerAccountId: activeOwnerAccountId,
+                playerId: selectedPlayerId,
+                inviteId: contact.inviteId!,
+              });
+              setDetail(payload);
+              setList(payload);
+            } catch (error: any) {
+              Alert.alert('Guardian invite', error.message || 'Could not cancel guardian invite.');
+            } finally {
+              setDetailSaving(false);
+            }
+          },
+        },
+      ]);
+    },
+    [activeOwnerAccountId, selectedPlayerId],
+  );
+
+  const handleRevokeGuardianAccess = useCallback(
+    (contact: OwnerPlayerCrmGuardianContact) => {
+      if (!activeOwnerAccountId || !selectedPlayerId) return;
+      Alert.alert('Revoke access', `Remove app access for ${contact.fullName}?`, [
+        { text: 'Keep access', style: 'cancel' },
+        {
+          text: 'Revoke',
+          style: 'destructive',
+          onPress: async () => {
+            setDetailSaving(true);
+            try {
+              const payload = await revokeOwnerPlayerGuardianAccess({
+                ownerAccountId: activeOwnerAccountId,
+                playerId: selectedPlayerId,
+                contactId: contact.id,
+              });
+              setDetail(payload);
+              setList(payload);
+            } catch (error: any) {
+              Alert.alert('Guardian invite', error.message || 'Could not revoke guardian access.');
             } finally {
               setDetailSaving(false);
             }
@@ -741,6 +881,10 @@ function PlayerCrmScreen() {
         onToggleTag={handleTogglePlayerTag}
         onSaveGuardian={handleSaveGuardian}
         onDeleteGuardian={handleDeleteGuardian}
+        onInviteGuardian={handleInviteGuardian}
+        onResendGuardianInvite={handleResendGuardianInvite}
+        onCancelGuardianInvite={handleCancelGuardianInvite}
+        onRevokeGuardianAccess={handleRevokeGuardianAccess}
         onRefresh={() => void refreshSelectedDetail()}
       />
 
@@ -1016,6 +1160,10 @@ function PlayerDetailModal({
   onToggleTag,
   onSaveGuardian,
   onDeleteGuardian,
+  onInviteGuardian,
+  onResendGuardianInvite,
+  onCancelGuardianInvite,
+  onRevokeGuardianAccess,
   onRefresh,
 }: {
   visible: boolean;
@@ -1036,6 +1184,10 @@ function PlayerDetailModal({
   onToggleTag: (tag: OwnerPlayerCrmTag) => void;
   onSaveGuardian: () => void;
   onDeleteGuardian: (contact: OwnerPlayerCrmGuardianContact) => void;
+  onInviteGuardian: (contact: OwnerPlayerCrmGuardianContact) => void;
+  onResendGuardianInvite: (contact: OwnerPlayerCrmGuardianContact) => void;
+  onCancelGuardianInvite: (contact: OwnerPlayerCrmGuardianContact) => void;
+  onRevokeGuardianAccess: (contact: OwnerPlayerCrmGuardianContact) => void;
   onRefresh: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -1197,19 +1349,88 @@ function PlayerDetailModal({
               >
                 <Text style={styles.primaryButtonText}>Save guardian</Text>
               </TouchableOpacity>
-              {detail.guardianContacts.map((contact) => (
-                <View key={contact.id} style={[styles.contactRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
-                  <View style={styles.playerMain}>
-                    <Text style={[styles.contactName, { color: colors.text }]}>{contact.fullName}</Text>
-                    <Text style={[styles.playerMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {[contact.relation, contact.email, contact.phoneNumber].filter(Boolean).join(' · ')}
-                    </Text>
+              {detail.guardianContacts.map((contact) => {
+                const inviteColor = getGuardianInviteColor(contact, colors);
+                const canInvite = Boolean(contact.email) && contact.accessStatus !== 'active' && contact.inviteStatus !== 'pending';
+                const canResend = contact.inviteStatus === 'pending' && Boolean(contact.inviteId);
+                const canCancel = contact.inviteStatus === 'pending' && Boolean(contact.inviteId);
+                const canRevoke = contact.accessStatus === 'active';
+
+                return (
+                  <View key={contact.id} style={[styles.contactRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                    <View style={styles.contactHeader}>
+                      <View style={styles.playerMain}>
+                        <Text style={[styles.contactName, { color: colors.text }]}>{contact.fullName}</Text>
+                        <Text style={[styles.playerMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                          {[contact.relation, contact.email, contact.phoneNumber].filter(Boolean).join(' · ')}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => onDeleteGuardian(contact)} style={styles.smallIconButton}>
+                        <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={18} color={colors.error} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.guardianStatusRow}>
+                      <View style={[styles.guardianStatusDot, { backgroundColor: inviteColor }]} />
+                      <Text style={[styles.guardianStatusText, { color: inviteColor }]}>{getGuardianInviteLabel(contact)}</Text>
+                      {contact.inviteExpiresAt && contact.inviteStatus === 'pending' ? (
+                        <Text style={[styles.guardianStatusMeta, { color: colors.textSecondary }]}>
+                          Expires {compactDateLabel(contact.inviteExpiresAt)}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    {!contact.email ? (
+                      <Text style={[styles.emptyInline, { color: colors.textSecondary }]}>Add an email before inviting.</Text>
+                    ) : null}
+
+                    <View style={styles.guardianActions}>
+                      {canRevoke ? (
+                        <TouchableOpacity
+                          style={[styles.secondaryActionButton, { borderColor: colors.error }, saving && styles.disabledButton]}
+                          onPress={() => onRevokeGuardianAccess(contact)}
+                          disabled={saving}
+                        >
+                          <IconSymbol ios_icon_name="person.crop.circle.badge.xmark" android_material_icon_name="person_remove" size={17} color={colors.error} />
+                          <Text style={[styles.secondaryActionText, { color: colors.error }]}>Revoke</Text>
+                        </TouchableOpacity>
+                      ) : canResend || canCancel ? (
+                        <>
+                          <TouchableOpacity
+                            style={[styles.secondaryActionButton, { borderColor: colors.border }, saving && styles.disabledButton]}
+                            onPress={() => onResendGuardianInvite(contact)}
+                            disabled={saving}
+                          >
+                            <IconSymbol ios_icon_name="paperplane.fill" android_material_icon_name="send" size={16} color={colors.primary} />
+                            <Text style={[styles.secondaryActionText, { color: colors.primary }]}>Resend</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.secondaryActionButton, { borderColor: colors.border }, saving && styles.disabledButton]}
+                            onPress={() => onCancelGuardianInvite(contact)}
+                            disabled={saving}
+                          >
+                            <IconSymbol ios_icon_name="xmark.circle" android_material_icon_name="cancel" size={17} color={colors.error} />
+                            <Text style={[styles.secondaryActionText, { color: colors.error }]}>Cancel</Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.secondaryActionButton,
+                            { borderColor: canInvite ? colors.primary : colors.border },
+                            (!canInvite || saving) && styles.disabledButton,
+                          ]}
+                          onPress={() => onInviteGuardian(contact)}
+                          disabled={!canInvite || saving}
+                        >
+                          <IconSymbol ios_icon_name="envelope.fill" android_material_icon_name="mail" size={16} color={canInvite ? colors.primary : colors.textSecondary} />
+                          <Text style={[styles.secondaryActionText, { color: canInvite ? colors.primary : colors.textSecondary }]}>Invite</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-                  <TouchableOpacity onPress={() => onDeleteGuardian(contact)}>
-                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={18} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                );
+              })}
             </View>
 
             <View style={[styles.formPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1712,12 +1933,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
+    gap: 10,
+  },
+  contactHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
   },
   contactName: {
     fontSize: 15,
+    fontWeight: '800',
+  },
+  guardianStatusRow: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  guardianStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  guardianStatusText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  guardianStatusMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  guardianActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  secondaryActionButton: {
+    minHeight: 36,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  secondaryActionText: {
+    fontSize: 12,
     fontWeight: '800',
   },
   timelineRow: {
