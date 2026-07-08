@@ -18,6 +18,9 @@ const EMAIL_OTP_TYPES: ReadonlySet<EmailOtpType> = new Set([
 ]);
 
 const AUTH_PARAM_KEYS = ['code', 'access_token', 'refresh_token', 'token_hash', 'token', 'type'];
+const INVITE_TOKEN_PARAM_KEYS = ['clubInviteToken', 'guardianInviteToken'];
+const INVITE_META_PARAM_KEYS = ['clubInviteAuthType', 'guardianInviteAuthType'];
+const CALLBACK_PARAM_KEYS = [...AUTH_PARAM_KEYS, ...INVITE_TOKEN_PARAM_KEYS, ...INVITE_META_PARAM_KEYS];
 
 const parseParams = (
   incomingUrl: string | null | undefined,
@@ -62,15 +65,44 @@ const mergeParams = (...paramSets: URLSearchParams[]) => {
   return merged;
 };
 
-const hasAnyAuthParam = (params: URLSearchParams) =>
-  AUTH_PARAM_KEYS.some((key) => {
+const hasAnyParam = (params: URLSearchParams, keys: string[]) =>
+  keys.some((key) => {
     const value = params.get(key);
     return Boolean(value && value.length > 0);
   });
 
+const hasAnyAuthParam = (params: URLSearchParams) => hasAnyParam(params, AUTH_PARAM_KEYS);
+
+const hasAnyInviteTokenParam = (params: URLSearchParams) =>
+  hasAnyParam(params, INVITE_TOKEN_PARAM_KEYS);
+
+const hasAnyCallbackParam = (params: URLSearchParams) =>
+  hasAnyParam(params, CALLBACK_PARAM_KEYS);
+
 const getEmailOtpType = (typeValue: string | null): EmailOtpType | null => {
   if (!typeValue) return null;
   return EMAIL_OTP_TYPES.has(typeValue as EmailOtpType) ? (typeValue as EmailOtpType) : null;
+};
+
+const shouldRetryCallbackParams = (params: URLSearchParams) => {
+  if (!hasAnyCallbackParam(params)) {
+    return true;
+  }
+
+  if (!hasAnyAuthParam(params)) {
+    return true;
+  }
+
+  if (hasAnyInviteTokenParam(params)) {
+    return false;
+  }
+
+  const otpType = getEmailOtpType(params.get('type'));
+  const hasInviteAuthType = Boolean(
+    params.get('clubInviteAuthType') || params.get('guardianInviteAuthType')
+  );
+
+  return hasInviteAuthType || otpType === 'invite' || otpType === 'magiclink';
 };
 
 const waitForSession = async (attempts: number, delayMs: number) => {
@@ -186,14 +218,14 @@ export default function AuthCallbackScreen() {
         const parsedFromInitial = parseParams(initialUrl, routeParams);
         let effectiveParams = mergeParams(parsedFromHook, parsedFromInitial);
 
-        if (!hasAnyAuthParam(effectiveParams)) {
-          // iOS/Safari can open the callback route before params are visible to the hook.
+        if (shouldRetryCallbackParams(effectiveParams)) {
+          // iOS/Safari can open the callback route before all auth/invite params are visible.
           for (let i = 0; i < 6; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 200));
             const retryInitialUrl = await Linking.getInitialURL();
             const retryParams = parseParams(retryInitialUrl, routeParams);
             effectiveParams = mergeParams(effectiveParams, retryParams);
-            if (hasAnyAuthParam(effectiveParams)) break;
+            if (!shouldRetryCallbackParams(effectiveParams)) break;
           }
         }
 

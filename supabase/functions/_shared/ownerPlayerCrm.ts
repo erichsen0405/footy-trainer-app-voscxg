@@ -1522,27 +1522,6 @@ async function loadGuardianAccessForPlayer(
   return (data as GuardianAccessRow | null) ?? null;
 }
 
-async function guardianAlreadyUsesParentSeat(
-  client: QueryClient,
-  ownerAccountId: string,
-  guardianUserId: string
-): Promise<boolean> {
-  const { data, error } = await client
-    .from('owner_player_guardians')
-    .select('id')
-    .eq('owner_account_id', ownerAccountId)
-    .eq('guardian_user_id', guardianUserId)
-    .eq('status', 'active')
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new AppError('INTERNAL_ERROR', error.message || 'Could not load guardian seat usage.', 500);
-  }
-
-  return Boolean(data);
-}
-
 function relationForGuardianAccess(relation: GuardianContactRow['relation'] | GuardianInviteRow['relation']): 'parent' | 'guardian' {
   return relation === 'parent' ? 'parent' : 'guardian';
 }
@@ -1875,33 +1854,11 @@ async function loadOwnerSeatStatusPayload(client: QueryClient, ownerAccountId: s
   return payload;
 }
 
-async function assertGuardianParentSeatAvailable(
+async function loadGuardianSeatStatus(
   client: QueryClient,
-  ownerAccountId: string,
-  guardianUserId: string
+  ownerAccountId: string
 ): Promise<Record<string, unknown>> {
-  const seatStatus = await loadOwnerSeatStatusPayload(client, ownerAccountId);
-  const seats = Array.isArray(seatStatus.seats) ? seatStatus.seats : [];
-  const parentSeat = seats.find((entry) => {
-    return entry && typeof entry === 'object' && (entry as Record<string, unknown>).role === 'parent';
-  }) as Record<string, unknown> | undefined;
-
-  if (!parentSeat) {
-    throw new AppError('SEAT_LIMIT_REACHED', 'The owner account has no available seats for this role.', 409);
-  }
-
-  const effectiveSeats = Number(parentSeat.effectiveSeats ?? 0);
-  const seatsAvailable = Number(parentSeat.seatsAvailable ?? 0);
-  if (effectiveSeats <= 0) {
-    throw new AppError('LICENSE_INACTIVE', 'The owner account license is not active.', 409);
-  }
-
-  const alreadyUsesSeat = await guardianAlreadyUsesParentSeat(client, ownerAccountId, guardianUserId);
-  if (!alreadyUsesSeat && seatsAvailable <= 0) {
-    throw new AppError('SEAT_LIMIT_REACHED', 'The owner account has no available seats for this role.', 409);
-  }
-
-  return seatStatus;
+  return loadOwnerSeatStatusPayload(client, ownerAccountId);
 }
 
 export async function acceptOwnerPlayerGuardianInviteAction(
@@ -1929,7 +1886,7 @@ export async function acceptOwnerPlayerGuardianInviteAction(
 
   const owner = await loadOwnerAccount(client, invite.owner_account_id);
   await assertOwnerPlayerExists(client, owner.id, invite.player_id);
-  const seatStatus = await assertGuardianParentSeatAvailable(client, owner.id, actorUserId);
+  const seatStatus = await loadGuardianSeatStatus(client, owner.id);
   const relation = relationForGuardianAccess(invite.relation);
   const now = new Date().toISOString();
 

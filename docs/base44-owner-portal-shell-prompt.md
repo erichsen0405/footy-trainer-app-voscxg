@@ -134,11 +134,13 @@ brugeren allerede har valgt en gyldig workspace.
   - bruges til at vise effective seats, plan, status og feature flags.
 - `assertOwnerSeatAvailable`
   - body: `{ "ownerAccountId": "<uuid>", "role": "player" }`
-  - kaldes foer oprettelse af player/staff/parent seats.
+  - kaldes foer oprettelse af player seats og andre begrænsede seats.
+  - maa ikke kaldes for `coach`, `assistant_coach` eller `parent`, som er
+    ubegrænsede count-only roller.
 
 Hvis `assertOwnerSeatAvailable` returnerer `SEAT_LIMIT_REACHED`, skal UI blokere
-flowet og vise upsell/kontakt super admin. Hvis svaret er `LICENSE_INACTIVE`,
-skal UI vise at licensen ikke er aktiv.
+player-flowet og vise upsell/kontakt super admin. Hvis svaret er
+`LICENSE_INACTIVE`, skal UI vise at licensen ikke er aktiv.
 
 ### Platform Admin Owner Provisioning
 
@@ -164,10 +166,7 @@ Create owner payload i Base44:
   "seatOverrides": {
     "owner": 1,
     "admin": 3,
-    "coach": 10,
-    "assistant_coach": 5,
-    "player": 200,
-    "parent": 0
+    "player": 200
   }
 }
 ```
@@ -183,8 +182,6 @@ For private coach businesses:
   "seatOverrides": {
     "owner": 1,
     "admin": 1,
-    "coach": 1,
-    "assistant_coach": 0,
     "player": 20
   }
 }

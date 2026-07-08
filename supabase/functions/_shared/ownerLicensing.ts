@@ -13,12 +13,13 @@ export type OwnerSeatRole = 'owner' | 'admin' | 'coach' | 'assistant_coach' | 'p
 
 export type OwnerSeatLine = {
   role: OwnerSeatRole;
-  planSeats: number;
+  isUnlimited: boolean;
+  planSeats: number | null;
   overrideSeats: number | null;
-  addOnSeats: number;
-  effectiveSeats: number;
+  addOnSeats: number | null;
+  effectiveSeats: number | null;
   seatsUsed: number;
-  seatsAvailable: number;
+  seatsAvailable: number | null;
   source: string;
   planCode: string | null;
 };
@@ -173,6 +174,14 @@ function requireNumber(value: unknown, fieldName: string): number {
   return value;
 }
 
+function nullableNumber(value: unknown, fieldName: string): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return requireNumber(value, fieldName);
+}
+
 function requireInputString(value: unknown, fieldName: string): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new AppError('VALIDATION_ERROR', `${fieldName} is required.`, 400);
@@ -321,17 +330,25 @@ export function normalizeOwnerSeatLine(payload: unknown): OwnerSeatLine {
     throw new AppError('INTERNAL_ERROR', 'role is missing from backend response.', 500);
   }
 
+  const isUnlimited = record.isUnlimited === true;
   const overrideSeats = record.overrideSeats;
   return {
     role: role as OwnerSeatRole,
-    planSeats: requireNumber(record.planSeats, 'planSeats'),
+    isUnlimited,
+    planSeats: isUnlimited ? nullableNumber(record.planSeats, 'planSeats') : requireNumber(record.planSeats, 'planSeats'),
     overrideSeats: overrideSeats === null || overrideSeats === undefined
       ? null
       : requireNumber(overrideSeats, 'overrideSeats'),
-    addOnSeats: requireNumber(record.addOnSeats, 'addOnSeats'),
-    effectiveSeats: requireNumber(record.effectiveSeats, 'effectiveSeats'),
+    addOnSeats: isUnlimited
+      ? nullableNumber(record.addOnSeats, 'addOnSeats')
+      : requireNumber(record.addOnSeats, 'addOnSeats'),
+    effectiveSeats: isUnlimited
+      ? nullableNumber(record.effectiveSeats, 'effectiveSeats')
+      : requireNumber(record.effectiveSeats, 'effectiveSeats'),
     seatsUsed: requireNumber(record.seatsUsed, 'seatsUsed'),
-    seatsAvailable: requireNumber(record.seatsAvailable, 'seatsAvailable'),
+    seatsAvailable: isUnlimited
+      ? nullableNumber(record.seatsAvailable, 'seatsAvailable')
+      : requireNumber(record.seatsAvailable, 'seatsAvailable'),
     source: requireString(record.source, 'source'),
     planCode: maybeString(record.planCode),
   };
