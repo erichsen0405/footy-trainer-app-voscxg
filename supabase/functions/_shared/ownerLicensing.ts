@@ -37,6 +37,28 @@ export type OwnerSeatStatus = {
   canAddPlayers: boolean;
 };
 
+export type PlatformAdminOwnerAccountListItem = {
+  ownerAccountId: string;
+  ownerType: 'club' | 'private_coach_business';
+  ownerName: string;
+  ownerStatus: string;
+  source: string;
+  ownerUserId: string | null;
+  ownerEmail: string | null;
+  coachAccountId: string | null;
+  clubId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  seatStatus: OwnerSeatStatus;
+};
+
+export type PlatformAdminOwnerAccountsPayload = {
+  userId: string;
+  email: string;
+  isPlatformAdmin: boolean;
+  ownerAccounts: PlatformAdminOwnerAccountListItem[];
+};
+
 export type CreateOwnerAccountInput = {
   ownerType: 'club' | 'private_coach_business';
   ownerName: string;
@@ -86,6 +108,14 @@ function requireUuid(value: unknown, fieldName: string): string {
 
 function maybeUuid(value: unknown, fieldName: string): string | null {
   if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  return requireUuid(value, fieldName);
+}
+
+function nullableUuid(value: unknown, fieldName: string): string | null {
+  if (value === null || value === undefined) {
     return null;
   }
 
@@ -306,6 +336,55 @@ export async function createOwnerAccountAction(
   });
 
   return normalizeOwnerSeatStatusPayload(payload);
+}
+
+export function normalizePlatformAdminOwnerAccountListItem(payload: unknown): PlatformAdminOwnerAccountListItem {
+  const record = asRecord(payload);
+  const ownerType = record.ownerType;
+  if (typeof ownerType !== 'string' || !OWNER_TYPES.has(ownerType)) {
+    throw new AppError('INTERNAL_ERROR', 'ownerType is missing from backend response.', 500);
+  }
+
+  return {
+    ownerAccountId: requireUuid(record.ownerAccountId, 'ownerAccountId'),
+    ownerType: ownerType as PlatformAdminOwnerAccountListItem['ownerType'],
+    ownerName: requireString(record.ownerName, 'ownerName'),
+    ownerStatus: requireString(record.ownerStatus, 'ownerStatus'),
+    source: requireString(record.source, 'source'),
+    ownerUserId: nullableUuid(record.ownerUserId, 'ownerUserId'),
+    ownerEmail: maybeString(record.ownerEmail),
+    coachAccountId: nullableUuid(record.coachAccountId, 'coachAccountId'),
+    clubId: nullableUuid(record.clubId, 'clubId'),
+    createdAt: maybeString(record.createdAt),
+    updatedAt: maybeString(record.updatedAt),
+    seatStatus: normalizeOwnerSeatStatusPayload(record.seatStatus),
+  };
+}
+
+export function normalizePlatformAdminOwnerAccountsPayload(payload: unknown): PlatformAdminOwnerAccountsPayload {
+  const record = asRecord(payload);
+  const ownerAccounts = record.ownerAccounts;
+  if (!Array.isArray(ownerAccounts)) {
+    throw new AppError('INTERNAL_ERROR', 'ownerAccounts is missing from backend response.', 500);
+  }
+
+  return {
+    userId: requireUuid(record.userId, 'userId'),
+    email: requireString(record.email, 'email'),
+    isPlatformAdmin: requireBoolean(record.isPlatformAdmin, 'isPlatformAdmin'),
+    ownerAccounts: ownerAccounts.map(normalizePlatformAdminOwnerAccountListItem),
+  };
+}
+
+export async function listPlatformAdminOwnerAccountsAction(
+  client: RpcClient,
+  actorUserId: string
+): Promise<PlatformAdminOwnerAccountsPayload> {
+  const payload = await callRpc<Record<string, unknown>>(client, 'list_platform_admin_owner_accounts', {
+    p_actor_user_id: actorUserId,
+  });
+
+  return normalizePlatformAdminOwnerAccountsPayload(payload);
 }
 
 export async function upsertOwnerSeatAdjustmentAction(

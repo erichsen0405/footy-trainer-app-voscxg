@@ -2,6 +2,7 @@ import {
   assertOwnerSeatAvailableAction,
   createOwnerAccountAction,
   getOwnerSeatStatusAction,
+  listPlatformAdminOwnerAccountsAction,
   parseAssertOwnerSeatBody,
   parseCreateOwnerAccountBody,
   parseOwnerSeatStatusBody,
@@ -238,6 +239,59 @@ describe('owner licensing backend helpers', () => {
       p_seat_overrides: {
         player: 100,
       },
+    });
+  });
+
+  it('returns platform admin owner accounts with seat status', async () => {
+    const client = createRpcClient({
+      data: {
+        userId: actorUserId,
+        email: 'owner@platform.dk',
+        isPlatformAdmin: true,
+        ownerAccounts: [
+          {
+            ownerAccountId,
+            ownerType: 'private_coach_business',
+            ownerName: 'Demo Coach',
+            ownerStatus: 'active',
+            source: 'super_admin',
+            ownerUserId: null,
+            ownerEmail: null,
+            coachAccountId: null,
+            clubId: null,
+            createdAt: '2026-07-08T10:00:00.000Z',
+            updatedAt: '2026-07-08T10:00:00.000Z',
+            seatStatus: ownerSeatStatusPayload,
+          },
+        ],
+      },
+      error: null,
+    });
+
+    await expect(listPlatformAdminOwnerAccountsAction(client, actorUserId)).resolves.toMatchObject({
+      userId: actorUserId,
+      email: 'owner@platform.dk',
+      isPlatformAdmin: true,
+      ownerAccounts: [
+        {
+          ownerAccountId,
+          ownerType: 'private_coach_business',
+          ownerName: 'Demo Coach',
+          ownerUserId: null,
+          coachAccountId: null,
+          seatStatus: {
+            ownerAccountId,
+            playerSeats: {
+              effectiveSeats: 20,
+              seatsAvailable: 8,
+            },
+          },
+        },
+      ],
+    });
+
+    expect(client.rpc).toHaveBeenCalledWith('list_platform_admin_owner_accounts', {
+      p_actor_user_id: actorUserId,
     });
   });
 

@@ -13,6 +13,7 @@ Disse Supabase Edge Functions er deployet til projektet
 - `assertOwnerSeatAvailable`
 - `createOwnerAccount`
 - `upsertOwnerSeatAdjustment`
+- `listPlatformAdminOwnerAccounts`
 
 Base URL:
 
@@ -196,15 +197,15 @@ await supabase.functions.invoke('createOwnerAccount', {
 });
 ```
 
-Private coach business request:
+Super-admin private coach business request:
 
 ```ts
 await supabase.functions.invoke('createOwnerAccount', {
   body: {
     ownerType: 'private_coach_business',
     ownerName: 'ME Training',
-    ownerUserId: '<auth user uuid>',
-    planCode: 'trainer_standard',
+    ownerUserId: null,
+    planCode: null,
     seatOverrides: {
       owner: 1,
       admin: 1,
@@ -216,10 +217,73 @@ await supabase.functions.invoke('createOwnerAccount', {
 });
 ```
 
+`ownerUserId: null` is valid for a blank super-admin-created coach workspace.
+Do not filter these rows out in Base44. iOS subscription-created coach
+workspaces may have `ownerUserId` and `planCode`; super-admin-created blank
+workspaces should use seat overrides and no plan.
+
 Success response is the same owner seat-status payload as
 `getOwnerSeatStatus`.
 
-## 4. Platform Admin Adjusts Seats
+## 4. Platform Admin Lists Owner Accounts
+
+Function:
+
+```text
+listPlatformAdminOwnerAccounts
+```
+
+Use this for the platform-admin owner/coach account list. Do not read
+`owner_accounts` directly from the browser for this list: RLS only exposes owner
+accounts where the current user is linked as a member/player/guardian, so blank
+super-admin-created workspaces with `ownerUserId: null` and
+`coachAccountId: null` will not appear via direct table reads.
+
+Request:
+
+```ts
+await supabase.functions.invoke('listPlatformAdminOwnerAccounts');
+```
+
+Success response:
+
+```ts
+{
+  success: true,
+  data: {
+    userId: string;
+    email: string;
+    isPlatformAdmin: true;
+    ownerAccounts: Array<{
+      ownerAccountId: string;
+      ownerType: 'club' | 'private_coach_business';
+      ownerName: string;
+      ownerStatus: string;
+      source: string;
+      ownerUserId: string | null;
+      ownerEmail: string | null;
+      coachAccountId: string | null;
+      clubId: string | null;
+      createdAt: string | null;
+      updatedAt: string | null;
+      seatStatus: OwnerSeatStatus;
+    }>;
+  };
+}
+```
+
+UI/list rules:
+
+- Unwrap `response.data`.
+- For coach workspace list, show rows where
+  `ownerType === 'private_coach_business'`.
+- Do not filter out rows where `ownerUserId` is `null`.
+- Do not filter out rows where `coachAccountId` is `null`.
+- Show player seats from `row.seatStatus.playerSeats`.
+- After `createOwnerAccount` succeeds, refetch this endpoint so the new owner
+  appears without manual reload.
+
+## 5. Platform Admin Adjusts Seats
 
 Function:
 
