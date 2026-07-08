@@ -43,6 +43,8 @@ interface CreatePlayerModalProps {
   visible: boolean;
   onClose: () => void;
   onPlayerCreated: () => void;
+  ownerAccountId?: string | null;
+  successRedirectLabel?: string;
 }
 
 interface SearchResult {
@@ -55,6 +57,8 @@ export default function CreatePlayerModal({
   visible,
   onClose,
   onPlayerCreated,
+  ownerAccountId,
+  successRedirectLabel = 'Returnerer til profilen...',
 }: CreatePlayerModalProps) {
   const [searchEmail, setSearchEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -156,6 +160,7 @@ export default function CreatePlayerModal({
         body: {
           action: 'add',
           playerId: searchResult.id,
+          ...(ownerAccountId ? { ownerAccountId } : {}),
         },
       });
 
@@ -205,7 +210,7 @@ export default function CreatePlayerModal({
     } finally {
       setLoading(false);
     }
-  }, [searchResult, resetForm, onPlayerCreated, onClose]);
+  }, [searchResult, ownerAccountId, resetForm, onPlayerCreated, onClose]);
 
   return (
     <Modal
@@ -247,7 +252,7 @@ export default function CreatePlayerModal({
               </View>
             </View>
             <ActivityIndicator size="small" color={colors.primary} style={styles.successLoader} />
-            <Text style={styles.successRedirectText}>Returnerer til profilen...</Text>
+            <Text style={styles.successRedirectText}>{successRedirectLabel}</Text>
           </View>
         ) : (
           // Search and Add Player Form

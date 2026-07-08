@@ -27,9 +27,6 @@ import { supabase } from '@/integrations/supabase/client';
 import ExternalCalendarManager from '@/components/ExternalCalendarManager';
 import SubscriptionManager from '@/components/SubscriptionManager';
 import AppleSubscriptionManager from '@/components/AppleSubscriptionManager';
-import CreatePlayerModal from '@/components/CreatePlayerModal';
-import PlayersList from '@/components/PlayersList';
-import TeamManagement from '@/components/TeamManagement';
 import CategoryManagementModal from '@/components/CategoryManagementModal';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useFootball } from '@/contexts/FootballContext';
@@ -555,9 +552,7 @@ export default function ProfileScreen() {
   const overdueScheduledIdsRef = useRef<string[]>(DEFAULT_OVERDUE_REMINDER_SETTINGS.scheduledNotificationIds);
   const [overdueSettingsLoaded, setOverdueSettingsLoaded] = useState(false);
   const [overduePermissionDenied, setOverduePermissionDenied] = useState(false);
-  const [showCreatePlayerModal, setShowCreatePlayerModal] = useState(false);
   const [showCategoryManagementModal, setShowCategoryManagementModal] = useState(false);
-  const [playersRefreshTrigger, setPlayersRefreshTrigger] = useState(0);
   const [isAcceptingTrainerRequest, setIsAcceptingTrainerRequest] = useState(false);
   const loginNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openSubscriptionScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -632,9 +627,9 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (routeOpenTeamPlayers === '1' || routeOpenTeamPlayers === 'true') {
       setIsTeamManagementExpanded(true);
-      setPlayersRefreshTrigger(prev => prev + 1);
+      router.push('/(tabs)/player-crm' as any);
     }
-  }, [routeOpenTeamPlayers]);
+  }, [routeOpenTeamPlayers, router]);
 
   const refreshNotificationPermission = useCallback(async () => {
     try {
@@ -967,15 +962,6 @@ export default function ProfileScreen() {
     setPaywallProcessing(false);
   }, []);
 
-  const handleCreatePlayer = useCallback(() => {
-    setShowCreatePlayerModal(true);
-  }, []);
-
-  const handlePlayerCreated = useCallback(() => {
-    setShowCreatePlayerModal(false);
-    setPlayersRefreshTrigger(prev => prev + 1);
-  }, []);
-
   const handleRefreshCategories = useCallback(async () => {
     if (refreshCategories) {
       await refreshCategories();
@@ -1184,7 +1170,6 @@ export default function ProfileScreen() {
 
       Alert.alert('Success', 'The request has been accepted.');
       await fetchAdminInfo(user.id);
-      setPlayersRefreshTrigger(prev => prev + 1);
     } catch (acceptError: any) {
       Alert.alert('Error', acceptError?.message || 'Could not accept the request');
     } finally {
@@ -1245,9 +1230,6 @@ export default function ProfileScreen() {
       return;
     }
 
-    if (userRole === 'admin' || userRole === 'trainer') {
-      setPlayersRefreshTrigger(prev => prev + 1);
-    }
   }, [focusNonce, user?.id, userRole]);
 
   useEffect(() => {
@@ -2401,30 +2383,20 @@ export default function ProfileScreen() {
                   />
                 )}
               >
-                <Text style={[styles.sectionDescription, { color: textSecondaryColor }]}>Manage your teams and players directly from your profile.</Text>
-                <TeamManagement />
-                <View style={{ marginTop: 16 }}>
-                  <TouchableOpacity
-                    style={[styles.addPlayerButton, { backgroundColor: colors.primary }]}
-                    onPress={handleCreatePlayer}
-                    activeOpacity={0.7}
-                    testID="profile.addPlayerButton"
-                  >
-                    <IconSymbol
-                      ios_icon_name="plus"
-                      android_material_icon_name="add"
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text style={styles.addPlayerButtonText}>Add player</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={{ marginTop: 16 }}>
-                  <PlayersList
-                    onCreatePlayer={handleCreatePlayer}
-                    refreshTrigger={playersRefreshTrigger}
+                <TouchableOpacity
+                  style={[styles.addPlayerButton, { backgroundColor: colors.primary }]}
+                  onPress={() => router.push('/(tabs)/player-crm' as any)}
+                  activeOpacity={0.7}
+                  testID="profile.openPlayerCrmButton"
+                >
+                  <IconSymbol
+                    ios_icon_name="person.2.fill"
+                    android_material_icon_name="groups"
+                    size={20}
+                    color="#fff"
                   />
-                </View>
+                  <Text style={styles.addPlayerButtonText}>Open Spiller CRM</Text>
+                </TouchableOpacity>
               </CollapsibleSection>
             </CardWrapper>
           )}
@@ -3179,11 +3151,6 @@ export default function ProfileScreen() {
         onClose={() => setShowCategoryManagementModal(false)}
         categories={categories}
         onRefresh={handleRefreshCategories}
-      />
-      <CreatePlayerModal
-        visible={showCreatePlayerModal}
-        onClose={() => setShowCreatePlayerModal(false)}
-        onPlayerCreated={handlePlayerCreated}
       />
     </ContainerWrapper>
   );
