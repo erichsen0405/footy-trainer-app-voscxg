@@ -59,6 +59,16 @@ export type PlatformAdminOwnerAccountsPayload = {
   ownerAccounts: PlatformAdminOwnerAccountListItem[];
 };
 
+export type DeleteOwnerAccountResult = {
+  ownerAccountId: string;
+  deleted: boolean;
+  ownerType: 'club' | 'private_coach_business';
+  ownerName: string;
+  coachAccountId: string | null;
+  clubId: string | null;
+  linkedWorkspaceDeleted: boolean;
+};
+
 export type CreateOwnerAccountInput = {
   ownerType: 'club' | 'private_coach_business';
   ownerName: string;
@@ -231,6 +241,13 @@ export function parseOwnerSeatStatusBody(body: unknown): { ownerAccountId: strin
   };
 }
 
+export function parseDeleteOwnerAccountBody(body: unknown): { ownerAccountId: string } {
+  const record = asRecord(body);
+  return {
+    ownerAccountId: requireUuid(record.ownerAccountId, 'ownerAccountId'),
+  };
+}
+
 export function parseAssertOwnerSeatBody(body: unknown): { ownerAccountId: string; role: OwnerSeatRole } {
   const record = asRecord(body);
   const role = record.role === 'assistant' ? 'assistant_coach' : record.role;
@@ -385,6 +402,38 @@ export async function listPlatformAdminOwnerAccountsAction(
   });
 
   return normalizePlatformAdminOwnerAccountsPayload(payload);
+}
+
+export function normalizeDeleteOwnerAccountResult(payload: unknown): DeleteOwnerAccountResult {
+  const record = asRecord(payload);
+  const ownerType = record.ownerType;
+  if (typeof ownerType !== 'string' || !OWNER_TYPES.has(ownerType)) {
+    throw new AppError('INTERNAL_ERROR', 'ownerType is missing from backend response.', 500);
+  }
+
+  return {
+    ownerAccountId: requireUuid(record.ownerAccountId, 'ownerAccountId'),
+    deleted: requireBoolean(record.deleted, 'deleted'),
+    ownerType: ownerType as DeleteOwnerAccountResult['ownerType'],
+    ownerName: requireString(record.ownerName, 'ownerName'),
+    coachAccountId: nullableUuid(record.coachAccountId, 'coachAccountId'),
+    clubId: nullableUuid(record.clubId, 'clubId'),
+    linkedWorkspaceDeleted: requireBoolean(record.linkedWorkspaceDeleted, 'linkedWorkspaceDeleted'),
+  };
+}
+
+export async function deleteOwnerAccountAction(
+  client: RpcClient,
+  actorUserId: string,
+  body: unknown
+): Promise<DeleteOwnerAccountResult> {
+  const input = parseDeleteOwnerAccountBody(body);
+  const payload = await callRpc<Record<string, unknown>>(client, 'delete_owner_account_as_platform_admin', {
+    p_actor_user_id: actorUserId,
+    p_owner_account_id: input.ownerAccountId,
+  });
+
+  return normalizeDeleteOwnerAccountResult(payload);
 }
 
 export async function upsertOwnerSeatAdjustmentAction(

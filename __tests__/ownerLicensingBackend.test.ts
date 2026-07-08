@@ -1,10 +1,12 @@
 import {
   assertOwnerSeatAvailableAction,
   createOwnerAccountAction,
+  deleteOwnerAccountAction,
   getOwnerSeatStatusAction,
   listPlatformAdminOwnerAccountsAction,
   parseAssertOwnerSeatBody,
   parseCreateOwnerAccountBody,
+  parseDeleteOwnerAccountBody,
   parseOwnerSeatStatusBody,
   parseUpsertOwnerSeatAdjustmentBody,
   upsertOwnerSeatAdjustmentAction,
@@ -65,6 +67,10 @@ const ownerSeatStatusPayload = {
 describe('owner licensing backend helpers', () => {
   it('normalizes owner seat status input', () => {
     expect(parseOwnerSeatStatusBody({ ownerAccountId })).toEqual({ ownerAccountId });
+  });
+
+  it('normalizes owner account delete input', () => {
+    expect(parseDeleteOwnerAccountBody({ ownerAccountId })).toEqual({ ownerAccountId });
   });
 
   it('normalizes assistant role aliases for seat assertions', () => {
@@ -292,6 +298,36 @@ describe('owner licensing backend helpers', () => {
 
     expect(client.rpc).toHaveBeenCalledWith('list_platform_admin_owner_accounts', {
       p_actor_user_id: actorUserId,
+    });
+  });
+
+  it('calls the platform owner account delete RPC', async () => {
+    const client = createRpcClient({
+      data: {
+        ownerAccountId,
+        deleted: true,
+        ownerType: 'private_coach_business',
+        ownerName: 'Demo Coach',
+        coachAccountId: null,
+        clubId: null,
+        linkedWorkspaceDeleted: false,
+      },
+      error: null,
+    });
+
+    await expect(deleteOwnerAccountAction(client, actorUserId, { ownerAccountId })).resolves.toEqual({
+      ownerAccountId,
+      deleted: true,
+      ownerType: 'private_coach_business',
+      ownerName: 'Demo Coach',
+      coachAccountId: null,
+      clubId: null,
+      linkedWorkspaceDeleted: false,
+    });
+
+    expect(client.rpc).toHaveBeenCalledWith('delete_owner_account_as_platform_admin', {
+      p_actor_user_id: actorUserId,
+      p_owner_account_id: ownerAccountId,
     });
   });
 

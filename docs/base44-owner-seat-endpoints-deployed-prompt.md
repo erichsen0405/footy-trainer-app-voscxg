@@ -14,6 +14,7 @@ Disse Supabase Edge Functions er deployet til projektet
 - `createOwnerAccount`
 - `upsertOwnerSeatAdjustment`
 - `listPlatformAdminOwnerAccounts`
+- `deleteOwnerAccount`
 
 Base URL:
 
@@ -283,7 +284,56 @@ UI/list rules:
 - After `createOwnerAccount` succeeds, refetch this endpoint so the new owner
   appears without manual reload.
 
-## 5. Platform Admin Adjusts Seats
+## 5. Platform Admin Deletes Owner Account
+
+Function:
+
+```text
+deleteOwnerAccount
+```
+
+Kun platform admins maa bruge denne. Brug den fra slette-dialogen i
+platform-admin owner account listen. Base44 maa ikke slette fra tabeller
+direkte.
+
+Request:
+
+```ts
+await supabase.functions.invoke('deleteOwnerAccount', {
+  body: {
+    ownerAccountId: '<owner_account uuid>',
+  },
+});
+```
+
+Success response:
+
+```ts
+{
+  success: true,
+  data: {
+    ownerAccountId: string;
+    deleted: true;
+    ownerType: 'club' | 'private_coach_business';
+    ownerName: string;
+    coachAccountId: string | null;
+    clubId: string | null;
+    linkedWorkspaceDeleted: boolean;
+  };
+}
+```
+
+UI rules:
+
+- Efter success: vis normal success-toast, luk dialogen og refetch
+  `listPlatformAdminOwnerAccounts`.
+- Fjern den slettede row optimistisk kun hvis requesten returnerer
+  `success: true`.
+- Hvis requesten fejler: vis backend-fejlen og behold rowen i listen.
+- Kald aldrig `owner_accounts.delete()` eller andre direkte table deletes fra
+  Base44/browseren.
+
+## 6. Platform Admin Adjusts Seats
 
 Function:
 
