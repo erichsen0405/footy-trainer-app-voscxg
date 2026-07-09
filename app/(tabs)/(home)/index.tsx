@@ -3076,7 +3076,7 @@ export default function HomeScreen() {
                           : isDark ? '#2a2a2a' : colors.card,
                       borderColor:
                         adminMode !== 'self'
-                          ? isDark ? 'rgba(112, 214, 143, 0.26)' : 'rgba(47, 125, 70, 0.22)'
+                          ? isDark ? 'rgba(142, 224, 168, 0.58)' : 'rgba(47, 125, 70, 0.46)'
                           : isDark ? '#444' : colors.highlight,
                     },
                   ]}
@@ -3101,17 +3101,6 @@ export default function HomeScreen() {
                   >
                     {activityScopeButtonLabel}
                   </Text>
-                  {adminMode !== 'self' ? (
-                    <View
-                      style={[
-                        styles.activityScopeFilterSpot,
-                        {
-                          backgroundColor: isDark ? '#8EE0A8' : '#2F7D46',
-                          shadowColor: isDark ? '#8EE0A8' : '#2F7D46',
-                        },
-                      ]}
-                    />
-                  ) : null}
                 </Pressable>
               ) : null}
               {hasPreviousWeeks ? (
@@ -3570,27 +3559,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     columnGap: 6,
-    position: 'relative',
   },
   activityScopeFilterButton: {
     maxWidth: 168,
   },
   activityScopeFilterButtonActive: {
+    borderWidth: 1.5,
     shadowColor: '#2F7D46',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.12,
+    shadowRadius: 7,
     shadowOffset: { width: 0, height: 2 },
-  },
-  activityScopeFilterSpot: {
-    position: 'absolute',
-    top: 4,
-    right: 5,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    shadowOpacity: 0.22,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 0 },
+    elevation: 1,
   },
   activityScopeFilterText: {
     maxWidth: 118,

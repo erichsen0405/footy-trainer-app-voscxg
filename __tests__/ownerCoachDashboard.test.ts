@@ -340,7 +340,8 @@ describe('owner coach dashboard contract', () => {
       expect(homeSource).toContain('exitAdmin()');
       expect(homeSource).toContain("kind: 'team'");
       expect(homeSource).toContain('activityScopeFilterButtonActive');
-      expect(homeSource).toContain('activityScopeFilterSpot');
+      expect(homeSource).toContain('borderWidth: 1.5');
+      expect(homeSource).not.toContain('activityScopeFilterSpot');
       expect(homeSource).toContain('presentation="none"');
       expect(homeSource).not.toContain('presentation="compact"');
       expect(homeSource).not.toContain('You can only edit content you created yourself.');
