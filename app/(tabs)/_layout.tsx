@@ -154,6 +154,14 @@ function FloatingTabsLayout({
       label: 'Library',
     };
 
+    const coachDashboardTab: TabBarItem = {
+      name: 'coach-dashboard',
+      route: '/(tabs)/coach-dashboard',
+      icon: 'chart.bar.fill',
+      materialIcon: 'dashboard',
+      label: 'Coach',
+    };
+
     const playerCrmTab: TabBarItem = {
       name: 'player-crm',
       route: '/(tabs)/player-crm',
@@ -177,6 +185,7 @@ function FloatingTabsLayout({
     }
 
     if (isTrainer) {
+      tabsForRole.unshift(coachDashboardTab);
       tabsForRole.push(playerCrmTab);
     }
 
@@ -195,6 +204,7 @@ function FloatingTabsLayout({
         }}
       >
         <Stack.Screen name="(home)" />
+        <Stack.Screen name="coach-dashboard" />
         <Stack.Screen name="tasks" />
         <Stack.Screen name="performance" />
         <Stack.Screen name="player-crm" />

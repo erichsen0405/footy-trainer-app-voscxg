@@ -1,0 +1,1035 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAdmin } from '@/contexts/AdminContext';
+import { useUserRole } from '@/hooks/useUserRole';
+import { getColors } from '@/styles/commonStyles';
+import {
+  OwnerPlayerCrmContext,
+  OwnerPlayerCrmWorkspace,
+  fetchOwnerPlayerCrmContext,
+} from '@/services/ownerPlayerCrmService';
+import {
+  OwnerCoachDashboardActivity,
+  OwnerCoachDashboardAlert,
+  OwnerCoachDashboardPayload,
+  OwnerCoachDashboardPlayer,
+  fetchOwnerCoachDashboard,
+} from '@/services/ownerCoachDashboardService';
+
+type DashboardFilters = {
+  status: string | null;
+  teamId: string | null;
+  tagId: string | null;
+  level: string | null;
+  position: string | null;
+  alertOnly: boolean;
+};
+
+const emptyFilters: DashboardFilters = {
+  status: null,
+  teamId: null,
+  tagId: null,
+  level: null,
+  position: null,
+  alertOnly: false,
+};
+
+function filtersStorageKey(ownerAccountId: string): string {
+  return `owner-coach-dashboard-filters:${ownerAccountId}`;
+}
+
+function formatCompactDate(value: string | null): string {
+  if (!value) return 'No date';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatCompactDateTime(value: string | null): string {
+  if (!value) return 'Not scheduled';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatActivityTime(activity: OwnerCoachDashboardActivity): string {
+  if (activity.activityStart) return formatCompactDateTime(activity.activityStart);
+  return `${formatCompactDate(activity.activityDate)}${activity.activityTime ? ` ${activity.activityTime}` : ''}`;
+}
+
+function statusLabel(value: string): string {
+  return value.slice(0, 1).toUpperCase() + value.slice(1).replace(/_/g, ' ');
+}
+
+function severityColor(severity: OwnerCoachDashboardAlert['severity'], colors: ReturnType<typeof getColors>): string {
+  if (severity === 'high') return colors.error;
+  if (severity === 'warning') return colors.warning;
+  return colors.secondary;
+}
+
+function hasActiveFilters(filters: DashboardFilters): boolean {
+  return Boolean(
+    filters.status ||
+      filters.teamId ||
+      filters.tagId ||
+      filters.level ||
+      filters.position ||
+      filters.alertOnly
+  );
+}
+
+function playerMatchesFilters(player: OwnerCoachDashboardPlayer, filters: DashboardFilters): boolean {
+  if (filters.alertOnly && player.alertTypes.length === 0) return false;
+  if (filters.status && player.crmStatus !== filters.status) return false;
+  if (filters.teamId && !player.teamIds.includes(filters.teamId)) return false;
+  if (filters.tagId && !player.tagIds.includes(filters.tagId)) return false;
+  if (filters.level && player.playingLevel !== filters.level) return false;
+  if (filters.position && !player.positions.includes(filters.position)) return false;
+  return true;
+}
+
+export default function CoachDashboardScreen() {
+  const colorScheme = useColorScheme();
+  const colors = getColors(colorScheme);
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { startAdminPlayer } = useAdmin();
+  const { userRole, loading: roleLoading } = useUserRole();
+  const [context, setContext] = useState<OwnerPlayerCrmContext | null>(null);
+  const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
+  const [dashboard, setDashboard] = useState<OwnerCoachDashboardPayload | null>(null);
+  const [filters, setFilters] = useState<DashboardFilters>(emptyFilters);
+  const [savedFilters, setSavedFilters] = useState<DashboardFilters | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canAccessCoachDashboard = userRole === 'admin' || userRole === 'trainer';
+
+  const activeWorkspace = useMemo(
+    () => context?.workspaces.find((workspace) => workspace.ownerAccountId === activeOwnerAccountId) ?? null,
+    [activeOwnerAccountId, context?.workspaces]
+  );
+
+  const loadContext = useCallback(async () => {
+    const payload = await fetchOwnerPlayerCrmContext();
+    setContext(payload);
+    setActiveOwnerAccountId((current) => {
+      if (current && payload.workspaces.some((workspace) => workspace.ownerAccountId === current)) {
+        return current;
+      }
+      return payload.defaultOwnerAccountId ?? payload.workspaces[0]?.ownerAccountId ?? null;
+    });
+  }, []);
+
+  const loadDashboard = useCallback(async (ownerAccountId: string) => {
+    setDashboardLoading(true);
+    try {
+      const payload = await fetchOwnerCoachDashboard({ ownerAccountId });
+      setDashboard(payload);
+      setError(null);
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : 'Could not load the coach dashboard.';
+      setError(message);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (roleLoading || !canAccessCoachDashboard) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    loadContext()
+      .catch((loadError) => {
+        if (!cancelled) {
+          const message = loadError instanceof Error ? loadError.message : 'Could not load owner context.';
+          setError(message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canAccessCoachDashboard, loadContext, roleLoading]);
+
+  useEffect(() => {
+    if (!activeOwnerAccountId || !canAccessCoachDashboard) return;
+    void loadDashboard(activeOwnerAccountId);
+  }, [activeOwnerAccountId, canAccessCoachDashboard, loadDashboard]);
+
+  useEffect(() => {
+    if (!activeOwnerAccountId) {
+      setFilters(emptyFilters);
+      setSavedFilters(null);
+      return;
+    }
+
+    let cancelled = false;
+    AsyncStorage.getItem(filtersStorageKey(activeOwnerAccountId))
+      .then((raw) => {
+        if (cancelled) return;
+        if (!raw) {
+          setFilters(emptyFilters);
+          setSavedFilters(null);
+          return;
+        }
+        const parsed = JSON.parse(raw) as DashboardFilters;
+        const next = { ...emptyFilters, ...parsed };
+        setFilters(next);
+        setSavedFilters(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFilters(emptyFilters);
+          setSavedFilters(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOwnerAccountId]);
+
+  const filteredPlayers = useMemo(() => {
+    const players = dashboard?.players ?? [];
+    return players.filter((player) => playerMatchesFilters(player, filters));
+  }, [dashboard?.players, filters]);
+
+  const metricCards = useMemo(() => {
+    const metrics = dashboard?.metrics;
+    if (!metrics) return [];
+    return [
+      { label: 'Players', value: String(metrics.totalPlayers), tone: colors.primary },
+      { label: 'Alerts', value: String(dashboard.alerts.length), tone: colors.error },
+      { label: 'Open tasks', value: String(metrics.openTasks), tone: colors.warning },
+      { label: 'Today', value: String(metrics.todayActivities), tone: colors.secondary },
+      {
+        label: 'Completion',
+        value: metrics.taskCompletionRate == null ? '-' : `${metrics.taskCompletionRate}%`,
+        tone: colors.success,
+      },
+      { label: 'Seats left', value: String(dashboard.seatStatus.playerSeats?.seatsAvailable ?? '-'), tone: colors.accent },
+    ];
+  }, [colors.accent, colors.error, colors.primary, colors.secondary, colors.success, colors.warning, dashboard]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!canAccessCoachDashboard) return;
+    setRefreshing(true);
+    try {
+      await loadContext();
+      if (activeOwnerAccountId) {
+        await loadDashboard(activeOwnerAccountId);
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeOwnerAccountId, canAccessCoachDashboard, loadContext, loadDashboard]);
+
+  const handleSaveFilters = useCallback(async () => {
+    if (!activeOwnerAccountId) return;
+    await AsyncStorage.setItem(filtersStorageKey(activeOwnerAccountId), JSON.stringify(filters));
+    setSavedFilters(filters);
+  }, [activeOwnerAccountId, filters]);
+
+  const handleApplySavedFilters = useCallback(() => {
+    if (savedFilters) {
+      setFilters(savedFilters);
+    }
+  }, [savedFilters]);
+
+  const handleClearFilters = useCallback(() => {
+    setFilters(emptyFilters);
+  }, []);
+
+  const openPlayerCrm = useCallback(() => {
+    router.push('/(tabs)/player-crm' as any);
+  }, [router]);
+
+  const openPlayerTasks = useCallback(
+    (playerId: string) => {
+      startAdminPlayer(playerId);
+      router.push('/(tabs)/tasks' as any);
+    },
+    [router, startAdminPlayer]
+  );
+
+  const openPlayerProgress = useCallback(
+    (playerId: string) => {
+      startAdminPlayer(playerId);
+      router.push('/(tabs)/performance' as any);
+    },
+    [router, startAdminPlayer]
+  );
+
+  const renderWorkspaceSwitch = () => {
+    if (!context || context.workspaces.length <= 1) return null;
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.workspaceRow}
+        testID="coachDashboard.workspaceSwitcher"
+      >
+        {context.workspaces.map((workspace: OwnerPlayerCrmWorkspace) => {
+          const active = workspace.ownerAccountId === activeOwnerAccountId;
+          return (
+            <TouchableOpacity
+              key={workspace.ownerAccountId}
+              style={[
+                styles.workspaceChip,
+                {
+                  borderColor: active ? colors.primary : colors.border,
+                  backgroundColor: active ? colors.primary : colors.card,
+                },
+              ]}
+              onPress={() => setActiveOwnerAccountId(workspace.ownerAccountId)}
+            >
+              <Text
+                style={[styles.workspaceText, { color: active ? '#FFFFFF' : colors.text }]}
+                numberOfLines={1}
+              >
+                {workspace.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
+  };
+
+  const renderFilterRow = () => {
+    if (!dashboard) return null;
+    return (
+      <View style={styles.filterBlock} testID="coachDashboard.filters">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          <FilterChip
+            label="Alerts"
+            active={filters.alertOnly}
+            onPress={() => setFilters((current) => ({ ...current, alertOnly: !current.alertOnly }))}
+            colors={colors}
+          />
+          {savedFilters ? (
+            <FilterChip label="Saved" active={false} onPress={handleApplySavedFilters} colors={colors} />
+          ) : null}
+          {dashboard.filters.statuses.map((status) => (
+            <FilterChip
+              key={status.value}
+              label={status.label}
+              active={filters.status === status.value}
+              onPress={() =>
+                setFilters((current) => ({
+                  ...current,
+                  status: current.status === status.value ? null : status.value,
+                }))
+              }
+              colors={colors}
+            />
+          ))}
+          {dashboard.filters.teams.map((team) => (
+            <FilterChip
+              key={team.id}
+              label={team.name}
+              active={filters.teamId === team.id}
+              onPress={() =>
+                setFilters((current) => ({
+                  ...current,
+                  teamId: current.teamId === team.id ? null : team.id,
+                }))
+              }
+              colors={colors}
+            />
+          ))}
+          {dashboard.filters.tags.map((tag) => (
+            <FilterChip
+              key={tag.id}
+              label={tag.name}
+              active={filters.tagId === tag.id}
+              onPress={() =>
+                setFilters((current) => ({
+                  ...current,
+                  tagId: current.tagId === tag.id ? null : tag.id,
+                }))
+              }
+              colors={colors}
+            />
+          ))}
+          {dashboard.filters.positions.map((position) => (
+            <FilterChip
+              key={position}
+              label={position}
+              active={filters.position === position}
+              onPress={() =>
+                setFilters((current) => ({
+                  ...current,
+                  position: current.position === position ? null : position,
+                }))
+              }
+              colors={colors}
+            />
+          ))}
+          {dashboard.filters.levels.map((level) => (
+            <FilterChip
+              key={level}
+              label={level}
+              active={filters.level === level}
+              onPress={() =>
+                setFilters((current) => ({
+                  ...current,
+                  level: current.level === level ? null : level,
+                }))
+              }
+              colors={colors}
+            />
+          ))}
+        </ScrollView>
+        <View style={styles.filterActions}>
+          <TouchableOpacity
+            style={[styles.smallActionButton, { borderColor: colors.border }]}
+            onPress={handleSaveFilters}
+            disabled={!hasActiveFilters(filters)}
+          >
+            <IconSymbol ios_icon_name="tray.and.arrow.down.fill" android_material_icon_name="save" size={16} color={colors.text} />
+            <Text style={[styles.smallActionText, { color: colors.text }]}>Save</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.smallActionButton, { borderColor: colors.border }]}
+            onPress={handleClearFilters}
+            disabled={!hasActiveFilters(filters)}
+          >
+            <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={16} color={colors.text} />
+            <Text style={[styles.smallActionText, { color: colors.text }]}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  if (roleLoading || loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!canAccessCoachDashboard) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={30} color={colors.textSecondary} />
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Coach access required</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 16) + 10 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        testID="coachDashboard.screen"
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTitleRow}>
+            <Text style={[styles.title, { color: colors.text }]}>Coach Dashboard</Text>
+            {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+          </View>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+            {activeWorkspace?.name ?? dashboard?.ownerAccount.name ?? 'Owner workspace'}
+          </Text>
+        </View>
+
+        {renderWorkspaceSwitch()}
+
+        {error ? (
+          <View style={[styles.notice, { borderColor: colors.error, backgroundColor: colors.card }]}>
+            <Text style={[styles.noticeTitle, { color: colors.error }]}>Could not load dashboard</Text>
+            <Text style={[styles.noticeText, { color: colors.textSecondary }]}>{error}</Text>
+          </View>
+        ) : null}
+
+        {!dashboard && !error ? (
+          <View style={[styles.notice, { borderColor: colors.border, backgroundColor: colors.card }]}>
+            <Text style={[styles.noticeText, { color: colors.textSecondary }]}>No owner dashboard data yet.</Text>
+          </View>
+        ) : null}
+
+        {dashboard ? (
+          <>
+            <View style={styles.metricGrid}>
+              {metricCards.map((metric) => (
+                <View key={metric.label} style={[styles.metricCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.metricValue, { color: metric.tone }]} numberOfLines={1} adjustsFontSizeToFit>
+                    {metric.value}
+                  </Text>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {metric.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {renderFilterRow()}
+
+            <SectionTitle title="Alerts" count={dashboard.alerts.length} colors={colors} />
+            {dashboard.alerts.length ? (
+              <View style={styles.sectionStack}>
+                {dashboard.alerts.slice(0, 8).map((alert) => (
+                  <TouchableOpacity
+                    key={alert.id}
+                    style={[styles.alertRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={openPlayerCrm}
+                    testID={`coachDashboard.alert.${alert.type}`}
+                  >
+                    <View style={[styles.alertStripe, { backgroundColor: severityColor(alert.severity, colors) }]} />
+                    <View style={styles.alertBody}>
+                      <Text style={[styles.alertTitle, { color: colors.text }]} numberOfLines={1}>
+                        {alert.title}
+                      </Text>
+                      <Text style={[styles.alertSubtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+                        {alert.subtitle}
+                      </Text>
+                    </View>
+                    <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : (
+              <EmptyInline text="No players need attention right now." colors={colors} />
+            )}
+
+            <SectionTitle title="Today" count={dashboard.today.activities.length} colors={colors} />
+            <ActivityList activities={dashboard.today.activities.slice(0, 6)} colors={colors} />
+
+            <SectionTitle title="This Week" count={dashboard.week.activities.length} colors={colors} />
+            <ActivityList activities={dashboard.week.activities.slice(0, 8)} colors={colors} />
+
+            <SectionTitle title="Players" count={filteredPlayers.length} colors={colors} />
+            {filteredPlayers.length ? (
+              <View style={styles.sectionStack}>
+                {filteredPlayers.map((player) => (
+                  <PlayerCard
+                    key={player.playerId}
+                    player={player}
+                    colors={colors}
+                    onOpenCrm={openPlayerCrm}
+                    onOpenTasks={() => openPlayerTasks(player.playerId)}
+                    onOpenProgress={() => openPlayerProgress(player.playerId)}
+                  />
+                ))}
+              </View>
+            ) : (
+              <EmptyInline text="No players match the selected filters." colors={colors} />
+            )}
+          </>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+function SectionTitle({ title, count, colors }: { title: string; count: number; colors: ReturnType<typeof getColors> }) {
+  return (
+    <View style={styles.sectionTitleRow}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+      <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{count}</Text>
+    </View>
+  );
+}
+
+function FilterChip({
+  label,
+  active,
+  onPress,
+  colors,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof getColors>;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.filterChip,
+        {
+          backgroundColor: active ? colors.primary : colors.card,
+          borderColor: active ? colors.primary : colors.border,
+        },
+      ]}
+      onPress={onPress}
+    >
+      <Text style={[styles.filterChipText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function EmptyInline({ text, colors }: { text: string; colors: ReturnType<typeof getColors> }) {
+  return (
+    <View style={[styles.emptyInline, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[styles.emptyInlineText, { color: colors.textSecondary }]}>{text}</Text>
+    </View>
+  );
+}
+
+function ActivityList({
+  activities,
+  colors,
+}: {
+  activities: OwnerCoachDashboardActivity[];
+  colors: ReturnType<typeof getColors>;
+}) {
+  if (!activities.length) {
+    return <EmptyInline text="No activities in this window." colors={colors} />;
+  }
+
+  return (
+    <View style={styles.sectionStack}>
+      {activities.map((activity) => (
+        <View key={activity.id} style={[styles.activityRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.activityIcon}>
+            <IconSymbol ios_icon_name="calendar" android_material_icon_name="event" size={19} color={colors.primary} />
+          </View>
+          <View style={styles.activityBody}>
+            <Text style={[styles.activityTitle, { color: colors.text }]} numberOfLines={1}>
+              {activity.title}
+            </Text>
+            <Text style={[styles.activityMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+              {formatActivityTime(activity)}
+              {activity.teamName ? ` · ${activity.teamName}` : ''}
+              {activity.playerCount > 1 ? ` · ${activity.playerCount} players` : ''}
+            </Text>
+          </View>
+          <View style={styles.taskPill}>
+            <Text style={[styles.taskPillText, { color: activity.openTasks ? colors.warning : colors.success }]}>
+              {activity.openTasks}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function PlayerCard({
+  player,
+  colors,
+  onOpenCrm,
+  onOpenTasks,
+  onOpenProgress,
+}: {
+  player: OwnerCoachDashboardPlayer;
+  colors: ReturnType<typeof getColors>;
+  onOpenCrm: () => void;
+  onOpenTasks: () => void;
+  onOpenProgress: () => void;
+}) {
+  const primaryAlert = player.alertTypes[0] ? statusLabel(player.alertTypes[0]) : 'On track';
+  const alertTone = player.alertTypes.length ? colors.warning : colors.success;
+
+  return (
+    <View style={[styles.playerCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID="coachDashboard.playerCard">
+      <View style={styles.playerHeader}>
+        <View style={styles.playerNameBlock}>
+          <Text style={[styles.playerName, { color: colors.text }]} numberOfLines={1}>
+            {player.displayName}
+          </Text>
+          <Text style={[styles.playerMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+            {player.primaryPosition ?? 'No position'} · {statusLabel(player.crmStatus)}
+          </Text>
+        </View>
+        <View style={[styles.statusBadge, { borderColor: alertTone }]}>
+          <Text style={[styles.statusBadgeText, { color: alertTone }]} numberOfLines={1}>
+            {primaryAlert}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.playerStats}>
+        <StatPill label="Open" value={String(player.openTasks)} colors={colors} />
+        <StatPill label="Week" value={String(player.weekActivitiesCount)} colors={colors} />
+        <StatPill label="Feedback" value={String(player.recentFeedbackCount)} colors={colors} />
+      </View>
+
+      <Text style={[styles.playerTimeline, { color: colors.textSecondary }]} numberOfLines={2}>
+        Last: {formatCompactDateTime(player.lastActivityAt)} · Next: {formatCompactDateTime(player.nextActivityAt)}
+      </Text>
+
+      <View style={styles.playerActions}>
+        <IconAction icon="person.crop.circle" materialIcon="person" label="CRM" onPress={onOpenCrm} colors={colors} />
+        <IconAction icon="checklist" materialIcon="checklist" label="Tasks" onPress={onOpenTasks} colors={colors} />
+        <IconAction icon="chart.bar.fill" materialIcon="bar_chart" label="Progress" onPress={onOpenProgress} colors={colors} />
+      </View>
+    </View>
+  );
+}
+
+function StatPill({ label, value, colors }: { label: string; value: string; colors: ReturnType<typeof getColors> }) {
+  return (
+    <View style={[styles.statPill, { borderColor: colors.border }]}>
+      <Text style={[styles.statPillValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.statPillLabel, { color: colors.textSecondary }]}>{label}</Text>
+    </View>
+  );
+}
+
+function IconAction({
+  icon,
+  materialIcon,
+  label,
+  onPress,
+  colors,
+}: {
+  icon: string;
+  materialIcon: string;
+  label: string;
+  onPress: () => void;
+  colors: ReturnType<typeof getColors>;
+}) {
+  return (
+    <TouchableOpacity style={[styles.iconAction, { borderColor: colors.border }]} onPress={onPress}>
+      <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={17} color={colors.primary} />
+      <Text style={[styles.iconActionText, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingBottom: 132,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  header: {
+    marginBottom: 14,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 38,
+  },
+  title: {
+    fontSize: 29,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  workspaceRow: {
+    paddingBottom: 14,
+    columnGap: 8,
+  },
+  workspaceChip: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    maxWidth: 210,
+  },
+  workspaceText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  notice: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 14,
+  },
+  noticeTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  noticeText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 8,
+    marginBottom: 14,
+  },
+  metricCard: {
+    width: '31.6%',
+    minHeight: 76,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricValue: {
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  filterBlock: {
+    marginBottom: 14,
+  },
+  filterRow: {
+    columnGap: 8,
+    paddingBottom: 8,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    maxWidth: 170,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  filterActions: {
+    flexDirection: 'row',
+    columnGap: 8,
+  },
+  smallActionButton: {
+    minHeight: 34,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  smallActionText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  sectionCount: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  sectionStack: {
+    rowGap: 8,
+    marginBottom: 14,
+  },
+  alertRow: {
+    minHeight: 76,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  alertStripe: {
+    width: 5,
+    alignSelf: 'stretch',
+  },
+  alertBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  alertTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  alertSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 3,
+    lineHeight: 18,
+  },
+  activityRow: {
+    minHeight: 66,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  activityIcon: {
+    width: 32,
+    alignItems: 'center',
+  },
+  activityBody: {
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  activityTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  activityMeta: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  taskPill: {
+    width: 34,
+    alignItems: 'center',
+  },
+  taskPillText: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  emptyInline: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 14,
+  },
+  emptyInlineText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 12,
+  },
+  playerCard: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+  },
+  playerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 10,
+  },
+  playerNameBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  playerName: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  playerMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  statusBadge: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    maxWidth: 128,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  playerStats: {
+    flexDirection: 'row',
+    columnGap: 8,
+    marginTop: 10,
+  },
+  statPill: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  statPillValue: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  statPillLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  playerTimeline: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 10,
+    lineHeight: 17,
+  },
+  playerActions: {
+    flexDirection: 'row',
+    columnGap: 8,
+    marginTop: 11,
+  },
+  iconAction: {
+    flex: 1,
+    minHeight: 38,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    columnGap: 5,
+    paddingHorizontal: 4,
+  },
+  iconActionText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+});
