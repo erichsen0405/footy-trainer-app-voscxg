@@ -13,6 +13,7 @@ const taskTemplateId = '55555555-5555-4555-8555-555555555555';
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260709150000_owner_training_templates.sql');
 const itemLogicMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709162000_training_template_item_logic.sql');
 const exerciseReuseMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709173000_training_template_exercise_reuse.sql');
+const weekSessionsMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709174500_training_template_week_sessions_only.sql');
 const functionPath = path.join(process.cwd(), 'supabase/functions/manageTrainingTemplates/index.ts');
 const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/trainingTemplates.ts');
 const servicePath = path.join(process.cwd(), 'services/trainingTemplateService.ts');
@@ -24,6 +25,7 @@ describe('owner training templates contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
   const itemLogicMigration = fs.readFileSync(itemLogicMigrationPath, 'utf8');
   const exerciseReuseMigration = fs.readFileSync(exerciseReuseMigrationPath, 'utf8');
+  const weekSessionsMigration = fs.readFileSync(weekSessionsMigrationPath, 'utf8');
   const edgeFunction = fs.readFileSync(functionPath, 'utf8');
   const shared = fs.readFileSync(sharedPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
@@ -42,7 +44,8 @@ describe('owner training templates contract', () => {
     expect(itemLogicMigration).toContain('default_activity_category_name');
     expect(migration).toContain('snapshot jsonb not null');
     expect(exerciseReuseMigration).toContain("template_type in ('task', 'exercise', 'session', 'week')");
-    expect(exerciseReuseMigration).toContain('Session and week templates can link to saved task/exercise templates');
+    expect(exerciseReuseMigration).toContain('exercise_library rows');
+    expect(weekSessionsMigration).toContain('Week templates contain saved session templates only');
     expect(migration).toContain('public.has_owner_account_coach_access(owner_account_id, (select auth.uid()))');
     expect(migration).toContain('Players and guardians');
   });
@@ -255,17 +258,11 @@ describe('owner training templates contract', () => {
         items: [
           {
             itemType: 'session_template',
+            linkedTemplateId: templateId,
             title: ' Team training ',
             dayOffset: 2,
             startTime: '18:30',
             durationMinutes: 75,
-          },
-          {
-            itemType: 'task_template',
-            title: ' Touch work ',
-            dayOffset: 3,
-            startTime: '08:00',
-            durationMinutes: 12,
           },
         ],
       })
@@ -275,18 +272,23 @@ describe('owner training templates contract', () => {
       items: [
         {
           itemType: 'session_template',
+          linkedTemplateId: templateId,
           dayOffset: 2,
           startTime: '18:30:00',
           durationMinutes: 75,
         },
-        {
-          itemType: 'task_template',
-          dayOffset: 3,
-          startTime: null,
-          durationMinutes: null,
-        },
       ],
     });
+
+    expect(() =>
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'week',
+        title: 'Bad week task',
+        items: [{ itemType: 'task_template', title: 'Touch work' }],
+      })
+    ).toThrow('task_template is not allowed in week templates.');
 
     expect(() =>
       parseTrainingTemplateBody({
@@ -370,6 +372,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('selectedLibraryItemId');
     expect(plan).toContain('sessionStartTimeInput');
     expect(plan).toContain('Session start time');
+    expect(plan).toContain("week: ['session_template']");
+    expect(plan).toContain("itemType === 'session_template' ? 'session'");
+    expect(plan).toContain('Saved sessions open in a popup');
     expect(plan).toContain('buildTaskConfigPayloadFromLibraryItem');
     expect(plan).toContain("const itemCarriesSessionTiming = draft.templateType === 'week' && itemType === 'session_template'");
     expect(plan).toContain("draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0");
@@ -395,6 +400,8 @@ describe('owner training templates contract', () => {
     expect(base44Prompt).toContain('Day-vaelger i session builderen');
     expect(base44Prompt).toContain('sessionStartTime');
     expect(base44Prompt).toContain('Task og exercise maa ikke have subtasks eller egen task time');
+    expect(base44Prompt).toContain('kan kun indeholde gemte session templates');
+    expect(base44Prompt).toContain('Week builderen maa ikke tilbyde `New`, `Library`');
     expect(base44Prompt).toContain('vis kun starttid og varighed paa `session_template` items');
     expect(base44Prompt).toContain('supabase functions list --project-ref lhpczofddvwcyrgotzha');
   });

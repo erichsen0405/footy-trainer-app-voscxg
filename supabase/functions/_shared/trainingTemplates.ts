@@ -184,7 +184,7 @@ const ITEM_TYPES_BY_TEMPLATE: Record<TrainingTemplateType, Set<TrainingTemplateI
   task: new Set([]),
   exercise: new Set([]),
   session: new Set(['task_template', 'exercise', 'focus', 'note', 'feedback_requirement']),
-  week: new Set(['task_template', 'exercise', 'session_template', 'focus', 'note']),
+  week: new Set(['session_template']),
 };
 const COACH_ACCESS_ROLES = new Set(['owner', 'admin', 'coach', 'assistant_coach']);
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -1186,9 +1186,10 @@ async function replaceTemplateItems(
   return (data || []) as TemplateItemRow[];
 }
 
-function reusableTemplateTypeForItem(itemType: TrainingTemplateItemType): 'task' | 'exercise' | null {
+function reusableTemplateTypeForItem(itemType: TrainingTemplateItemType): 'task' | 'exercise' | 'session' | null {
   if (itemType === 'task_template') return 'task';
   if (itemType === 'exercise') return 'exercise';
+  if (itemType === 'session_template') return 'session';
   return null;
 }
 
@@ -1244,7 +1245,7 @@ async function createReusableTemplateFromItem(
   }
 
   const template = data as TemplateRow;
-  await createVersionSnapshot(client, actorUserId, template, [], 'Created from session/week template item');
+  await createVersionSnapshot(client, actorUserId, template, [], 'Created from session template item');
   return template;
 }
 
@@ -1275,7 +1276,7 @@ async function resolveReusableTemplateItemLinks(
       }
       const linkedMetadata = normalizeJsonObject(linkedTemplate.metadata);
       const nextConfig = { ...item.config };
-      if (!normalizeJsonObject(nextConfig.task).title) {
+      if ((reusableTemplateType === 'task' || reusableTemplateType === 'exercise') && !normalizeJsonObject(nextConfig.task).title) {
         nextConfig.task = normalizeTaskConfig(linkedMetadata.task, {
           title: item.title,
           description: item.description,
@@ -1292,6 +1293,10 @@ async function resolveReusableTemplateItemLinks(
         },
       });
       continue;
+    }
+
+    if (reusableTemplateType === 'session') {
+      throw new AppError('VALIDATION_ERROR', 'session_template items must link to a saved session template.', 400);
     }
 
     const childTemplate = await createReusableTemplateFromItem(

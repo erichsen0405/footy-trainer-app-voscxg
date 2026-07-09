@@ -136,7 +136,7 @@ const ITEM_TYPES_BY_TEMPLATE: Record<TrainingTemplateType, DraftItem['itemType']
   task: [],
   exercise: [],
   session: ['task_template', 'exercise', 'focus', 'note', 'feedback_requirement'],
-  week: ['task_template', 'exercise', 'session_template', 'focus', 'note'],
+  week: ['session_template'],
 };
 
 const DEFAULT_EXERCISE_TIMER: TrainingTemplateExerciseTimer = {
@@ -535,7 +535,8 @@ export default function PlanScreen() {
     [draft.templateType]
   );
 
-  const reusableTemplateType = itemType === 'task_template' ? 'task' : itemType === 'exercise' ? 'exercise' : null;
+  const reusableTemplateType =
+    itemType === 'task_template' ? 'task' : itemType === 'exercise' ? 'exercise' : itemType === 'session_template' ? 'session' : null;
   const reusableTemplates = useMemo(
     () =>
       reusableTemplateType
@@ -554,24 +555,37 @@ export default function PlanScreen() {
     () => libraryItems.find((item) => item.id === selectedLibraryItemId) ?? null,
     [libraryItems, selectedLibraryItemId]
   );
-  const itemUsesReusableSource = itemType === 'task_template' || itemType === 'exercise';
+  const itemUsesLibrarySource = itemType === 'task_template' || itemType === 'exercise';
+  const itemSourceOptions = useMemo<{ value: ItemSourceMode; label: string }[]>(() => {
+    if (itemType === 'session_template') return [{ value: 'saved', label: 'Saved' }];
+    if (itemUsesLibrarySource) {
+      return [
+        { value: 'new', label: 'New' },
+        { value: 'saved', label: 'Saved' },
+        { value: 'library', label: 'Library' },
+      ];
+    }
+    return [];
+  }, [itemType, itemUsesLibrarySource]);
+  const itemUsesReusableSource = itemSourceOptions.length > 0;
   const canAddItem =
-    itemUsesReusableSource && itemSourceMode === 'saved'
+    reusableTemplateType && itemSourceMode === 'saved'
       ? Boolean(selectedReusableTemplate)
-      : itemUsesReusableSource && itemSourceMode === 'library'
+      : itemUsesLibrarySource && itemSourceMode === 'library'
         ? Boolean(selectedLibraryItem)
         : Boolean(itemTitle.trim());
 
   const resetItemDraft = useCallback((templateType: TrainingTemplateType = 'session') => {
+    const defaultItemType = getDefaultItemType(templateType);
     setItemTitle('');
     setItemDescription('');
-    setItemType(getDefaultItemType(templateType));
+    setItemType(defaultItemType);
     setItemDayOffset('');
     setItemStartTime('');
     setItemDuration('');
     setItemTaskConfig(createEmptyTaskConfigDraft());
     setItemExerciseTimer(createEmptyExerciseTimerDraft());
-    setItemSourceMode('new');
+    setItemSourceMode(defaultItemType === 'session_template' ? 'saved' : 'new');
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
     setItemPickerMode(null);
@@ -628,29 +642,31 @@ export default function PlanScreen() {
       setItemStartTime('');
       setItemDuration('');
     }
-    setItemSourceMode('new');
+    setItemSourceMode(nextItemType === 'session_template' ? 'saved' : 'new');
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
     setItemPickerMode(null);
   }, []);
 
   const changeItemSourceMode = useCallback((nextSourceMode: ItemSourceMode) => {
+    if (itemType === 'session_template' && nextSourceMode !== 'saved') return;
     setItemSourceMode(nextSourceMode);
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
     setItemPickerMode(nextSourceMode === 'saved' || nextSourceMode === 'library' ? nextSourceMode : null);
-  }, []);
+  }, [itemType]);
 
   const addDraftItem = useCallback(() => {
     if (!ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(itemType)) return;
-    const usingReusableSource = itemType === 'task_template' || itemType === 'exercise';
-    const reusableTemplate = usingReusableSource && itemSourceMode === 'saved' ? selectedReusableTemplate : null;
-    const libraryItem = usingReusableSource && itemSourceMode === 'library' ? selectedLibraryItem : null;
-    if (usingReusableSource && itemSourceMode === 'saved' && !reusableTemplate) {
-      Alert.alert('Choose template', 'Select a saved task or exercise template first.');
+    const usingReusableSource = Boolean(reusableTemplateType) && itemSourceMode === 'saved';
+    const usingLibrarySource = itemUsesLibrarySource && itemSourceMode === 'library';
+    const reusableTemplate = usingReusableSource ? selectedReusableTemplate : null;
+    const libraryItem = usingLibrarySource ? selectedLibraryItem : null;
+    if (usingReusableSource && !reusableTemplate) {
+      Alert.alert('Choose template', `Select a saved ${reusableTemplateType ?? 'template'} template first.`);
       return;
     }
-    if (usingReusableSource && itemSourceMode === 'library' && !libraryItem) {
+    if (usingLibrarySource && !libraryItem) {
       Alert.alert('Choose library item', 'Select a library exercise first.');
       return;
     }
@@ -686,6 +702,9 @@ export default function PlanScreen() {
         ? templateTimer
         : buildExerciseTimerPayload(itemExerciseTimer);
     }
+    if (itemType === 'session_template' && reusableTemplate) {
+      config.source = { kind: 'saved_template', templateId: reusableTemplate.id };
+    }
 
     setDraft((current) => ({
       ...current,
@@ -717,7 +736,9 @@ export default function PlanScreen() {
     itemTaskConfig,
     itemTitle,
     itemType,
+    itemUsesLibrarySource,
     resetItemDraft,
+    reusableTemplateType,
     selectedLibraryItem,
     selectedReusableTemplate,
   ]);
@@ -1278,11 +1299,7 @@ export default function PlanScreen() {
                   {itemUsesReusableSource ? (
                     <>
                       <View style={styles.itemSourceRow}>
-                        {[
-                          { value: 'new', label: 'New' },
-                          { value: 'saved', label: 'Saved' },
-                          { value: 'library', label: 'Library' },
-                        ].map((source) => {
+                        {itemSourceOptions.map((source) => {
                           const active = itemSourceMode === source.value;
                           return (
                             <TouchableOpacity
@@ -1308,9 +1325,15 @@ export default function PlanScreen() {
                       {itemSourceMode === 'saved' ? (
                         <PickerTrigger
                           title={selectedReusableTemplate?.title ?? 'Choose saved template'}
-                          detail={selectedReusableTemplate ? `${templateTypeLabel(selectedReusableTemplate.templateType)} template` : 'Saved tasks and exercises open in a popup'}
-                          icon={selectedReusableTemplate?.templateType === 'exercise' ? 'timer' : 'checklist'}
-                          materialIcon={selectedReusableTemplate?.templateType === 'exercise' ? 'timer' : 'checklist'}
+                          detail={
+                            selectedReusableTemplate
+                              ? `${templateTypeLabel(selectedReusableTemplate.templateType)} template`
+                              : itemType === 'session_template'
+                                ? 'Saved sessions open in a popup'
+                                : 'Saved tasks and exercises open in a popup'
+                          }
+                          icon={selectedReusableTemplate?.templateType === 'exercise' ? 'timer' : itemType === 'session_template' ? 'rectangle.3.group' : 'checklist'}
+                          materialIcon={selectedReusableTemplate?.templateType === 'exercise' ? 'timer' : itemType === 'session_template' ? 'dashboard' : 'checklist'}
                           colors={colors}
                           selected={Boolean(selectedReusableTemplate)}
                           onPress={() => setItemPickerMode('saved')}
@@ -1568,7 +1591,7 @@ function ReusableItemPickerModal({
 }) {
   const isSaved = mode === 'saved';
   const title = isSaved
-    ? `Choose saved ${itemType === 'exercise' ? 'exercise' : 'task'}`
+    ? `Choose saved ${itemType === 'exercise' ? 'exercise' : itemType === 'session_template' ? 'session' : 'task'}`
     : 'Choose from library';
   const emptyText = isSaved ? 'No saved templates yet.' : 'No library items available.';
 

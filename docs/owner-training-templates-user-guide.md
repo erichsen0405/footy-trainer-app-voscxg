@@ -48,11 +48,11 @@ blive til en aktivitet i kalenderen, og den kan have standardkategori som
 og varighed.
 
 `Week template`  
-En ugeplan, fx "U13 finishing week", hvor sessioner kan have day offset, saa de
-ligger paa dag 1, dag 2 osv.
+En ugeplan, fx "U13 finishing week", hvor gemte sessioner kan have day offset,
+saa de ligger paa dag 1, dag 2 osv.
 
 `Exercise item`
-En opgaveblok inde i en session eller week med samme opgavefelter som en normal
+En opgaveblok inde i en session med samme opgavefelter som en normal
 opgave og en ekstra intervaltimer: aktiv arbejdstid, pause og antal runder.
 
 `Version`  
@@ -91,11 +91,7 @@ I en `Session` kan du tilfoeje:
 
 I en `Week` kan du tilfoeje:
 
-- `Task`
-- `Exercise`
 - `Session`
-- `Focus`
-- `Note`
 
 For hvert item kan du angive placering:
 
@@ -104,10 +100,10 @@ For hvert item kan du angive placering:
 
 `Day` vises kun, naar du arbejder med en `Week` skabelon. En `Session`
 er altid samme dag som aktiviteten, saa session-items har ikke day-vaelger.
-Starttid og varighed saettes paa selve `Session` skabelonen. I en `Week` vises
-starttid og varighed kun paa `Session` items, fordi de repraesenterer planlagte
-sessioner i ugen. `Task` og `Exercise` har ikke eget tidspunkt eller egen
-varighed.
+Starttid og varighed saettes paa selve `Session` skabelonen. I en `Week` kan du
+kun tilfoeje gemte `Session` skabeloner, og week itemet kan have dag, starttid
+og varighed, fordi det repraesenterer en planlagt session i ugen. `Task` og
+`Exercise` har ikke eget tidspunkt eller egen varighed.
 
 For `Task` og `Exercise` kan du derudover angive de samme felter som paa normale
 opgaver:
@@ -127,8 +123,8 @@ For `Exercise` kan du ogsaa angive:
 
 ## Vaelg Kilde Til Task Og Exercise Items
 
-Naar du tilfoejer `Task` eller `Exercise` i en `Session` eller `Week`, kan du
-vaelge mellem tre kilder:
+Naar du tilfoejer `Task` eller `Exercise` i en `Session`, kan du vaelge mellem
+tre kilder:
 
 - `New`: opret itemet direkte i skabelonen med medier, feedback og reminder.
 - `Saved`: vaelg en eksisterende gemt `Task` eller `Exercise` skabelon.
@@ -139,13 +135,16 @@ gemte tasks, exercises og library-oevelser i samme kortstil som resten af
 Plan/Bibliotek.
 
 Hvis du bruger `New` eller `Library`, bliver itemet automatisk gemt som sin egen
-selvstaendige `Task` eller `Exercise` skabelon, naar du gemmer sessionen eller
-ugen. Derefter kan den vaelges under `Saved` i andre aktiviteter, sessioner eller
-weeks.
+selvstaendige `Task` eller `Exercise` skabelon, naar du gemmer sessionen.
+Derefter kan den vaelges under `Saved` i andre sessioner.
 
-Hvis du bruger `Saved`, linker sessionen eller ugen direkte til den gemte
-skabelon. Retter du selve den gemte task/exercise senere, er det den
-selvstaendige skabelon, du redigerer.
+Hvis du bruger `Saved`, linker sessionen direkte til den gemte skabelon. Retter
+du selve den gemte task/exercise senere, er det den selvstaendige skabelon, du
+redigerer.
+
+I en `Week` vaelger du i stedet gemte `Session` skabeloner. Week har ikke
+`New` eller `Library` for items, fordi tasks og exercises skal ligge inde i
+sessionen.
 
 Brug pilene paa item-raekken til at flytte items op og ned. Brug skraldespanden
 til at fjerne et item fra skabelonen.
@@ -274,7 +273,7 @@ Test dette flow som traener:
 6. Tilfoej et `Exercise` item fra `Library` med aktiv tid, pause og runder.
 7. Gem skabelonen.
 8. Bekraeft at task/exercise nu findes som selvstaendige templates under `Saved`.
-9. Opret en `Week` skabelon og tilfoej den gemte task/exercise.
+9. Opret en `Week` skabelon og tilfoej en gemt `Session`.
 10. Rediger skabelonen og gem igen.
 11. Dupliker skabelonen.
 12. Arkiver kopien.

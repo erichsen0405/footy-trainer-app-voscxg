@@ -183,12 +183,13 @@ coach vaelge oevelser fra `exercise_library`.
 
 `itemType` kan vaere:
 
-- `task_template`: i session og week templates
-- `exercise`: i session og week templates, med `config.task` og `config.timer`
+- `task_template`: kun i session templates
+- `exercise`: kun i session templates, med `config.task` og `config.timer`
 - `feedback_requirement`: kun i session templates
-- `session_template`: kun i week templates
-- `focus`: session og week templates
-- `note`: session og week templates
+- `session_template`: kun i week templates og skal linke til en gemt session
+  template via `linkedTemplateId`
+- `focus`: kun i session templates
+- `note`: kun i session templates
 
 Task og exercise templates har ikke item-liste. De gemmer opgavefelterne direkte
 i `metadata.task` via `taskConfig`. Exercise templates gemmer desuden timer i
@@ -266,10 +267,10 @@ intervaltimer:
 
 ### Reuse And Library Items
 
-Naar Base44 opretter eller redigerer en `session` eller `week`, skal `Task` og
-`Exercise` items kunne komme fra tre kilder:
+Naar Base44 opretter eller redigerer en `session`, skal `Task` og `Exercise`
+items kunne komme fra tre kilder:
 
-- `New`: coach udfylder felterne direkte i session/week builderen.
+- `New`: coach udfylder felterne direkte i session builderen.
 - `Saved`: coach vaelger en eksisterende `training_templates` row med
   `templateType: 'task'` eller `templateType: 'exercise'`.
 - `Library`: coach vaelger en row fra responsefeltet `libraryItems`, som kommer
@@ -281,6 +282,12 @@ For `New` og `Library` maa `linkedTemplateId` vaere `null`. Edge Function
 opretter da automatisk en selvstaendig `task` eller `exercise` template og
 gemmer den nye template-id tilbage paa itemets `linkedTemplateId` samt
 `config.reusableTemplateId`.
+
+Naar Base44 opretter eller redigerer en `week`, maa item-listen kun indeholde
+`session_template` items. Hvert item skal vaelges fra `Saved` og sende
+`linkedTemplateId` til en eksisterende `training_templates` row med
+`templateType: 'session'`. Week builderen maa ikke tilbyde `New`, `Library`,
+`task_template`, `exercise`, `focus` eller `note` som item-valg.
 
 Library item eksempel:
 
@@ -498,13 +505,13 @@ Session-template:
 
 Week-template:
 
-- kan indeholde task-template items, exercise items, session templates eller
-  focus/note items med `dayOffset`
+- kan kun indeholde gemte session templates med `dayOffset`
 - vis Day-vaelgeren i week builderen, da week items fordeles paa dag 1, dag 2
   osv.
 - vis kun starttid og varighed paa `session_template` items i week builderen
-- task og exercise items bruger samme `New`/`Saved`/`Library` flow som session
-  templates
+- vis ikke task, exercise, focus eller note som item-valg i week builderen
+- session items i week bruger `Saved` flowet og maa ikke kunne vaelges fra
+  `Library`
 - preview skal vise dag 1, dag 2 osv.
 
 ## Error Handling
@@ -528,22 +535,22 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
   `exercise` og laegger den nye item-type constraint paa.
 - Migration `20260709173000_training_template_exercise_reuse.sql` er pushed med
   `supabase db push --yes`. Migrationen aktiverer top-level `exercise`
-  templates og task/exercise reuse i session/week templates.
-- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 5,
-  opdateret `2026-07-09 16:21:53 UTC`.
+  templates og task/exercise reuse i session templates.
+- Migration `20260709174500_training_template_week_sessions_only.sql` er pushed
+  med `supabase db push --yes`. Migrationen opdaterer DB-kommentaren, saa week
+  beskrives som gemte session templates.
+- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 6,
+  opdateret `2026-07-09 19:47:49 UTC`.
 - No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`, ikke
   `404`.
-- `supabase migration list --linked` viser baade `20260709150000` og
-  `20260709162000` og `20260709173000` som remote-applied.
-- Efter push fejlede et ekstra `supabase db push --dry-run` paa Supabase CLI
-  temp-role auth/circuit-breaker. Remote status er derfor verificeret med
-  `functions list`, no-auth smoke-test og `migration list --linked`.
+- `supabase migration list --linked` viser `20260709150000`, `20260709162000`,
+  `20260709173000` og `20260709174500` som remote-applied.
 
 Verificeringskommandoer:
 
 ```bash
 supabase functions list --project-ref lhpczofddvwcyrgotzha
-supabase db push --dry-run
+supabase migration list --linked
 curl -i -X POST https://lhpczofddvwcyrgotzha.supabase.co/functions/v1/manageTrainingTemplates \
   -H 'Content-Type: application/json' \
   --data '{"action":"context"}'
