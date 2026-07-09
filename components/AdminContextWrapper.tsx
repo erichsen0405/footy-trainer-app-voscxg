@@ -8,7 +8,7 @@ interface AdminContextWrapperProps {
   isAdmin: boolean;
   contextName?: string;
   contextType?: 'player' | 'team';
-  presentation?: 'banner' | 'compact';
+  presentation?: 'banner' | 'compact' | 'none';
   children: React.ReactNode;
 }
 
@@ -25,6 +25,10 @@ export function AdminContextWrapper({
 
   if (!isAdmin) {
     // When not in admin mode, render children without any wrapper styling
+    return <>{children}</>;
+  }
+
+  if (presentation === 'none') {
     return <>{children}</>;
   }
 

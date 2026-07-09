@@ -3197,7 +3197,7 @@ export default function HomeScreen() {
       isAdmin={isAdminMode}
       contextName={selectedContext?.name ?? undefined}
       contextType={adminTargetType || 'player'}
-      presentation="compact"
+      presentation="none"
     >
       <StatusBar barStyle="dark-content" />
       
