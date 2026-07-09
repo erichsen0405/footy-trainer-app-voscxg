@@ -24,9 +24,10 @@ Training templates ligger i:
 Plan > Skabeloner
 ```
 
-Her kan traeneren oprette og administrere tre typer skabeloner:
+Her kan traeneren oprette og administrere fire typer skabeloner:
 
 - `Task`: en genbrugelig opgave.
+- `Exercise`: en genbrugelig opgave med intervaltimer.
 - `Session`: en samlet traeningssession med flere items.
 - `Week`: en ugeplan med sessioner/items fordelt paa dage.
 
@@ -36,6 +37,10 @@ Her kan traeneren oprette og administrere tre typer skabeloner:
 En enkelt genbrugelig opgave, fx "First touch wall passes". Den har samme
 felter som normale opgaver: beskrivelse, medier, subtasks, reminder, feedback
 og task time.
+
+`Exercise template`
+En genbrugelig opgave med samme opgavefelter som en normal task og en
+intervaltimer med aktiv arbejdstid, pause og antal runder.
 
 `Session template`  
 En traeningssession, fx "Finishing session". Sessionen er det, der senere kan
@@ -48,8 +53,8 @@ En ugeplan, fx "U13 finishing week", hvor sessioner kan have day offset, saa de
 ligger paa dag 1, dag 2 osv.
 
 `Exercise item`
-En opgaveblok inde i en session med samme opgavefelter som en normal opgave og
-en ekstra intervaltimer: aktiv arbejdstid, pause og antal runder.
+En opgaveblok inde i en session eller week med samme opgavefelter som en normal
+opgave og en ekstra intervaltimer: aktiv arbejdstid, pause og antal runder.
 
 `Version`  
 Hver gang en skabelon oprettes, redigeres, duplikeres, arkiveres eller
@@ -62,6 +67,7 @@ stabil version, selvom skabelonen bliver redigeret bagefter.
 2. Vaelg `Skabeloner`.
 3. Tryk paa den type, du vil oprette:
    - `Task`
+   - `Exercise`
    - `Session`
    - `Week`
 4. Udfyld titel.
@@ -86,6 +92,8 @@ I en `Session` kan du tilfoeje:
 
 I en `Week` kan du tilfoeje:
 
+- `Task`
+- `Exercise`
 - `Session`
 - `Focus`
 - `Note`
@@ -115,6 +123,25 @@ For `Exercise` kan du ogsaa angive:
 - aktiv arbejdstid i sekunder
 - pause mellem arbejde i sekunder
 - antal runder
+
+## Vaelg Kilde Til Task Og Exercise Items
+
+Naar du tilfoejer `Task` eller `Exercise` i en `Session` eller `Week`, kan du
+vaelge mellem tre kilder:
+
+- `New`: opret itemet direkte i skabelonen med medier, subtasks, feedback,
+  reminder og tid.
+- `Saved`: vaelg en eksisterende gemt `Task` eller `Exercise` skabelon.
+- `Library`: vaelg en oevelse fra biblioteket.
+
+Hvis du bruger `New` eller `Library`, bliver itemet automatisk gemt som sin egen
+selvstaendige `Task` eller `Exercise` skabelon, naar du gemmer sessionen eller
+ugen. Derefter kan den vaelges under `Saved` i andre aktiviteter, sessioner eller
+weeks.
+
+Hvis du bruger `Saved`, linker sessionen eller ugen direkte til den gemte
+skabelon. Retter du selve den gemte task/exercise senere, er det den
+selvstaendige skabelon, du redigerer.
 
 Brug pilene paa item-raekken til at flytte items op og ned. Brug skraldespanden
 til at fjerne et item fra skabelonen.
@@ -165,6 +192,7 @@ I `Plan > Skabeloner` kan du filtrere paa:
 - `Archived`
 - `All types`
 - `Task`
+- `Exercise`
 - `Session`
 - `Week`
 
@@ -238,10 +266,12 @@ Test dette flow som traener:
 2. Bekraeft at bundmenuen viser `Overblik`, `Spillere`, `Plan`, `Bibliotek`.
 3. Aabn `Plan`.
 4. Opret en `Session` skabelon.
-5. Tilfoej et `Task` item med media/subtasks.
-6. Tilfoej et `Exercise` item med aktiv tid, pause og runder.
+5. Tilfoej et nyt `Task` item med media/subtasks.
+6. Tilfoej et `Exercise` item fra `Library` med aktiv tid, pause og runder.
 7. Gem skabelonen.
-8. Rediger skabelonen og gem igen.
-9. Dupliker skabelonen.
-10. Arkiver kopien.
-11. Skift til `Archived` og gendan kopien.
+8. Bekraeft at task/exercise nu findes som selvstaendige templates under `Saved`.
+9. Opret en `Week` skabelon og tilfoej den gemte task/exercise.
+10. Rediger skabelonen og gem igen.
+11. Dupliker skabelonen.
+12. Arkiver kopien.
+13. Skift til `Archived` og gendan kopien.

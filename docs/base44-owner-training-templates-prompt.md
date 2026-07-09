@@ -11,6 +11,7 @@ baade klubber og private coach businesses kan oprette, redigere, duplikere,
 arkivere og genbruge:
 
 - task-skabeloner
+- exercise-skabeloner
 - session-skabeloner
 - uge-skabeloner
 
@@ -112,6 +113,8 @@ Returnerer owner workspaces, som brugeren kan arbejde i.
 ```
 
 Returnerer owner, actor, folders, templates og summary.
+Response indeholder ogsaa `libraryItems`, som Base44 kan bruge til at lade
+coach vaelge oevelser fra `exercise_library`.
 
 ### Create Or Update Template
 
@@ -174,20 +177,22 @@ Returnerer owner, actor, folders, templates og summary.
 `templateType` kan vaere:
 
 - `task`
+- `exercise`
 - `session`
 - `week`
 
 `itemType` kan vaere:
 
-- `task_template`: kun i session templates
-- `exercise`: kun i session templates, med `config.task` og `config.timer`
+- `task_template`: i session og week templates
+- `exercise`: i session og week templates, med `config.task` og `config.timer`
 - `feedback_requirement`: kun i session templates
 - `session_template`: kun i week templates
 - `focus`: session og week templates
 - `note`: session og week templates
 
-Task templates har ikke item-liste. De gemmer opgavefelterne direkte i
-`metadata.task` via `taskConfig`:
+Task og exercise templates har ikke item-liste. De gemmer opgavefelterne direkte
+i `metadata.task` via `taskConfig`. Exercise templates gemmer desuden timer i
+`metadata.timer` via `exerciseTimer`.
 
 ```json
 {
@@ -203,6 +208,28 @@ Task templates har ikke item-liste. De gemmer opgavefelterne direkte i
     "afterTrainingEnabled": false,
     "taskDurationEnabled": true,
     "taskDurationMinutes": 12
+  }
+}
+```
+
+Exercise template:
+
+```json
+{
+  "action": "upsertTemplate",
+  "ownerAccountId": "<owner_account uuid>",
+  "templateType": "exercise",
+  "title": "Repeat sprints",
+  "taskConfig": {
+    "subtasks": [{ "title": "Sprint 20m" }],
+    "videoUrls": ["https://example.com/sprint.mp4"],
+    "taskDurationEnabled": true,
+    "taskDurationMinutes": 16
+  },
+  "exerciseTimer": {
+    "activeSeconds": 30,
+    "restSeconds": 20,
+    "rounds": 8
   }
 }
 ```
@@ -232,6 +259,53 @@ intervaltimer:
       "activeSeconds": 40,
       "restSeconds": 20,
       "rounds": 5
+    }
+  }
+}
+```
+
+### Reuse And Library Items
+
+Naar Base44 opretter eller redigerer en `session` eller `week`, skal `Task` og
+`Exercise` items kunne komme fra tre kilder:
+
+- `New`: coach udfylder felterne direkte i session/week builderen.
+- `Saved`: coach vaelger en eksisterende `training_templates` row med
+  `templateType: 'task'` eller `templateType: 'exercise'`.
+- `Library`: coach vaelger en row fra responsefeltet `libraryItems`, som kommer
+  fra `exercise_library`.
+
+For `Saved` skal itemet sende `linkedTemplateId` til den valgte template.
+
+For `New` og `Library` maa `linkedTemplateId` vaere `null`. Edge Function
+opretter da automatisk en selvstaendig `task` eller `exercise` template og
+gemmer den nye template-id tilbage paa itemets `linkedTemplateId` samt
+`config.reusableTemplateId`.
+
+Library item eksempel:
+
+```json
+{
+  "itemType": "exercise",
+  "linkedTemplateId": null,
+  "title": "Library sprint drill",
+  "config": {
+    "libraryExerciseId": "<exercise_library uuid>",
+    "source": {
+      "kind": "exercise_library",
+      "libraryExerciseId": "<exercise_library uuid>"
+    },
+    "task": {
+      "title": "Library sprint drill",
+      "description": "From exercise_library",
+      "videoUrls": ["https://example.com/library.mp4"],
+      "mediaNames": ["Library media"],
+      "subtasks": [{ "title": "Sprint 20m" }]
+    },
+    "timer": {
+      "activeSeconds": 30,
+      "restSeconds": 20,
+      "rounds": 6
     }
   }
 }
@@ -311,7 +385,7 @@ intervaltimer:
   templates: Array<{
     id: string;
     ownerAccountId: string;
-    templateType: 'task' | 'session' | 'week';
+    templateType: 'task' | 'exercise' | 'session' | 'week';
     title: string;
     description: string | null;
     status: 'active' | 'archived';
@@ -333,11 +407,24 @@ intervaltimer:
     archivedAt: string | null;
     items: TrainingTemplateItem[];
   }>;
+  libraryItems: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    videoUrl: string | null;
+    videoUrls: string[];
+    mediaNames: string[];
+    categoryPath: string | null;
+    isSystem: boolean;
+    trainerId: string | null;
+    subtasks: Array<{ id: string; title: string; sortOrder: number }>;
+  }>;
   summary: {
     total: number;
     active: number;
     archived: number;
     task: number;
+    exercise: number;
     session: number;
     week: number;
   };
@@ -384,7 +471,7 @@ Player og guardian maa ikke have template-admin adgang.
 Byg en desktop-effektiv template builder i eksisterende owner portal:
 
 - owner/workspace switcher, hvis brugeren har flere owners
-- type filter: task, session, week
+- type filter: task, exercise, session, week
 - status filter: active, archived
 - folder/kategori filter
 - liste med titel, type, varighed, fokusomraader, item count og version
@@ -396,13 +483,18 @@ Session-template:
 - er selve sessionen/aktiviteten og kan have default aktivitetskategori
 - kan indeholde task-template items, exercise items, feedback requirements,
   notes og focus items
+- task og exercise items kan oprettes som nye inline items, vaelges fra gemte
+  task/exercise templates eller vaelges fra `libraryItems`
 - task og exercise items skal have samme opgavefelter som normale task
   templates: medier, subtasks, reminder, feedback og task time
 - exercise items skal ogsaa have intervaltimer med aktiv tid, pause og runder
 
 Week-template:
 
-- kan indeholde flere session templates eller focus/note items med `dayOffset`
+- kan indeholde task-template items, exercise items, session templates eller
+  focus/note items med `dayOffset`
+- task og exercise items bruger samme `New`/`Saved`/`Library` flow som session
+  templates
 - preview skal vise dag 1, dag 2 osv.
 
 ## Error Handling
@@ -424,14 +516,18 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
 - Migration `20260709162000_training_template_item_logic.sql` er pushed med
   `supabase db push --yes`. Migrationen migrerer legacy `activity` items til
   `exercise` og laegger den nye item-type constraint paa.
-- Efter deployment returnerer `supabase db push --dry-run`: remote database is
-  up to date.
-- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 2,
-  opdateret `2026-07-09 15:07:26 UTC`.
+- Migration `20260709173000_training_template_exercise_reuse.sql` er pushed med
+  `supabase db push --yes`. Migrationen aktiverer top-level `exercise`
+  templates og task/exercise reuse i session/week templates.
+- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 3,
+  opdateret `2026-07-09 15:28:11 UTC`.
 - No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`, ikke
   `404`.
 - `supabase migration list --linked` viser baade `20260709150000` og
-  `20260709162000` som remote-applied.
+  `20260709162000` og `20260709173000` som remote-applied.
+- Efter push fejlede et ekstra `supabase db push --dry-run` paa Supabase CLI
+  temp-role auth/circuit-breaker. Remote status er derfor verificeret med
+  `functions list`, no-auth smoke-test og `migration list --linked`.
 
 Verificeringskommandoer:
 

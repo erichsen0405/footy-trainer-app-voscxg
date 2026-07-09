@@ -23,6 +23,7 @@ import { getColors } from '@/styles/commonStyles';
 import {
   TrainingTemplateExerciseTimer,
   TrainingTemplateItemInput,
+  TrainingTemplateLibraryItem,
   TrainingTemplateSummary,
   TrainingTemplateTaskConfig,
   TrainingTemplateType,
@@ -51,6 +52,7 @@ import {
 type PlanSection = 'templates' | 'tasks' | 'programs' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
 type TemplateTypeFilter = 'all' | TrainingTemplateType;
+type ItemSourceMode = 'new' | 'saved' | 'library';
 
 type DraftItem = TrainingTemplateItemInput & {
   localId: string;
@@ -93,6 +95,7 @@ type TemplateDraft = {
   durationInput: string;
   defaultActivityCategoryName: string;
   taskConfig: TaskConfigDraft;
+  exerciseTimer: ExerciseTimerDraft;
   status: TemplateStatusFilter;
   items: DraftItem[];
 };
@@ -104,6 +107,7 @@ const TEMPLATE_TYPES: {
   materialIcon: string;
 }[] = [
   { value: 'task', label: 'Task', icon: 'checklist', materialIcon: 'checklist' },
+  { value: 'exercise', label: 'Exercise', icon: 'timer', materialIcon: 'timer' },
   { value: 'session', label: 'Session', icon: 'calendar', materialIcon: 'event' },
   { value: 'week', label: 'Week', icon: 'calendar.badge.clock', materialIcon: 'event_note' },
 ];
@@ -136,8 +140,9 @@ const ITEM_TYPES: {
 
 const ITEM_TYPES_BY_TEMPLATE: Record<TrainingTemplateType, DraftItem['itemType'][]> = {
   task: [],
+  exercise: [],
   session: ['task_template', 'exercise', 'focus', 'note', 'feedback_requirement'],
-  week: ['session_template', 'focus', 'note'],
+  week: ['task_template', 'exercise', 'session_template', 'focus', 'note'],
 };
 
 const DEFAULT_EXERCISE_TIMER: TrainingTemplateExerciseTimer = {
@@ -268,6 +273,18 @@ function createExerciseTimerDraftFromConfig(config: unknown): ExerciseTimerDraft
   };
 }
 
+function createTaskConfigDraftFromLibraryItem(item: TrainingTemplateLibraryItem): TaskConfigDraft {
+  const videoUrls = normalizeTaskVideoUrls(item.videoUrls.length ? item.videoUrls : item.videoUrl);
+  return {
+    ...createEmptyTaskConfigDraft(),
+    videoUrls,
+    mediaNames: normalizeTaskMediaNames(item.mediaNames, videoUrls),
+    subtasks: item.subtasks.length
+      ? item.subtasks.map((subtask) => ({ localId: subtask.id, title: subtask.title }))
+      : [{ localId: createLocalSubtaskId(), title: '' }],
+  };
+}
+
 function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
   const videoPayload = buildTaskVideoPayload(config.videoUrls);
   const mediaNamePayload = buildTaskMediaNamePayload(config.mediaNames, videoPayload.videoUrls);
@@ -296,6 +313,32 @@ function buildTaskConfigPayload(title: string, description: string | null, confi
     taskDurationMinutes,
     autoAddToActivities: config.autoAddToActivities,
   };
+}
+
+function buildTaskConfigPayloadFromTemplate(
+  template: TrainingTemplateSummary,
+  title: string,
+  description: string | null
+): TrainingTemplateTaskConfig {
+  const metadata = asRecord(template.metadata);
+  const taskRecord = asRecord(metadata.task);
+  const draft = createTaskConfigDraftFromConfig(taskRecord);
+  const payload = buildTaskConfigPayload(title, description, draft);
+  const categoryIds = Array.isArray(taskRecord.categoryIds)
+    ? taskRecord.categoryIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  return {
+    ...payload,
+    categoryIds,
+  };
+}
+
+function buildTaskConfigPayloadFromLibraryItem(
+  item: TrainingTemplateLibraryItem,
+  title: string,
+  description: string | null
+): TrainingTemplateTaskConfig {
+  return buildTaskConfigPayload(title, description, createTaskConfigDraftFromLibraryItem(item));
 }
 
 function buildExerciseTimerPayload(config: ExerciseTimerDraft): TrainingTemplateExerciseTimer {
@@ -343,6 +386,7 @@ function templateTypeLabel(type: TrainingTemplateType): string {
 function getTemplateTone(type: TrainingTemplateType, colors: ReturnType<typeof getColors>): string {
   if (type === 'week') return colors.accent;
   if (type === 'session') return colors.secondary;
+  if (type === 'exercise') return colors.warning;
   return colors.primary;
 }
 
@@ -357,6 +401,7 @@ function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft
     durationInput: '',
     defaultActivityCategoryName: '',
     taskConfig: createEmptyTaskConfigDraft(),
+    exerciseTimer: createEmptyExerciseTimerDraft(),
     status: 'active',
     items: [],
   };
@@ -374,6 +419,7 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
     durationInput: template.durationMinutes ? String(template.durationMinutes) : '',
     defaultActivityCategoryName: template.defaultActivityCategoryName ?? '',
     taskConfig: createTaskConfigDraftFromConfig(metadata.task),
+    exerciseTimer: createExerciseTimerDraftFromConfig(metadata.timer),
     status: template.status,
     items: template.items.map((item) => ({
       localId: item.id,
@@ -420,6 +466,9 @@ export default function PlanScreen() {
   const [itemDuration, setItemDuration] = useState('');
   const [itemTaskConfig, setItemTaskConfig] = useState<TaskConfigDraft>(() => createEmptyTaskConfigDraft());
   const [itemExerciseTimer, setItemExerciseTimer] = useState<ExerciseTimerDraft>(() => createEmptyExerciseTimerDraft());
+  const [itemSourceMode, setItemSourceMode] = useState<ItemSourceMode>('new');
+  const [selectedReusableTemplateId, setSelectedReusableTemplateId] = useState<string | null>(null);
+  const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
   const [uploadingItemMedia, setUploadingItemMedia] = useState(false);
   const { user } = useAuthSession();
@@ -492,6 +541,33 @@ export default function PlanScreen() {
     [draft.templateType]
   );
 
+  const reusableTemplateType = itemType === 'task_template' ? 'task' : itemType === 'exercise' ? 'exercise' : null;
+  const reusableTemplates = useMemo(
+    () =>
+      reusableTemplateType
+        ? (payload?.templates ?? []).filter(
+            (template) => template.status === 'active' && template.templateType === reusableTemplateType
+          )
+        : [],
+    [payload?.templates, reusableTemplateType]
+  );
+  const libraryItems = useMemo(() => payload?.libraryItems ?? [], [payload?.libraryItems]);
+  const selectedReusableTemplate = useMemo(
+    () => reusableTemplates.find((template) => template.id === selectedReusableTemplateId) ?? null,
+    [reusableTemplates, selectedReusableTemplateId]
+  );
+  const selectedLibraryItem = useMemo(
+    () => libraryItems.find((item) => item.id === selectedLibraryItemId) ?? null,
+    [libraryItems, selectedLibraryItemId]
+  );
+  const itemUsesReusableSource = itemType === 'task_template' || itemType === 'exercise';
+  const canAddItem =
+    itemUsesReusableSource && itemSourceMode === 'saved'
+      ? Boolean(selectedReusableTemplate)
+      : itemUsesReusableSource && itemSourceMode === 'library'
+        ? Boolean(selectedLibraryItem)
+        : Boolean(itemTitle.trim());
+
   const resetItemDraft = useCallback((templateType: TrainingTemplateType = 'session') => {
     setItemTitle('');
     setItemDescription('');
@@ -501,6 +577,9 @@ export default function PlanScreen() {
     setItemDuration('');
     setItemTaskConfig(createEmptyTaskConfigDraft());
     setItemExerciseTimer(createEmptyExerciseTimerDraft());
+    setItemSourceMode('new');
+    setSelectedReusableTemplateId(null);
+    setSelectedLibraryItemId(null);
   }, []);
 
   const openCreate = useCallback((type: TrainingTemplateType = 'session') => {
@@ -540,11 +619,37 @@ export default function PlanScreen() {
     resetItemDraft(templateType);
   }, [resetItemDraft]);
 
+  const changeItemType = useCallback((nextItemType: DraftItem['itemType']) => {
+    setItemType(nextItemType);
+    setItemSourceMode('new');
+    setSelectedReusableTemplateId(null);
+    setSelectedLibraryItemId(null);
+  }, []);
+
+  const changeItemSourceMode = useCallback((nextSourceMode: ItemSourceMode) => {
+    setItemSourceMode(nextSourceMode);
+    setSelectedReusableTemplateId(null);
+    setSelectedLibraryItemId(null);
+  }, []);
+
   const addDraftItem = useCallback(() => {
-    const title = itemTitle.trim();
-    if (!title) return;
     if (!ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(itemType)) return;
-    const description = itemDescription.trim() || null;
+    const usingReusableSource = itemType === 'task_template' || itemType === 'exercise';
+    const reusableTemplate = usingReusableSource && itemSourceMode === 'saved' ? selectedReusableTemplate : null;
+    const libraryItem = usingReusableSource && itemSourceMode === 'library' ? selectedLibraryItem : null;
+    if (usingReusableSource && itemSourceMode === 'saved' && !reusableTemplate) {
+      Alert.alert('Choose template', 'Select a saved task or exercise template first.');
+      return;
+    }
+    if (usingReusableSource && itemSourceMode === 'library' && !libraryItem) {
+      Alert.alert('Choose library item', 'Select a library exercise first.');
+      return;
+    }
+
+    const fallbackTitle = reusableTemplate?.title ?? libraryItem?.title ?? '';
+    const title = itemTitle.trim() || fallbackTitle;
+    if (!title) return;
+    const description = itemDescription.trim() || reusableTemplate?.description || libraryItem?.description || null;
     const startTime = normalizeDraftStartTime(itemStartTime);
     if (itemStartTime.trim() && !startTime) {
       Alert.alert('Invalid time', 'Use HH:mm, for example 09:30.');
@@ -552,10 +657,24 @@ export default function PlanScreen() {
     }
     const config: Record<string, unknown> = {};
     if (itemType === 'task_template' || itemType === 'exercise') {
-      config.task = buildTaskConfigPayload(title, description, itemTaskConfig);
+      if (reusableTemplate) {
+        config.task = buildTaskConfigPayloadFromTemplate(reusableTemplate, title, description);
+        config.source = { kind: 'saved_template', templateId: reusableTemplate.id };
+      } else if (libraryItem) {
+        config.task = buildTaskConfigPayloadFromLibraryItem(libraryItem, title, description);
+        config.libraryExerciseId = libraryItem.id;
+        config.source = { kind: 'exercise_library', libraryExerciseId: libraryItem.id };
+      } else {
+        config.task = buildTaskConfigPayload(title, description, itemTaskConfig);
+        config.source = { kind: 'inline_template_item' };
+      }
     }
     if (itemType === 'exercise') {
-      config.timer = buildExerciseTimerPayload(itemExerciseTimer);
+      const templateMetadata = reusableTemplate ? asRecord(reusableTemplate.metadata) : {};
+      const templateTimer = reusableTemplate ? asRecord(templateMetadata.timer) : {};
+      config.timer = reusableTemplate && typeof templateTimer.activeSeconds === 'number'
+        ? templateTimer
+        : buildExerciseTimerPayload(itemExerciseTimer);
     }
 
     setDraft((current) => ({
@@ -565,6 +684,7 @@ export default function PlanScreen() {
         {
           localId: createLocalId(),
           itemType,
+          linkedTemplateId: reusableTemplate?.id ?? null,
           title,
           description,
           dayOffset: parsePositiveInt(itemDayOffset) ?? 0,
@@ -576,7 +696,21 @@ export default function PlanScreen() {
       ],
     }));
     resetItemDraft(draft.templateType);
-  }, [draft.templateType, itemDayOffset, itemDescription, itemDuration, itemExerciseTimer, itemStartTime, itemTaskConfig, itemTitle, itemType, resetItemDraft]);
+  }, [
+    draft.templateType,
+    itemDayOffset,
+    itemDescription,
+    itemDuration,
+    itemExerciseTimer,
+    itemSourceMode,
+    itemStartTime,
+    itemTaskConfig,
+    itemTitle,
+    itemType,
+    resetItemDraft,
+    selectedLibraryItem,
+    selectedReusableTemplate,
+  ]);
 
   const moveDraftItem = useCallback((localId: string, direction: -1 | 1) => {
     setDraft((current) => {
@@ -612,9 +746,10 @@ export default function PlanScreen() {
 
     setSaving(true);
     try {
-      const taskConfig = draft.templateType === 'task'
+      const taskConfig = draft.templateType === 'task' || draft.templateType === 'exercise'
         ? buildTaskConfigPayload(title, draft.description.trim() || null, draft.taskConfig)
         : null;
+      const exerciseTimer = draft.templateType === 'exercise' ? buildExerciseTimerPayload(draft.exerciseTimer) : null;
       const allowed = new Set(ITEM_TYPES_BY_TEMPLATE[draft.templateType]);
       const next = await saveOwnerTrainingTemplate({
         id: draft.id,
@@ -628,7 +763,8 @@ export default function PlanScreen() {
         defaultActivityCategoryName: draft.templateType === 'session' ? draft.defaultActivityCategoryName.trim() || null : null,
         status: draft.status,
         taskConfig,
-        items: draft.templateType === 'task'
+        exerciseTimer,
+        items: draft.templateType === 'task' || draft.templateType === 'exercise'
           ? []
           : draft.items
               .filter((item) => allowed.has(item.itemType))
@@ -862,6 +998,7 @@ export default function PlanScreen() {
           <>
             <View style={styles.summaryGrid}>
               <SummaryTile label="Active" value={String(payload?.summary.active ?? 0)} colors={colors} tone={colors.success} />
+              <SummaryTile label="Exercises" value={String(payload?.summary.exercise ?? 0)} colors={colors} tone={colors.warning} />
               <SummaryTile label="Sessions" value={String(payload?.summary.session ?? 0)} colors={colors} tone={colors.secondary} />
               <SummaryTile label="Weeks" value={String(payload?.summary.week ?? 0)} colors={colors} tone={colors.accent} />
             </View>
@@ -1046,17 +1183,31 @@ export default function PlanScreen() {
               />
             ) : null}
 
-            {draft.templateType === 'task' ? (
-              <TaskFieldsEditor
-                title="Task fields"
-                config={draft.taskConfig}
-                onChange={updateDraftTaskConfig}
-                colors={colors}
-                uploading={uploadingTemplateMedia}
-                onAddMediaLink={() => addTaskMediaLink('template')}
-                onPickMedia={() => pickTaskMedia('template')}
-                onRemoveMedia={(index) => removeTaskMedia('template', index)}
-              />
+            {draft.templateType === 'task' || draft.templateType === 'exercise' ? (
+              <>
+                <TaskFieldsEditor
+                  title={draft.templateType === 'exercise' ? 'Exercise task fields' : 'Task fields'}
+                  config={draft.taskConfig}
+                  onChange={updateDraftTaskConfig}
+                  colors={colors}
+                  uploading={uploadingTemplateMedia}
+                  onAddMediaLink={() => addTaskMediaLink('template')}
+                  onPickMedia={() => pickTaskMedia('template')}
+                  onRemoveMedia={(index) => removeTaskMedia('template', index)}
+                />
+                {draft.templateType === 'exercise' ? (
+                  <ExerciseTimerEditor
+                    timer={draft.exerciseTimer}
+                    onChange={(update) =>
+                      setDraft((current) => ({
+                        ...current,
+                        exerciseTimer: typeof update === 'function' ? update(current.exerciseTimer) : update,
+                      }))
+                    }
+                    colors={colors}
+                  />
+                ) : null}
+              </>
             ) : (
               <>
                 <View style={styles.modalSectionHeader}>
@@ -1078,7 +1229,7 @@ export default function PlanScreen() {
                               borderColor: active ? colors.primary : colors.border,
                             },
                           ]}
-                          onPress={() => setItemType(type.value)}
+                          onPress={() => changeItemType(type.value)}
                         >
                           <IconSymbol
                             ios_icon_name={type.icon as any}
@@ -1091,11 +1242,104 @@ export default function PlanScreen() {
                       );
                     })}
                   </View>
+
+                  {itemUsesReusableSource ? (
+                    <>
+                      <View style={styles.itemSourceRow}>
+                        {[
+                          { value: 'new', label: 'New' },
+                          { value: 'saved', label: 'Saved' },
+                          { value: 'library', label: 'Library' },
+                        ].map((source) => {
+                          const active = itemSourceMode === source.value;
+                          return (
+                            <TouchableOpacity
+                              key={source.value}
+                              style={[
+                                styles.itemSourceButton,
+                                {
+                                  backgroundColor: active ? colors.secondary : colors.background,
+                                  borderColor: active ? colors.secondary : colors.border,
+                                },
+                              ]}
+                              onPress={() => changeItemSourceMode(source.value as ItemSourceMode)}
+                              activeOpacity={0.84}
+                            >
+                              <Text style={[styles.itemSourceText, { color: active ? '#FFFFFF' : colors.text }]}>
+                                {source.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      {itemSourceMode === 'saved' ? (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reusablePickerRow}>
+                          {reusableTemplates.length ? (
+                            reusableTemplates.map((template) => {
+                              const active = selectedReusableTemplateId === template.id;
+                              return (
+                                <TouchableOpacity
+                                  key={template.id}
+                                  style={[
+                                    styles.reusablePickerChip,
+                                    {
+                                      backgroundColor: active ? colors.primary : colors.background,
+                                      borderColor: active ? colors.primary : colors.border,
+                                    },
+                                  ]}
+                                  onPress={() => setSelectedReusableTemplateId(template.id)}
+                                  activeOpacity={0.84}
+                                >
+                                  <Text style={[styles.reusablePickerText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                                    {template.title}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })
+                          ) : (
+                            <Text style={[styles.pickerEmptyText, { color: colors.textSecondary }]}>No saved templates</Text>
+                          )}
+                        </ScrollView>
+                      ) : null}
+
+                      {itemSourceMode === 'library' ? (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reusablePickerRow}>
+                          {libraryItems.length ? (
+                            libraryItems.map((libraryItem) => {
+                              const active = selectedLibraryItemId === libraryItem.id;
+                              return (
+                                <TouchableOpacity
+                                  key={libraryItem.id}
+                                  style={[
+                                    styles.reusablePickerChip,
+                                    {
+                                      backgroundColor: active ? colors.primary : colors.background,
+                                      borderColor: active ? colors.primary : colors.border,
+                                    },
+                                  ]}
+                                  onPress={() => setSelectedLibraryItemId(libraryItem.id)}
+                                  activeOpacity={0.84}
+                                >
+                                  <Text style={[styles.reusablePickerText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                                    {libraryItem.title}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })
+                          ) : (
+                            <Text style={[styles.pickerEmptyText, { color: colors.textSecondary }]}>No library items</Text>
+                          )}
+                        </ScrollView>
+                      ) : null}
+                    </>
+                  ) : null}
+
                   <TextInput
                     style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                     value={itemTitle}
                     onChangeText={setItemTitle}
-                    placeholder="Item title"
+                    placeholder={itemSourceMode === 'new' || !itemUsesReusableSource ? 'Item title' : 'Title override'}
                     placeholderTextColor={colors.textSecondary}
                   />
                   <TextInput
@@ -1111,7 +1355,7 @@ export default function PlanScreen() {
                     multiline
                   />
 
-                  {itemType === 'task_template' || itemType === 'exercise' ? (
+                  {(itemType === 'task_template' || itemType === 'exercise') && itemSourceMode === 'new' ? (
                     <TaskFieldsEditor
                       title={itemType === 'exercise' ? 'Exercise task fields' : 'Task fields'}
                       config={itemTaskConfig}
@@ -1124,7 +1368,7 @@ export default function PlanScreen() {
                     />
                   ) : null}
 
-                  {itemType === 'exercise' ? (
+                  {itemType === 'exercise' && itemSourceMode !== 'saved' ? (
                     <ExerciseTimerEditor
                       timer={itemExerciseTimer}
                       onChange={setItemExerciseTimer}
@@ -1159,9 +1403,9 @@ export default function PlanScreen() {
                     />
                   </View>
                   <TouchableOpacity
-                    style={[styles.addItemButton, { backgroundColor: colors.primary, opacity: itemTitle.trim() ? 1 : 0.55 }]}
+                    style={[styles.addItemButton, { backgroundColor: colors.primary, opacity: canAddItem ? 1 : 0.55 }]}
                     onPress={addDraftItem}
-                    disabled={!itemTitle.trim()}
+                    disabled={!canAddItem}
                   >
                     <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
                     <Text style={styles.addItemText}>Add item</Text>
@@ -2098,6 +2342,46 @@ const styles = StyleSheet.create({
   itemTypeText: {
     fontSize: 11,
     fontWeight: '900',
+  },
+  itemSourceRow: {
+    flexDirection: 'row',
+    columnGap: 6,
+    marginBottom: 8,
+  },
+  itemSourceButton: {
+    flex: 1,
+    minHeight: 34,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  itemSourceText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  reusablePickerRow: {
+    columnGap: 6,
+    paddingBottom: 8,
+  },
+  reusablePickerChip: {
+    minHeight: 34,
+    maxWidth: 180,
+    borderWidth: 1,
+    borderRadius: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  reusablePickerText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pickerEmptyText: {
+    minHeight: 34,
+    fontSize: 12,
+    fontWeight: '800',
+    paddingTop: 8,
   },
   itemMetaRow: {
     flexDirection: 'row',

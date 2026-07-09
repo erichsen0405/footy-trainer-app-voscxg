@@ -17,7 +17,7 @@ export type TrainingTemplateAction =
   | 'archiveTemplate'
   | 'restoreTemplate';
 
-export type TrainingTemplateType = 'task' | 'session' | 'week';
+export type TrainingTemplateType = 'task' | 'exercise' | 'session' | 'week';
 export type TrainingTemplateStatus = 'active' | 'archived';
 export type TrainingTemplateItemType = 'task_template' | 'exercise' | 'session_template' | 'note' | 'focus' | 'feedback_requirement';
 
@@ -82,6 +82,23 @@ type TemplateItemRow = {
   config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+type ExerciseLibraryRow = {
+  id: string;
+  trainer_id: string | null;
+  title: string;
+  description: string | null;
+  video_url: string | null;
+  is_system: boolean | null;
+  category_path: string | null;
+};
+
+type ExerciseSubtaskRow = {
+  id: string;
+  exercise_id: string;
+  title: string;
+  sort_order: number;
 };
 
 type VersionRow = {
@@ -163,13 +180,14 @@ type ParsedTrainingTemplateBody =
   | { action: 'archiveTemplate' | 'restoreTemplate'; ownerAccountId: string; templateId: string };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TEMPLATE_TYPES = new Set(['task', 'session', 'week']);
+const TEMPLATE_TYPES = new Set(['task', 'exercise', 'session', 'week']);
 const TEMPLATE_STATUSES = new Set(['active', 'archived']);
 const ITEM_TYPES = new Set(['task_template', 'exercise', 'session_template', 'note', 'focus', 'feedback_requirement']);
 const ITEM_TYPES_BY_TEMPLATE: Record<TrainingTemplateType, Set<TrainingTemplateItemType>> = {
   task: new Set([]),
+  exercise: new Set([]),
   session: new Set(['task_template', 'exercise', 'focus', 'note', 'feedback_requirement']),
-  week: new Set(['session_template', 'focus', 'note']),
+  week: new Set(['task_template', 'exercise', 'session_template', 'focus', 'note']),
 };
 const COACH_ACCESS_ROLES = new Set(['owner', 'admin', 'coach', 'assistant_coach']);
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
@@ -238,7 +256,7 @@ function normalizeColor(value: unknown): string | null {
 function normalizeTemplateType(value: unknown): TrainingTemplateType {
   const normalized = optionalTrimmedString(value);
   if (!normalized || !TEMPLATE_TYPES.has(normalized)) {
-    throw new AppError('VALIDATION_ERROR', 'templateType must be task, session or week.', 400);
+    throw new AppError('VALIDATION_ERROR', 'templateType must be task, exercise, session or week.', 400);
   }
   return normalized as TrainingTemplateType;
 }
@@ -466,8 +484,8 @@ function normalizeTemplateItems(value: unknown, templateType: TrainingTemplateTy
     throw new AppError('VALIDATION_ERROR', 'items must be an array.', 400);
   }
 
-  if (templateType === 'task' && value.length > 0) {
-    throw new AppError('VALIDATION_ERROR', 'Task templates store task fields directly and cannot contain items.', 400);
+  if ((templateType === 'task' || templateType === 'exercise') && value.length > 0) {
+    throw new AppError('VALIDATION_ERROR', 'Task and exercise templates store fields directly and cannot contain items.', 400);
   }
 
   return value.map((item, index) => {
@@ -530,8 +548,11 @@ export function parseTrainingTemplateBody(body: unknown): ParsedTrainingTemplate
     const title = requiredTrimmedString(record.title, 'title');
     const description = optionalTrimmedString(record.description);
     const metadata = normalizeJsonObject(record.metadata);
-    if (templateType === 'task') {
+    if (templateType === 'task' || templateType === 'exercise') {
       metadata.task = normalizeTaskConfig(record.taskConfig ?? record.task ?? metadata.task, { title, description });
+    }
+    if (templateType === 'exercise') {
+      metadata.timer = normalizeExerciseTimer(record.exerciseTimer ?? record.timer ?? metadata.timer);
     }
 
     return {
@@ -744,6 +765,29 @@ function normalizeTemplatePayload(
   };
 }
 
+function normalizeLibraryItemPayload(item: ExerciseLibraryRow, subtasks: ExerciseSubtaskRow[]) {
+  const videoUrl = optionalTrimmedString(item.video_url);
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    videoUrl,
+    videoUrls: videoUrl ? [videoUrl] : [],
+    mediaNames: videoUrl ? ['Library media'] : [],
+    categoryPath: item.category_path,
+    isSystem: item.is_system === true,
+    trainerId: item.trainer_id,
+    subtasks: subtasks
+      .slice()
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((subtask) => ({
+        id: subtask.id,
+        title: subtask.title,
+        sortOrder: subtask.sort_order,
+      })),
+  };
+}
+
 export function normalizeOwnerTrainingTemplatesPayload(payload: unknown) {
   const record = asRecord(payload);
   const owner = asRecord(record.ownerAccount, 'ownerAccount');
@@ -766,21 +810,77 @@ export function normalizeOwnerTrainingTemplatesPayload(payload: unknown) {
     },
     folders: Array.isArray(record.folders) ? record.folders : [],
     templates: Array.isArray(record.templates) ? record.templates : [],
+    libraryItems: Array.isArray(record.libraryItems) ? record.libraryItems : [],
     summary: {
       total: Number(summary.total ?? 0),
       active: Number(summary.active ?? 0),
       archived: Number(summary.archived ?? 0),
       task: Number(summary.task ?? 0),
+      exercise: Number(summary.exercise ?? 0),
       session: Number(summary.session ?? 0),
       week: Number(summary.week ?? 0),
     },
   };
 }
 
+async function loadExerciseLibraryItems(client: QueryClient, actorUserId: string) {
+  const [systemResult, trainerResult] = await Promise.all([
+    client
+      .from('exercise_library')
+      .select('id, trainer_id, title, description, video_url, is_system, category_path')
+      .eq('is_system', true)
+      .order('title', { ascending: true })
+      .limit(200),
+    client
+      .from('exercise_library')
+      .select('id, trainer_id, title, description, video_url, is_system, category_path')
+      .eq('trainer_id', actorUserId)
+      .order('title', { ascending: true })
+      .limit(200),
+  ]);
+
+  if (systemResult.error) {
+    throw new AppError('INTERNAL_ERROR', systemResult.error.message || 'Could not load system exercise library.', 500);
+  }
+  if (trainerResult.error) {
+    throw new AppError('INTERNAL_ERROR', trainerResult.error.message || 'Could not load trainer exercise library.', 500);
+  }
+
+  const byId = new Map<string, ExerciseLibraryRow>();
+  for (const row of [...((systemResult.data || []) as ExerciseLibraryRow[]), ...((trainerResult.data || []) as ExerciseLibraryRow[])]) {
+    byId.set(row.id, row);
+  }
+
+  const libraryItems = Array.from(byId.values());
+  const exerciseIds = libraryItems.map((item) => item.id);
+  if (!exerciseIds.length) return [];
+
+  const { data: subtasksData, error: subtasksError } = await client
+    .from('exercise_subtasks')
+    .select('id, exercise_id, title, sort_order')
+    .in('exercise_id', exerciseIds)
+    .order('sort_order', { ascending: true });
+
+  if (subtasksError) {
+    throw new AppError('INTERNAL_ERROR', subtasksError.message || 'Could not load exercise subtasks.', 500);
+  }
+
+  const subtasksByExerciseId = new Map<string, ExerciseSubtaskRow[]>();
+  for (const subtask of (subtasksData || []) as ExerciseSubtaskRow[]) {
+    const existing = subtasksByExerciseId.get(subtask.exercise_id) || [];
+    existing.push(subtask);
+    subtasksByExerciseId.set(subtask.exercise_id, existing);
+  }
+
+  return libraryItems
+    .sort((left, right) => left.title.localeCompare(right.title, 'da'))
+    .map((item) => normalizeLibraryItemPayload(item, subtasksByExerciseId.get(item.id) || []));
+}
+
 async function loadOwnerTrainingTemplatesPayload(client: QueryClient, actorUserId: string, ownerAccountId: string) {
   const { owner, roles } = await assertOwnerCoachAccess(client, actorUserId, ownerAccountId);
 
-  const [foldersResult, templatesResult] = await Promise.all([
+  const [foldersResult, templatesResult, libraryItems] = await Promise.all([
     client
       .from('training_template_folders')
       .select('*')
@@ -792,6 +892,7 @@ async function loadOwnerTrainingTemplatesPayload(client: QueryClient, actorUserI
       .select('*')
       .eq('owner_account_id', ownerAccountId)
       .order('updated_at', { ascending: false }),
+    loadExerciseLibraryItems(client, actorUserId),
   ]);
 
   if (foldersResult.error) {
@@ -864,11 +965,13 @@ async function loadOwnerTrainingTemplatesPayload(client: QueryClient, actorUserI
     },
     folders: folders.map(normalizeFolderPayload),
     templates: normalizedTemplates,
+    libraryItems,
     summary: {
       total: normalizedTemplates.length,
       active: normalizedTemplates.filter((template) => template.status === 'active').length,
       archived: normalizedTemplates.filter((template) => template.status === 'archived').length,
       task: normalizedTemplates.filter((template) => template.templateType === 'task').length,
+      exercise: normalizedTemplates.filter((template) => template.templateType === 'exercise').length,
       session: normalizedTemplates.filter((template) => template.templateType === 'session').length,
       week: normalizedTemplates.filter((template) => template.templateType === 'week').length,
     },
@@ -1115,6 +1218,139 @@ async function replaceTemplateItems(
   return (data || []) as TemplateItemRow[];
 }
 
+function reusableTemplateTypeForItem(itemType: TrainingTemplateItemType): 'task' | 'exercise' | null {
+  if (itemType === 'task_template') return 'task';
+  if (itemType === 'exercise') return 'exercise';
+  return null;
+}
+
+async function createReusableTemplateFromItem(
+  client: QueryClient,
+  actorUserId: string,
+  ownerAccountId: string,
+  parentTemplateId: string,
+  item: TemplateItemInput,
+  templateType: 'task' | 'exercise'
+): Promise<TemplateRow> {
+  const config = normalizeJsonObject(item.config);
+  const taskConfig = normalizeTaskConfig(config.task ?? config, {
+    title: item.title,
+    description: item.description,
+  });
+  const metadata: Record<string, unknown> = {
+    task: taskConfig,
+    source: {
+      kind: optionalTrimmedString(config.libraryExerciseId) ? 'exercise_library' : 'inline_template_item',
+      libraryExerciseId: optionalTrimmedString(config.libraryExerciseId),
+      parentTemplateId,
+    },
+  };
+
+  if (templateType === 'exercise') {
+    metadata.timer = normalizeExerciseTimer(config.timer);
+  }
+
+  const templateDuration =
+    item.durationMinutes ??
+    (taskConfig.taskDurationEnabled ? taskConfig.taskDurationMinutes : null);
+
+  const { data, error } = await client
+    .from('training_templates')
+    .insert({
+      owner_account_id: ownerAccountId,
+      template_type: templateType,
+      title: item.title,
+      description: item.description,
+      status: 'active',
+      folder_id: null,
+      focus_areas: [],
+      duration_minutes: templateDuration,
+      default_activity_category_id: null,
+      default_activity_category_name: null,
+      source_task_template_id: item.sourceTaskTemplateId,
+      metadata,
+      created_by: actorUserId,
+      updated_by: actorUserId,
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw new AppError('INTERNAL_ERROR', error.message || 'Could not create reusable item template.', 500);
+  }
+
+  const template = data as TemplateRow;
+  await createVersionSnapshot(client, actorUserId, template, [], 'Created from session/week template item');
+  return template;
+}
+
+async function resolveReusableTemplateItemLinks(
+  client: QueryClient,
+  actorUserId: string,
+  ownerAccountId: string,
+  parentTemplateId: string,
+  items: TemplateItemInput[]
+): Promise<TemplateItemInput[]> {
+  const resolvedItems: TemplateItemInput[] = [];
+
+  for (const item of items) {
+    const reusableTemplateType = reusableTemplateTypeForItem(item.itemType);
+    if (!reusableTemplateType) {
+      resolvedItems.push(item);
+      continue;
+    }
+
+    if (item.linkedTemplateId) {
+      const linkedTemplate = await loadTemplateForOwner(client, ownerAccountId, item.linkedTemplateId);
+      if (linkedTemplate.template_type !== reusableTemplateType) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          `${item.itemType} items must link to ${reusableTemplateType} templates.`,
+          400
+        );
+      }
+      const linkedMetadata = normalizeJsonObject(linkedTemplate.metadata);
+      const nextConfig = { ...item.config };
+      if (!normalizeJsonObject(nextConfig.task).title) {
+        nextConfig.task = normalizeTaskConfig(linkedMetadata.task, {
+          title: item.title,
+          description: item.description,
+        });
+      }
+      if (reusableTemplateType === 'exercise' && !normalizeJsonObject(nextConfig.timer).activeSeconds) {
+        nextConfig.timer = normalizeExerciseTimer(linkedMetadata.timer);
+      }
+      resolvedItems.push({
+        ...item,
+        config: {
+          ...nextConfig,
+          reusableTemplateId: item.linkedTemplateId,
+        },
+      });
+      continue;
+    }
+
+    const childTemplate = await createReusableTemplateFromItem(
+      client,
+      actorUserId,
+      ownerAccountId,
+      parentTemplateId,
+      item,
+      reusableTemplateType
+    );
+    resolvedItems.push({
+      ...item,
+      linkedTemplateId: childTemplate.id,
+      config: {
+        ...item.config,
+        reusableTemplateId: childTemplate.id,
+      },
+    });
+  }
+
+  return resolvedItems;
+}
+
 async function upsertFolder(
   client: QueryClient,
   actorUserId: string,
@@ -1210,7 +1446,14 @@ async function upsertTemplate(
     template = data as TemplateRow;
   }
 
-  const items = await replaceTemplateItems(client, input.ownerAccountId, template.id, input.items);
+  const resolvedInputItems = await resolveReusableTemplateItemLinks(
+    client,
+    actorUserId,
+    input.ownerAccountId,
+    template.id,
+    input.items
+  );
+  const items = await replaceTemplateItems(client, input.ownerAccountId, template.id, resolvedInputItems);
   await createVersionSnapshot(client, actorUserId, template, items, input.changeNote);
   return loadOwnerTrainingTemplatesPayload(client, actorUserId, input.ownerAccountId);
 }

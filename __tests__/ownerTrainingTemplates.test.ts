@@ -12,6 +12,7 @@ const taskTemplateId = '55555555-5555-4555-8555-555555555555';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260709150000_owner_training_templates.sql');
 const itemLogicMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709162000_training_template_item_logic.sql');
+const exerciseReuseMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709173000_training_template_exercise_reuse.sql');
 const functionPath = path.join(process.cwd(), 'supabase/functions/manageTrainingTemplates/index.ts');
 const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/trainingTemplates.ts');
 const servicePath = path.join(process.cwd(), 'services/trainingTemplateService.ts');
@@ -22,6 +23,7 @@ const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-training-te
 describe('owner training templates contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
   const itemLogicMigration = fs.readFileSync(itemLogicMigrationPath, 'utf8');
+  const exerciseReuseMigration = fs.readFileSync(exerciseReuseMigrationPath, 'utf8');
   const edgeFunction = fs.readFileSync(functionPath, 'utf8');
   const shared = fs.readFileSync(sharedPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
@@ -39,6 +41,8 @@ describe('owner training templates contract', () => {
     expect(itemLogicMigration).toContain("item_type in ('task_template', 'exercise', 'session_template', 'note', 'focus', 'feedback_requirement')");
     expect(itemLogicMigration).toContain('default_activity_category_name');
     expect(migration).toContain('snapshot jsonb not null');
+    expect(exerciseReuseMigration).toContain("template_type in ('task', 'exercise', 'session', 'week')");
+    expect(exerciseReuseMigration).toContain('Session and week templates can link to saved task/exercise templates');
     expect(migration).toContain('public.has_owner_account_coach_access(owner_account_id, (select auth.uid()))');
     expect(migration).toContain('Players and guardians');
   });
@@ -48,6 +52,10 @@ describe('owner training templates contract', () => {
     expect(edgeFunction).toContain('requireAuthContext');
     expect(shared).toContain('createVersionSnapshot');
     expect(shared).toContain('replaceTemplateItems');
+    expect(shared).toContain('resolveReusableTemplateItemLinks');
+    expect(shared).toContain('loadExerciseLibraryItems');
+    expect(shared).toContain('exercise_library');
+    expect(shared).toContain('libraryItems');
     expect(shared).toContain('has_owner_account_coach_access');
     expect(shared).toContain('duplicateTemplate');
     expect(service).toContain("supabase.functions.invoke('manageTrainingTemplates'");
@@ -197,15 +205,52 @@ describe('owner training templates contract', () => {
       items: [],
     });
 
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'exercise',
+        title: ' Repeat sprints ',
+        taskConfig: {
+          videoUrls: ['https://example.com/sprint.mp4'],
+          taskDurationEnabled: true,
+          taskDurationMinutes: 16,
+        },
+        exerciseTimer: {
+          activeSeconds: 30,
+          restSeconds: 20,
+          rounds: 8,
+        },
+        items: [],
+      })
+    ).toMatchObject({
+      action: 'upsertTemplate',
+      templateType: 'exercise',
+      metadata: {
+        task: {
+          title: 'Repeat sprints',
+          videoUrls: ['https://example.com/sprint.mp4'],
+          taskDurationEnabled: true,
+          taskDurationMinutes: 16,
+        },
+        timer: {
+          activeSeconds: 30,
+          restSeconds: 20,
+          rounds: 8,
+        },
+      },
+      items: [],
+    });
+
     expect(() =>
       parseTrainingTemplateBody({
         action: 'upsertTemplate',
         ownerAccountId,
         templateType: 'week',
         title: 'Bad week',
-        items: [{ itemType: 'task_template', title: 'Loose task' }],
+        items: [{ itemType: 'feedback_requirement', title: 'Loose feedback' }],
       })
-    ).toThrow('task_template is not allowed in week templates.');
+    ).toThrow('feedback_requirement is not allowed in week templates.');
 
     expect(() =>
       parseTrainingTemplateBody({
@@ -241,14 +286,17 @@ describe('owner training templates contract', () => {
           active: 0,
           archived: 0,
           task: 0,
+          exercise: 0,
           session: 0,
           week: 0,
         },
+        libraryItems: [],
       })
     ).toMatchObject({
       ownerAccount: { ownerAccountId, ownerType: 'club' },
       actor: { roles: ['owner', 'coach'], canManageTemplates: true },
-      summary: { total: 0, session: 0, week: 0 },
+      summary: { total: 0, task: 0, exercise: 0, session: 0, week: 0 },
+      libraryItems: [],
     });
   });
 
@@ -267,6 +315,10 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('restoreOwnerTrainingTemplate');
     expect(plan).toContain("value: 'exercise', label: 'Exercise'");
     expect(plan).toContain('Interval timer');
+    expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
+    expect(plan).toContain('selectedReusableTemplateId');
+    expect(plan).toContain('selectedLibraryItemId');
+    expect(plan).toContain('buildTaskConfigPayloadFromLibraryItem');
     expect(plan).not.toContain("value: 'activity', label: 'Activity'");
     expect(plan).toContain("router.push('/(tabs)/tasks'");
     expect(plan).toContain('plan.template.create.${type.value}');

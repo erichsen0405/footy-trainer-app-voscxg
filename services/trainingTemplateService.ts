@@ -2,7 +2,7 @@ import { FunctionsHttpError } from '@supabase/functions-js';
 import { supabase } from '@/integrations/supabase/client';
 import type { OwnerPlayerCrmOwner, OwnerPlayerCrmWorkspace } from '@/services/ownerPlayerCrmService';
 
-export type TrainingTemplateType = 'task' | 'session' | 'week';
+export type TrainingTemplateType = 'task' | 'exercise' | 'session' | 'week';
 export type TrainingTemplateStatus = 'active' | 'archived';
 export type TrainingTemplateItemType = 'task_template' | 'exercise' | 'session_template' | 'note' | 'focus' | 'feedback_requirement';
 
@@ -40,6 +40,19 @@ export interface TrainingTemplateFolder {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TrainingTemplateLibraryItem {
+  id: string;
+  title: string;
+  description: string | null;
+  videoUrl: string | null;
+  videoUrls: string[];
+  mediaNames: string[];
+  categoryPath: string | null;
+  isSystem: boolean;
+  trainerId: string | null;
+  subtasks: { id: string; title: string; sortOrder: number }[];
 }
 
 export interface TrainingTemplateItem {
@@ -105,9 +118,11 @@ export interface OwnerTrainingTemplatesPayload {
     active: number;
     archived: number;
     task: number;
+    exercise: number;
     session: number;
     week: number;
   };
+  libraryItems: TrainingTemplateLibraryItem[];
 }
 
 export interface TrainingTemplateItemInput {
@@ -140,6 +155,7 @@ export interface TrainingTemplateInput {
   status?: TrainingTemplateStatus;
   sourceTaskTemplateId?: string | null;
   taskConfig?: TrainingTemplateTaskConfig | null;
+  exerciseTimer?: TrainingTemplateExerciseTimer | null;
   items?: TrainingTemplateItemInput[];
   changeNote?: string | null;
 }
