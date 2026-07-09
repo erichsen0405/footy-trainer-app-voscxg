@@ -11,11 +11,17 @@ const ownerAccountId = '22222222-2222-4222-8222-222222222222';
 const playerId = '33333333-3333-4333-8333-333333333333';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260709100000_owner_coach_dashboard.sql');
+const noPlanActivityTargetMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260709113000_owner_coach_dashboard_no_plan_activity_target.sql'
+);
 const functionPath = path.join(process.cwd(), 'supabase/functions/getOwnerCoachDashboard/index.ts');
 const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/ownerCoachDashboard.ts');
 const servicePath = path.join(process.cwd(), 'services/ownerCoachDashboardService.ts');
 const screenPath = path.join(process.cwd(), 'app/(tabs)/coach-dashboard.tsx');
 const playerCrmPath = path.join(process.cwd(), 'app/(tabs)/player-crm.tsx');
+const homePath = path.join(process.cwd(), 'app/(tabs)/(home)/index.tsx');
+const homeIosPath = path.join(process.cwd(), 'app/(tabs)/(home)/index.ios.tsx');
 const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-coach-dashboard-prompt.md');
 
@@ -194,11 +200,14 @@ const dashboardPayload = {
 
 describe('owner coach dashboard contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
+  const noPlanActivityTargetMigration = fs.readFileSync(noPlanActivityTargetMigrationPath, 'utf8');
   const edgeFunction = fs.readFileSync(functionPath, 'utf8');
   const shared = fs.readFileSync(sharedPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
   const screen = fs.readFileSync(screenPath, 'utf8');
   const playerCrm = fs.readFileSync(playerCrmPath, 'utf8');
+  const home = fs.readFileSync(homePath, 'utf8');
+  const homeIos = fs.readFileSync(homeIosPath, 'utf8');
   const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
 
@@ -284,6 +293,7 @@ describe('owner coach dashboard contract', () => {
     expect(edgeFunction).toContain('getOwnerCoachDashboardAction');
     expect(edgeFunction).toContain('requireAuthContext');
     expect(shared).toContain('normalizeOwnerCoachDashboardPayload');
+    expect(shared).toContain("target: 'player_crm' | 'activities'");
     expect(service).toContain("supabase.functions.invoke('getOwnerCoachDashboard'");
   });
 
@@ -297,15 +307,32 @@ describe('owner coach dashboard contract', () => {
     expect(screen).toContain('coachDashboard.playerCard');
     expect(screen).toContain('AsyncStorage.setItem(filtersStorageKey');
     expect(screen).toContain("pathname: '/(tabs)/player-crm'");
+    expect(screen).toContain("pathname: '/(tabs)/(home)'");
+    expect(screen).toContain("alert.type === 'no_plan'");
+    expect(screen).toContain('openPlayerActivities(alert.playerId)');
     expect(screen).toContain('ownerAccountId: activeOwnerAccountId');
     expect(screen).toContain('playerId, openAt: String(Date.now())');
     expect(screen).toContain("router.push('/(tabs)/tasks'");
     expect(screen).toContain("router.push('/(tabs)/performance'");
+    expect(home).toContain('useLocalSearchParams');
+    expect(home).toContain('routePlayerId');
+    expect(home).toContain('lastRoutePlayerOpenKeyRef');
+    expect(home).toContain('startAdminPlayer(routePlayerId)');
+    expect(homeIos).toContain('useLocalSearchParams');
+    expect(homeIos).toContain('routePlayerId');
+    expect(homeIos).toContain('lastRoutePlayerOpenKeyRef');
+    expect(homeIos).toContain('startAdminPlayer(routePlayerId)');
     expect(playerCrm).toContain('useLocalSearchParams');
     expect(playerCrm).toContain('routeOwnerAccountId');
     expect(playerCrm).toContain('routePlayerId');
     expect(playerCrm).toContain('lastRouteOpenKeyRef');
     expect(playerCrm).toContain('void openPlayerDetail(player)');
+  });
+
+  it('routes no-plan alert actions to player-scoped activities for web clients', () => {
+    expect(noPlanActivityTargetMigration).toContain("alert->>'type' = 'no_plan'");
+    expect(noPlanActivityTargetMigration).toContain("jsonb_build_object('target', 'activities', 'playerId'");
+    expect(noPlanActivityTargetMigration).toContain('get_owner_coach_dashboard_payload_base_20260709100000');
   });
 
   it('documents Base44 reuse, owner scope, endpoint contract and mobile parity', () => {
@@ -318,5 +345,7 @@ describe('owner coach dashboard contract', () => {
     expect(base44Prompt).toContain('Mobilappen har samme kernefunktionalitet');
     expect(base44Prompt).toContain('No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`');
     expect(base44Prompt).toContain('20260709100000 | 20260709100000 | 2026-07-09 10:00:00');
+    expect(base44Prompt).toContain('20260709113000 | 20260709113000 | 2026-07-09 11:30:00');
+    expect(base44Prompt).toContain("`no_plan` alerts skal navigere til `KlubAktiviteter`");
   });
 });

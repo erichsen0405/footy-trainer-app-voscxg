@@ -14,6 +14,7 @@ baade klubber og private coach businesses kan se et samlet coach dashboard med:
 - dagens og ugens aktiviteter
 - manglende opgaver
 - quick actions til player detail, tasks, reports, programs, goals og chat
+- alert-navigation hvor `no_plan` aabner aktiviteter filtreret paa spilleren
 - effective seat usage fra #281
 
 Tenant scope er altid:
@@ -106,6 +107,9 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
 
 - Migration `20260709100000_owner_coach_dashboard` er pushed med
   `supabase db push --yes`.
+- Migration `20260709113000_owner_coach_dashboard_no_plan_activity_target` er
+  pushed med `supabase db push --yes` og mapper `no_plan` alert actions til
+  `activities`.
 - Efter deployment returnerer `supabase db push --dry-run`: remote database is
   up to date.
 - Edge Function `getOwnerCoachDashboard` er deployet og `ACTIVE`.
@@ -113,6 +117,8 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
   `404`.
 - `supabase migration list --linked` viser
   `20260709100000 | 20260709100000 | 2026-07-09 10:00:00`.
+- `supabase migration list --linked` viser ogsaa
+  `20260709113000 | 20260709113000 | 2026-07-09 11:30:00`.
 
 ## Access
 
@@ -189,7 +195,7 @@ envelope:
     teamNames: string[];
     count: number;
     occurredAt: string | null;
-    action: { target: 'player_crm'; playerId: string };
+    action: { target: 'player_crm' | 'activities'; playerId: string };
   }>;
   today: { activities: DashboardActivity[] };
   week: { activities: DashboardActivity[] };
@@ -219,6 +225,16 @@ Dashboardet skal bygges til desktop scanning:
 - quick actions fra hver spiller til player detail, tasks, reports, program,
   goals og chat
 
+Alert click-adfaerd:
+
+- `no_plan` alerts skal navigere til `KlubAktiviteter` i samme
+  `owner_account_id` og filtrere/scope listen til `alert.playerId`.
+- Alle andre alert-typer (`missing_tasks`, `inactive_player`, `new_feedback`,
+  `upcoming_session`) skal navigere til eksisterende CRM/player detail for
+  `alert.playerId` i samme workspace.
+- Hvis Base44 bruger `alert.action.target`, skal `activities` mappes til
+  `KlubAktiviteter` med player-filter, og `player_crm` mappes til CRM detail.
+
 For `program`, `goals`, `reports` og `chat` skal Base44 kun linke til
 eksisterende eller feature-flagged routes. Byg ikke de senere features fra
 #285, #289, #291 eller #294 som del af #282.
@@ -245,6 +261,7 @@ Mobil quick actions bruger eksisterende:
 - CRM tab/player CRM
 - Tasks via AdminContext player scope
 - Progress via AdminContext player scope
+- No-plan alerts via Home/activities i AdminContext player scope
 
 ## QA
 
@@ -258,6 +275,7 @@ Test minimum:
 - workspace med fa spillere
 - workspace med 50+ spillere
 - alerts for missing tasks, inactive players, new feedback, upcoming sessions
+- `no_plan` alert klikker til `KlubAktiviteter`/mobil Home med korrekt spillerfilter
   og no plan
 - filter paa team, tag, status, level og position
 - web, iOS og Android smoke

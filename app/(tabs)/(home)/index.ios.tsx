@@ -62,7 +62,7 @@ import { BackHandler, FlatList, View, Text, StyleSheet, Pressable, StatusBar, Re
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
@@ -87,6 +87,16 @@ import { markHomeScreenReady } from '@/utils/startupLoader';
 import { trackStartupTelemetry } from '@/utils/startupTelemetry';
 import { TimeoutError, withTimeout } from '@/utils/withTimeout';
 import type { TaskTemplateSelfFeedback } from '@/types';
+
+type HomeRouteParams = {
+  ownerAccountId?: string | string[];
+  playerId?: string | string[];
+  openAt?: string | string[];
+};
+
+const readLocalSearchParams = (
+  typeof useLocalSearchParams === 'function' ? useLocalSearchParams : () => ({})
+) as <T extends Record<string, string | string[] | undefined>>() => T;
 
 const FALLBACK_COLORS = {
   primary: '#4CAF50',
@@ -1054,9 +1064,15 @@ function getActivityTasks(activity: any): any[] {
   return Array.isArray(fallback) ? fallback : [];
 }
 
+function getRouteParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = readLocalSearchParams<HomeRouteParams>();
   const { user } = useAuthSession();
   const {
     activities,
@@ -1074,8 +1090,10 @@ export default function HomeScreen() {
     ensureCurrentWeekStatsLoaded,
     updateIntensityByCategory,
   } = useFootball();
-  const { adminMode, adminTargetType } = useAdmin();
+  const { adminMode, adminTargetType, startAdminPlayer } = useAdmin();
   const { selectedContext } = useTeamPlayer();
+  const routePlayerId = normalizeId(getRouteParam(params.playerId));
+  const routeOpenAt = normalizeId(getRouteParam(params.openAt));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousWeeksModalVisible, setIsPreviousWeeksModalVisible] = useState(false);
@@ -1094,12 +1112,23 @@ export default function HomeScreen() {
   const didSkipInitialFocusRefreshRef = useRef(false);
   const lastStatsRefreshStartedAtRef = useRef(0);
   const lastStatsRefreshCompletedAtRef = useRef(0);
+  const lastRoutePlayerOpenKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (loading || emittedHomeReadyRef.current) return;
     emittedHomeReadyRef.current = true;
     markHomeScreenReady();
   }, [loading]);
+
+  useEffect(() => {
+    if (!routePlayerId) return;
+
+    const routeOpenKey = `${routePlayerId}:${routeOpenAt ?? 'initial'}`;
+    if (lastRoutePlayerOpenKeyRef.current === routeOpenKey) return;
+
+    lastRoutePlayerOpenKeyRef.current = routeOpenKey;
+    startAdminPlayer(routePlayerId);
+  }, [routeOpenAt, routePlayerId, startAdminPlayer]);
 
   useEffect(() => {
     const handleSaved = (payload: any) => {

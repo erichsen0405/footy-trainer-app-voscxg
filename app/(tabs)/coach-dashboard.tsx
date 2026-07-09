@@ -281,6 +281,33 @@ export default function CoachDashboardScreen() {
     [activeOwnerAccountId, router]
   );
 
+  const openPlayerActivities = useCallback(
+    (playerId: string) => {
+      startAdminPlayer(playerId);
+      router.push({
+        pathname: '/(tabs)/(home)',
+        params: {
+          ...(activeOwnerAccountId ? { ownerAccountId: activeOwnerAccountId } : {}),
+          playerId,
+          openAt: String(Date.now()),
+        },
+      } as any);
+    },
+    [activeOwnerAccountId, router, startAdminPlayer]
+  );
+
+  const handleAlertPress = useCallback(
+    (alert: OwnerCoachDashboardAlert) => {
+      if (alert.type === 'no_plan') {
+        openPlayerActivities(alert.playerId);
+        return;
+      }
+
+      openPlayerCrm(alert.playerId);
+    },
+    [openPlayerActivities, openPlayerCrm]
+  );
+
   const openPlayerTasks = useCallback(
     (playerId: string) => {
       startAdminPlayer(playerId);
@@ -514,7 +541,7 @@ export default function CoachDashboardScreen() {
                   <TouchableOpacity
                     key={alert.id}
                     style={[styles.alertRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => openPlayerCrm(alert.playerId)}
+                    onPress={() => handleAlertPress(alert)}
                     testID={`coachDashboard.alert.${alert.type}`}
                   >
                     <View style={[styles.alertStripe, { backgroundColor: severityColor(alert.severity, colors) }]} />

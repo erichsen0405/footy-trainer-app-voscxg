@@ -161,7 +161,7 @@ export type OwnerCoachDashboardAlert = {
   count: number;
   occurredAt: string | null;
   action: {
-    target: string;
+    target: 'player_crm' | 'activities';
     playerId: string;
   };
 };
@@ -169,6 +169,7 @@ export type OwnerCoachDashboardAlert = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALERT_TYPES = new Set(['missing_tasks', 'inactive_player', 'new_feedback', 'upcoming_session', 'no_plan']);
 const ALERT_SEVERITIES = new Set(['high', 'warning', 'info']);
+const ALERT_ACTION_TARGETS = new Set(['player_crm', 'activities']);
 const CRM_STATUSES = new Set(['active', 'trial', 'paused', 'former']);
 
 const RPC_ERROR_MAP: Record<string, { code: ErrorCode; message: string; status: number }> = {
@@ -361,6 +362,7 @@ function normalizeAlert(value: unknown): OwnerCoachDashboardAlert {
   const type = requireString(record.type, 'alert.type');
   const severity = requireString(record.severity, 'alert.severity');
   const action = asRecord(record.action, 'alert.action');
+  const actionTarget = requireString(action.target, 'alert.action.target');
 
   return {
     id: requireString(record.id, 'alert.id'),
@@ -375,7 +377,7 @@ function normalizeAlert(value: unknown): OwnerCoachDashboardAlert {
     count: requireNumber(record.count, 'alert.count'),
     occurredAt: nullableString(record.occurredAt),
     action: {
-      target: requireString(action.target, 'alert.action.target'),
+      target: (ALERT_ACTION_TARGETS.has(actionTarget) ? actionTarget : 'player_crm') as OwnerCoachDashboardAlert['action']['target'],
       playerId: requireString(action.playerId, 'alert.action.playerId'),
     },
   };
