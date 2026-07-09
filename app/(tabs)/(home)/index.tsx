@@ -3101,6 +3101,17 @@ export default function HomeScreen() {
                   >
                     {activityScopeButtonLabel}
                   </Text>
+                  {adminMode !== 'self' ? (
+                    <View
+                      style={[
+                        styles.activityScopeFilterSpot,
+                        {
+                          backgroundColor: isDark ? '#8EE0A8' : '#2F7D46',
+                          shadowColor: isDark ? '#8EE0A8' : '#2F7D46',
+                        },
+                      ]}
+                    />
+                  ) : null}
                 </Pressable>
               ) : null}
               {hasPreviousWeeks ? (
@@ -3559,6 +3570,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     columnGap: 6,
+    position: 'relative',
   },
   activityScopeFilterButton: {
     maxWidth: 168,
@@ -3568,6 +3580,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
+  },
+  activityScopeFilterSpot: {
+    position: 'absolute',
+    top: 4,
+    right: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
   },
   activityScopeFilterText: {
     maxWidth: 118,
