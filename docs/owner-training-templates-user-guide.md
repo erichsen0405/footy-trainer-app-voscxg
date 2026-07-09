@@ -35,8 +35,7 @@ Her kan traeneren oprette og administrere fire typer skabeloner:
 
 `Task template`  
 En enkelt genbrugelig opgave, fx "First touch wall passes". Den har samme
-felter som normale opgaver: beskrivelse, medier, subtasks, reminder, feedback
-og task time.
+felter som normale opgaver: beskrivelse, medier, reminder og feedback.
 
 `Exercise template`
 En genbrugelig opgave med samme opgavefelter som en normal task og en
@@ -73,12 +72,12 @@ stabil version, selvom skabelonen bliver redigeret bagefter.
 4. Udfyld titel.
 5. Tilfoej evt. beskrivelse.
 6. Tilfoej evt. fokusomraader, adskilt med komma.
-7. Tilfoej evt. samlet varighed i minutter.
+7. Tilfoej evt. starttidspunkt og samlet varighed, hvis det er en `Session`.
 8. Tilfoej items, hvis typen er `Session` eller `Week`.
 9. Tryk `Save template`.
 
-Titel er paakraevet. Beskrivelse, fokusomraader, varighed og items kan tilfoejes
-loebende.
+Titel er paakraevet. Beskrivelse, fokusomraader, sessionstid, varighed og items
+kan tilfoejes loebende.
 
 ## Tilfoej Items Til En Skabelon
 
@@ -102,11 +101,13 @@ For hvert item kan du angive placering:
 
 - titel
 - noter/beskrivelse
-- starttid
-- varighed i minutter
 
 `Day` vises kun, naar du arbejder med en `Week` skabelon. En `Session`
 er altid samme dag som aktiviteten, saa session-items har ikke day-vaelger.
+Starttid og varighed saettes paa selve `Session` skabelonen. I en `Week` vises
+starttid og varighed kun paa `Session` items, fordi de repraesenterer planlagte
+sessioner i ugen. `Task` og `Exercise` har ikke eget tidspunkt eller egen
+varighed.
 
 For `Task` og `Exercise` kan du derudover angive de samme felter som paa normale
 opgaver:
@@ -114,11 +115,9 @@ opgaver:
 - video-, billede- og PDF-link
 - upload af billede, video eller PDF
 - medienavne og sortering
-- subtasks
 - reminder foer start
 - post-training feedback
 - score-forklaring til feedback
-- task time
 
 For `Exercise` kan du ogsaa angive:
 
@@ -131,8 +130,7 @@ For `Exercise` kan du ogsaa angive:
 Naar du tilfoejer `Task` eller `Exercise` i en `Session` eller `Week`, kan du
 vaelge mellem tre kilder:
 
-- `New`: opret itemet direkte i skabelonen med medier, subtasks, feedback,
-  reminder og tid.
+- `New`: opret itemet direkte i skabelonen med medier, feedback og reminder.
 - `Saved`: vaelg en eksisterende gemt `Task` eller `Exercise` skabelon.
 - `Library`: vaelg en oevelse fra biblioteket.
 
@@ -272,7 +270,7 @@ Test dette flow som traener:
 2. Bekraeft at bundmenuen viser `Overblik`, `Spillere`, `Plan`, `Bibliotek`.
 3. Aabn `Plan`.
 4. Opret en `Session` skabelon.
-5. Tilfoej et nyt `Task` item med media/subtasks.
+5. Tilfoej et nyt `Task` item med media.
 6. Tilfoej et `Exercise` item fra `Library` med aktiv tid, pause og runder.
 7. Gem skabelonen.
 8. Bekraeft at task/exercise nu findes som selvstaendige templates under `Saved`.

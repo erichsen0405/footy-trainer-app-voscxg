@@ -128,7 +128,13 @@ coach vaelge oevelser fra `exercise_library`.
   "description": "High repetition finishing session.",
   "folderId": null,
   "focusAreas": ["Finishing", "First touch"],
+  "sessionStartTime": "17:30",
   "durationMinutes": 75,
+  "metadata": {
+    "session": {
+      "startTime": "17:30"
+    }
+  },
   "defaultActivityCategoryName": "Training",
   "status": "active",
   "sourceTaskTemplateId": null,
@@ -138,18 +144,14 @@ coach vaelge oevelser fra `exercise_library`.
       "title": "Interval finishing",
       "description": "Two-touch pattern before finishing.",
       "dayOffset": 0,
-      "startTime": "10:15",
-      "durationMinutes": 18,
+      "startTime": null,
+      "durationMinutes": null,
       "sortOrder": 0,
       "config": {
         "task": {
           "title": "Interval finishing",
           "description": "Two-touch pattern before finishing.",
           "categoryIds": [],
-          "subtasks": [
-            { "title": "Right foot" },
-            { "title": "Left foot" }
-          ],
           "videoUrls": ["https://example.com/drill.mp4"],
           "mediaNames": ["Drill video"],
           "reminderMinutes": 10,
@@ -158,8 +160,6 @@ coach vaelge oevelser fra `exercise_library`.
           "afterTrainingFeedbackEnableScore": true,
           "afterTrainingFeedbackScoreExplanation": "Rate technique",
           "afterTrainingFeedbackEnableNote": true,
-          "taskDurationEnabled": true,
-          "taskDurationMinutes": 18,
           "autoAddToActivities": false
         },
         "timer": {
@@ -194,6 +194,15 @@ Task og exercise templates har ikke item-liste. De gemmer opgavefelterne direkte
 i `metadata.task` via `taskConfig`. Exercise templates gemmer desuden timer i
 `metadata.timer` via `exerciseTimer`.
 
+Session templates gemmer starttid paa selve sessionen via `sessionStartTime`
+eller `metadata.session.startTime`. Varighed gemmes paa `durationMinutes`.
+Starttid og varighed maa ikke gemmes paa task/exercise items i en session.
+
+Task og exercise maa ikke have subtasks eller egen task time. Hvis klienten
+sender `subtasks`, `taskDurationEnabled` eller `taskDurationMinutes`, ignorerer
+Edge Function disse felter og gemmer `subtasks: []`,
+`taskDurationEnabled: false` og `taskDurationMinutes: null`.
+
 ```json
 {
   "action": "upsertTemplate",
@@ -201,13 +210,10 @@ i `metadata.task` via `taskConfig`. Exercise templates gemmer desuden timer i
   "templateType": "task",
   "title": "Solo touch work",
   "taskConfig": {
-    "subtasks": [{ "title": "Wall passes" }],
     "videoUrls": ["https://example.com/touch.png"],
     "mediaNames": ["Technique image"],
     "reminderMinutes": 0,
-    "afterTrainingEnabled": false,
-    "taskDurationEnabled": true,
-    "taskDurationMinutes": 12
+    "afterTrainingEnabled": false
   }
 }
 ```
@@ -221,10 +227,7 @@ Exercise template:
   "templateType": "exercise",
   "title": "Repeat sprints",
   "taskConfig": {
-    "subtasks": [{ "title": "Sprint 20m" }],
-    "videoUrls": ["https://example.com/sprint.mp4"],
-    "taskDurationEnabled": true,
-    "taskDurationMinutes": 16
+    "videoUrls": ["https://example.com/sprint.mp4"]
   },
   "exerciseTimer": {
     "activeSeconds": 30,
@@ -247,13 +250,10 @@ intervaltimer:
   "title": "Core finisher",
   "config": {
     "task": {
-      "subtasks": [{ "title": "Plank" }],
       "videoUrls": [],
       "mediaNames": [],
       "afterTrainingEnabled": true,
-      "afterTrainingDelayMinutes": 0,
-      "taskDurationEnabled": true,
-      "taskDurationMinutes": 8
+      "afterTrainingDelayMinutes": 0
     },
     "timer": {
       "activeSeconds": 40,
@@ -299,8 +299,7 @@ Library item eksempel:
       "title": "Library sprint drill",
       "description": "From exercise_library",
       "videoUrls": ["https://example.com/library.mp4"],
-      "mediaNames": ["Library media"],
-      "subtasks": [{ "title": "Sprint 20m" }]
+      "mediaNames": ["Library media"]
     },
     "timer": {
       "activeSeconds": 30,
@@ -417,7 +416,6 @@ Library item eksempel:
     categoryPath: string | null;
     isSystem: boolean;
     trainerId: string | null;
-    subtasks: Array<{ id: string; title: string; sortOrder: number }>;
   }>;
   summary: {
     total: number;
@@ -474,9 +472,10 @@ Byg en desktop-effektiv template builder i eksisterende owner portal:
 - type filter: task, exercise, session, week
 - status filter: active, archived
 - folder/kategori filter
-- liste med titel, type, varighed, fokusomraader, item count og version
+- liste med titel, type, session-starttid/varighed, fokusomraader, item count og
+  version
 - handlinger: opret, rediger, dupliker, arkiver, gendan
-- builder med ordered items, drag/reorder, starttid, duration og preview
+- builder med ordered items, drag/reorder og preview
 - paa mobil skal valg af `Saved` eller `Library` aabne en popup/bottom sheet med
   de samme kort-typer som resten af template/library UI'et; vis ikke saved eller
   library listen som smaa inline chips i formularen
@@ -484,14 +483,17 @@ Byg en desktop-effektiv template builder i eksisterende owner portal:
 Session-template:
 
 - er selve sessionen/aktiviteten og kan have default aktivitetskategori
+- har starttidspunkt paa `sessionStartTime`/`metadata.session.startTime` og
+  varighed paa `durationMinutes`
 - session items ligger per default paa samme dag som sessionen; vis ikke
   `dayOffset`/Day-vaelger i session builderen
+- starttid og varighed hoerer til sessionen, ikke til task/exercise items
 - kan indeholde task-template items, exercise items, feedback requirements,
   notes og focus items
 - task og exercise items kan oprettes som nye inline items, vaelges fra gemte
   task/exercise templates eller vaelges fra `libraryItems`
 - task og exercise items skal have samme opgavefelter som normale task
-  templates: medier, subtasks, reminder, feedback og task time
+  templates: medier, reminder og feedback
 - exercise items skal ogsaa have intervaltimer med aktiv tid, pause og runder
 
 Week-template:
@@ -500,6 +502,7 @@ Week-template:
   focus/note items med `dayOffset`
 - vis Day-vaelgeren i week builderen, da week items fordeles paa dag 1, dag 2
   osv.
+- vis kun starttid og varighed paa `session_template` items i week builderen
 - task og exercise items bruger samme `New`/`Saved`/`Library` flow som session
   templates
 - preview skal vise dag 1, dag 2 osv.
@@ -526,8 +529,8 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
 - Migration `20260709173000_training_template_exercise_reuse.sql` er pushed med
   `supabase db push --yes`. Migrationen aktiverer top-level `exercise`
   templates og task/exercise reuse i session/week templates.
-- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 3,
-  opdateret `2026-07-09 15:28:11 UTC`.
+- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 5,
+  opdateret `2026-07-09 16:21:53 UTC`.
 - No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`, ikke
   `404`.
 - `supabase migration list --linked` viser baade `20260709150000` og

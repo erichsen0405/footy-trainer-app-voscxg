@@ -59,11 +59,6 @@ type DraftItem = TrainingTemplateItemInput & {
   localId: string;
 };
 
-type TaskSubtaskDraft = {
-  localId: string;
-  title: string;
-};
-
 type TaskConfigDraft = {
   videoUrls: string[];
   mediaNames: string[];
@@ -74,10 +69,7 @@ type TaskConfigDraft = {
   feedbackEnabled: boolean;
   feedbackDelayMinutes: string;
   feedbackScoreExplanation: string;
-  taskDurationEnabled: boolean;
-  taskDurationMinutes: string;
   autoAddToActivities: boolean;
-  subtasks: TaskSubtaskDraft[];
 };
 
 type ExerciseTimerDraft = {
@@ -93,6 +85,7 @@ type TemplateDraft = {
   description: string;
   folderId: string | null;
   focusInput: string;
+  sessionStartTimeInput: string;
   durationInput: string;
   defaultActivityCategoryName: string;
   taskConfig: TaskConfigDraft;
@@ -157,7 +150,6 @@ function getDefaultItemType(templateType: TrainingTemplateType): DraftItem['item
 }
 
 const createLocalId = () => `item:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-const createLocalSubtaskId = () => `subtask:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
 function createEmptyTaskConfigDraft(): TaskConfigDraft {
   return {
@@ -170,10 +162,7 @@ function createEmptyTaskConfigDraft(): TaskConfigDraft {
     feedbackEnabled: false,
     feedbackDelayMinutes: '0',
     feedbackScoreExplanation: '',
-    taskDurationEnabled: false,
-    taskDurationMinutes: '',
     autoAddToActivities: false,
-    subtasks: [{ localId: createLocalSubtaskId(), title: '' }],
   };
 }
 
@@ -238,15 +227,6 @@ function createTaskConfigDraftFromConfig(config: unknown): TaskConfigDraft {
   const record = asRecord(config);
   const videoUrls = normalizeTaskVideoUrls(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url);
   const mediaNames = normalizeTaskMediaNames(record.mediaNames ?? record.media_names, videoUrls);
-  const subtasks = Array.isArray(record.subtasks)
-    ? record.subtasks
-        .map((subtask) => {
-          const subtaskRecord = asRecord(subtask);
-          const title = typeof subtaskRecord.title === 'string' ? subtaskRecord.title : '';
-          return { localId: typeof subtaskRecord.id === 'string' && subtaskRecord.id ? subtaskRecord.id : createLocalSubtaskId(), title };
-        })
-        .filter((subtask) => subtask.title.trim())
-    : [];
 
   return {
     videoUrls,
@@ -258,10 +238,7 @@ function createTaskConfigDraftFromConfig(config: unknown): TaskConfigDraft {
     feedbackEnabled: record.afterTrainingEnabled === true || record.after_training_enabled === true,
     feedbackDelayMinutes: String(record.afterTrainingDelayMinutes ?? record.after_training_delay_minutes ?? 0),
     feedbackScoreExplanation: String(record.afterTrainingFeedbackScoreExplanation ?? record.after_training_feedback_score_explanation ?? ''),
-    taskDurationEnabled: record.taskDurationEnabled === true || record.task_duration_enabled === true,
-    taskDurationMinutes: String(record.taskDurationMinutes ?? record.task_duration_minutes ?? ''),
     autoAddToActivities: record.autoAddToActivities === true || record.auto_add_to_activities === true,
-    subtasks: subtasks.length ? subtasks : [{ localId: createLocalSubtaskId(), title: '' }],
   };
 }
 
@@ -280,9 +257,6 @@ function createTaskConfigDraftFromLibraryItem(item: TrainingTemplateLibraryItem)
     ...createEmptyTaskConfigDraft(),
     videoUrls,
     mediaNames: normalizeTaskMediaNames(item.mediaNames, videoUrls),
-    subtasks: item.subtasks.length
-      ? item.subtasks.map((subtask) => ({ localId: subtask.id, title: subtask.title }))
-      : [{ localId: createLocalSubtaskId(), title: '' }],
   };
 }
 
@@ -300,20 +274,21 @@ function getTemplateTimer(template: TrainingTemplateSummary): TrainingTemplateEx
   return typeof timer.activeSeconds === 'number' ? timer as unknown as TrainingTemplateExerciseTimer : null;
 }
 
+function getTemplateSessionStartTime(template: TrainingTemplateSummary): string | null {
+  if (template.templateType !== 'session') return null;
+  const session = asRecord(asRecord(template.metadata).session);
+  return typeof session.startTime === 'string' && session.startTime ? session.startTime : null;
+}
+
 function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
   const videoPayload = buildTaskVideoPayload(config.videoUrls);
   const mediaNamePayload = buildTaskMediaNamePayload(config.mediaNames, videoPayload.videoUrls);
-  const taskDurationMinutes = config.taskDurationEnabled
-    ? clampNumber(parseNonNegativeInt(config.taskDurationMinutes), 0, 0, 600)
-    : null;
 
   return {
     title,
     description,
     categoryIds: [],
-    subtasks: config.subtasks
-      .map((subtask) => ({ id: null, title: subtask.title.trim() }))
-      .filter((subtask) => subtask.title),
+    subtasks: [],
     videoUrl: videoPayload.videoUrl,
     videoUrls: videoPayload.videoUrls,
     mediaNames: mediaNamePayload.mediaNames,
@@ -324,8 +299,8 @@ function buildTaskConfigPayload(title: string, description: string | null, confi
     afterTrainingFeedbackScoreExplanation: config.feedbackEnabled ? config.feedbackScoreExplanation.trim() || null : null,
     afterTrainingFeedbackEnableIntensity: config.feedbackEnabled,
     afterTrainingFeedbackEnableNote: true,
-    taskDurationEnabled: config.taskDurationEnabled,
-    taskDurationMinutes,
+    taskDurationEnabled: false,
+    taskDurationMinutes: null,
     autoAddToActivities: config.autoAddToActivities,
   };
 }
@@ -413,6 +388,7 @@ function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft
     description: '',
     folderId: null,
     focusInput: '',
+    sessionStartTimeInput: '',
     durationInput: '',
     defaultActivityCategoryName: '',
     taskConfig: createEmptyTaskConfigDraft(),
@@ -424,6 +400,7 @@ function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft
 
 function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDraft {
   const metadata = asRecord(template.metadata);
+  const sessionStartTime = getTemplateSessionStartTime(template);
   return {
     id: template.id,
     templateType: template.templateType,
@@ -431,7 +408,8 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
     description: template.description ?? '',
     folderId: template.folderId,
     focusInput: template.focusAreas.join(', '),
-    durationInput: template.durationMinutes ? String(template.durationMinutes) : '',
+    sessionStartTimeInput: sessionStartTime ? sessionStartTime.slice(0, 5) : '',
+    durationInput: template.templateType === 'session' && template.durationMinutes ? String(template.durationMinutes) : '',
     defaultActivityCategoryName: template.defaultActivityCategoryName ?? '',
     taskConfig: createTaskConfigDraftFromConfig(metadata.task),
     exerciseTimer: createExerciseTimerDraftFromConfig(metadata.timer),
@@ -447,8 +425,8 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
       title: item.title,
       description: item.description,
       dayOffset: template.templateType === 'session' ? 0 : item.dayOffset,
-      startTime: item.startTime,
-      durationMinutes: item.durationMinutes,
+      startTime: template.templateType === 'week' && item.itemType === 'session_template' ? item.startTime : null,
+      durationMinutes: template.templateType === 'week' && item.itemType === 'session_template' ? item.durationMinutes : null,
       sortOrder: item.sortOrder,
       config: item.config,
     })),
@@ -627,12 +605,16 @@ export default function PlanScreen() {
       return {
         ...current,
         templateType,
+        sessionStartTimeInput: templateType === 'session' ? current.sessionStartTimeInput : '',
+        durationInput: templateType === 'session' ? current.durationInput : '',
         defaultActivityCategoryName: templateType === 'session' ? current.defaultActivityCategoryName : '',
         items: current.items
           .filter((item) => allowed.has(item.itemType))
           .map((item, sortOrder) => ({
             ...item,
             dayOffset: templateType === 'session' ? 0 : item.dayOffset,
+            startTime: templateType === 'week' && item.itemType === 'session_template' ? item.startTime : null,
+            durationMinutes: templateType === 'week' && item.itemType === 'session_template' ? item.durationMinutes : null,
             sortOrder,
           })),
       };
@@ -642,6 +624,10 @@ export default function PlanScreen() {
 
   const changeItemType = useCallback((nextItemType: DraftItem['itemType']) => {
     setItemType(nextItemType);
+    if (nextItemType !== 'session_template') {
+      setItemStartTime('');
+      setItemDuration('');
+    }
     setItemSourceMode('new');
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
@@ -673,8 +659,9 @@ export default function PlanScreen() {
     const title = itemTitle.trim() || fallbackTitle;
     if (!title) return;
     const description = itemDescription.trim() || reusableTemplate?.description || libraryItem?.description || null;
-    const startTime = normalizeDraftStartTime(itemStartTime);
-    if (itemStartTime.trim() && !startTime) {
+    const itemCarriesSessionTiming = draft.templateType === 'week' && itemType === 'session_template';
+    const startTime = itemCarriesSessionTiming ? normalizeDraftStartTime(itemStartTime) : null;
+    if (itemCarriesSessionTiming && itemStartTime.trim() && !startTime) {
       Alert.alert('Invalid time', 'Use HH:mm, for example 09:30.');
       return;
     }
@@ -712,7 +699,7 @@ export default function PlanScreen() {
           description,
           dayOffset: draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0,
           startTime,
-          durationMinutes: parsePositiveInt(itemDuration),
+          durationMinutes: itemCarriesSessionTiming ? parsePositiveInt(itemDuration) : null,
           sortOrder: current.items.length,
           config,
         },
@@ -766,6 +753,11 @@ export default function PlanScreen() {
       Alert.alert('Missing title', 'Give the template a title before saving.');
       return;
     }
+    const sessionStartTime = draft.templateType === 'session' ? normalizeDraftStartTime(draft.sessionStartTimeInput) : null;
+    if (draft.templateType === 'session' && draft.sessionStartTimeInput.trim() && !sessionStartTime) {
+      Alert.alert('Invalid time', 'Use HH:mm, for example 09:30.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -782,7 +774,9 @@ export default function PlanScreen() {
         description: draft.description.trim() || null,
         folderId: draft.folderId,
         focusAreas: normalizeFocusInput(draft.focusInput),
-        durationMinutes: parsePositiveInt(draft.durationInput),
+        metadata: draft.templateType === 'session' ? { session: { startTime: sessionStartTime } } : undefined,
+        sessionStartTime,
+        durationMinutes: draft.templateType === 'session' ? parsePositiveInt(draft.durationInput) : null,
         defaultActivityCategoryName: draft.templateType === 'session' ? draft.defaultActivityCategoryName.trim() || null : null,
         status: draft.status,
         taskConfig,
@@ -794,6 +788,8 @@ export default function PlanScreen() {
               .map((item, sortOrder) => ({
                 ...item,
                 dayOffset: draft.templateType === 'session' ? 0 : item.dayOffset,
+                startTime: draft.templateType === 'week' && item.itemType === 'session_template' ? item.startTime : null,
+                durationMinutes: draft.templateType === 'week' && item.itemType === 'session_template' ? item.durationMinutes : null,
                 sortOrder,
               })),
         changeNote: draft.id ? 'Mobile edit' : 'Mobile create',
@@ -1188,14 +1184,26 @@ export default function PlanScreen() {
               colors={colors}
               placeholder="Finishing, first touch, scanning"
             />
-            <LabeledInput
-              label="Duration minutes"
-              value={draft.durationInput}
-              onChangeText={(value) => setDraft((current) => ({ ...current, durationInput: value.replace(/[^0-9]/g, '') }))}
-              colors={colors}
-              placeholder="60"
-              keyboardType="number-pad"
-            />
+            {draft.templateType === 'session' ? (
+              <>
+                <LabeledInput
+                  label="Session start time"
+                  value={draft.sessionStartTimeInput}
+                  onChangeText={(value) => setDraft((current) => ({ ...current, sessionStartTimeInput: value.replace(/[^0-9:]/g, '').slice(0, 5) }))}
+                  colors={colors}
+                  placeholder="09:30"
+                  keyboardType="numbers-and-punctuation"
+                />
+                <LabeledInput
+                  label="Duration minutes"
+                  value={draft.durationInput}
+                  onChangeText={(value) => setDraft((current) => ({ ...current, durationInput: value.replace(/[^0-9]/g, '') }))}
+                  colors={colors}
+                  placeholder="60"
+                  keyboardType="number-pad"
+                />
+              </>
+            ) : null}
 
             {draft.templateType === 'session' ? (
               <LabeledInput
@@ -1364,8 +1372,8 @@ export default function PlanScreen() {
                     />
                   ) : null}
 
-                  <View style={styles.itemMetaRow}>
-                    {draft.templateType === 'week' ? (
+                  {draft.templateType === 'week' ? (
+                    <View style={styles.itemMetaRow}>
                       <TextInput
                         style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                         value={itemDayOffset}
@@ -1374,24 +1382,28 @@ export default function PlanScreen() {
                         placeholderTextColor={colors.textSecondary}
                         keyboardType="number-pad"
                       />
-                    ) : null}
-                    <TextInput
-                      style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                      value={itemStartTime}
-                      onChangeText={(value) => setItemStartTime(value.replace(/[^0-9:]/g, '').slice(0, 5))}
-                      placeholder="HH:mm"
-                      placeholderTextColor={colors.textSecondary}
-                      keyboardType="numbers-and-punctuation"
-                    />
-                    <TextInput
-                      style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                      value={itemDuration}
-                      onChangeText={(value) => setItemDuration(value.replace(/[^0-9]/g, ''))}
-                      placeholder="Min"
-                      placeholderTextColor={colors.textSecondary}
-                      keyboardType="number-pad"
-                    />
-                  </View>
+                      {itemType === 'session_template' ? (
+                        <>
+                          <TextInput
+                            style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                            value={itemStartTime}
+                            onChangeText={(value) => setItemStartTime(value.replace(/[^0-9:]/g, '').slice(0, 5))}
+                            placeholder="HH:mm"
+                            placeholderTextColor={colors.textSecondary}
+                            keyboardType="numbers-and-punctuation"
+                          />
+                          <TextInput
+                            style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                            value={itemDuration}
+                            onChangeText={(value) => setItemDuration(value.replace(/[^0-9]/g, ''))}
+                            placeholder="Min"
+                            placeholderTextColor={colors.textSecondary}
+                            keyboardType="number-pad"
+                          />
+                        </>
+                      ) : null}
+                    </View>
+                  ) : null}
                   <TouchableOpacity
                     style={[styles.addItemButton, { backgroundColor: colors.primary, opacity: canAddItem ? 1 : 0.55 }]}
                     onPress={addDraftItem}
@@ -1417,8 +1429,8 @@ export default function PlanScreen() {
                         <Text style={[styles.draftItemMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                           {ITEM_TYPES.find((type) => type.value === item.itemType)?.label ?? item.itemType}
                           {draft.templateType === 'week' && item.dayOffset ? ` · day ${item.dayOffset + 1}` : ''}
-                          {item.startTime ? ` · ${String(item.startTime).slice(0, 5)}` : ''}
-                          {item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
+                          {item.itemType === 'session_template' && item.startTime ? ` · ${String(item.startTime).slice(0, 5)}` : ''}
+                          {item.itemType === 'session_template' && item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
                           {timer ? ` · ${timer.rounds} x ${timer.activeSeconds}s/${timer.restSeconds}s` : ''}
                           {taskConfig?.videoUrls.length ? ` · ${taskConfig.videoUrls.length} media` : ''}
                         </Text>
@@ -1630,6 +1642,7 @@ function TemplatePickerCard({
   const taskConfig = getTemplateTaskConfig(template);
   const timer = getTemplateTimer(template);
   const mediaCount = getTaskConfigMediaCount(taskConfig);
+  const sessionStartTime = getTemplateSessionStartTime(template);
 
   return (
     <TouchableOpacity
@@ -1676,7 +1689,8 @@ function TemplatePickerCard({
       ) : null}
 
       <View style={styles.templatePills}>
-        <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} />
+        {sessionStartTime ? <InfoPill text={sessionStartTime.slice(0, 5)} colors={colors} /> : null}
+        {template.templateType === 'session' ? <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} /> : null}
         {mediaCount ? <InfoPill text={`${mediaCount} media`} colors={colors} /> : null}
         {template.focusAreas.slice(0, 2).map((focus) => (
           <InfoPill key={focus} text={focus} colors={colors} />
@@ -1738,7 +1752,6 @@ function LibraryPickerCard({
       <View style={styles.templatePills}>
         {item.categoryPath ? <InfoPill text={item.categoryPath} colors={colors} /> : null}
         {item.videoUrls.length ? <InfoPill text={`${item.videoUrls.length} media`} colors={colors} /> : null}
-        {item.subtasks.length ? <InfoPill text={`${item.subtasks.length} subtasks`} colors={colors} /> : null}
       </View>
     </TouchableOpacity>
   );
@@ -1816,6 +1829,7 @@ function TemplateCard({
   busy: boolean;
 }) {
   const tone = getTemplateTone(template.templateType, colors);
+  const sessionStartTime = getTemplateSessionStartTime(template);
   return (
     <View style={[styles.templateCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID={`plan.template.${template.templateType}`}>
       <View style={styles.templateHeader}>
@@ -1849,7 +1863,8 @@ function TemplateCard({
       ) : null}
 
       <View style={styles.templatePills}>
-        <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} />
+        {sessionStartTime ? <InfoPill text={sessionStartTime.slice(0, 5)} colors={colors} /> : null}
+        {template.templateType === 'session' ? <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} /> : null}
         {template.folderName ? <InfoPill text={template.folderName} colors={colors} /> : null}
         {template.focusAreas.slice(0, 3).map((focus) => (
           <InfoPill key={focus} text={focus} colors={colors} />
@@ -1927,7 +1942,7 @@ function LabeledInput({
   colors: ReturnType<typeof getColors>;
   placeholder: string;
   multiline?: boolean;
-  keyboardType?: 'default' | 'number-pad';
+  keyboardType?: 'default' | 'number-pad' | 'numbers-and-punctuation';
 }) {
   return (
     <View style={styles.inputGroup}>
@@ -1970,30 +1985,6 @@ function TaskFieldsEditor({
 }) {
   const update = useCallback((patch: Partial<TaskConfigDraft>) => {
     onChange((current) => ({ ...current, ...patch }));
-  }, [onChange]);
-
-  const updateSubtask = useCallback((localId: string, titleValue: string) => {
-    onChange((current) => ({
-      ...current,
-      subtasks: current.subtasks.map((subtask) => (subtask.localId === localId ? { ...subtask, title: titleValue } : subtask)),
-    }));
-  }, [onChange]);
-
-  const addSubtask = useCallback(() => {
-    onChange((current) => ({
-      ...current,
-      subtasks: [...current.subtasks, { localId: createLocalSubtaskId(), title: '' }],
-    }));
-  }, [onChange]);
-
-  const removeSubtask = useCallback((localId: string) => {
-    onChange((current) => {
-      const next = current.subtasks.filter((subtask) => subtask.localId !== localId);
-      return {
-        ...current,
-        subtasks: next.length ? next : [{ localId: createLocalSubtaskId(), title: '' }],
-      };
-    });
   }, [onChange]);
 
   return (
@@ -2054,28 +2045,6 @@ function TaskFieldsEditor({
         />
       ) : null}
 
-      <View style={styles.subtasksHeader}>
-        <Text style={[styles.taskFieldsSubtitle, { color: colors.textSecondary }]}>Subtasks</Text>
-        <TouchableOpacity style={[styles.smallOutlineButton, { borderColor: colors.border }]} onPress={addSubtask}>
-          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={15} color={colors.primary} />
-          <Text style={[styles.smallOutlineText, { color: colors.text }]}>Add</Text>
-        </TouchableOpacity>
-      </View>
-      {config.subtasks.map((subtask) => (
-        <View key={subtask.localId} style={styles.subtaskEditorRow}>
-          <TextInput
-            style={[styles.input, styles.subtaskEditorInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-            value={subtask.title}
-            onChangeText={(value) => updateSubtask(subtask.localId, value)}
-            placeholder="Subtask"
-            placeholderTextColor={colors.textSecondary}
-          />
-          <TouchableOpacity style={[styles.mediaIconButton, { borderColor: colors.border, backgroundColor: colors.card }]} onPress={() => removeSubtask(subtask.localId)}>
-            <IconSymbol ios_icon_name="minus" android_material_icon_name="remove" size={18} color={colors.error} />
-          </TouchableOpacity>
-        </View>
-      ))}
-
       <ToggleNumberRow
         label="Reminder before start"
         enabled={config.reminderEnabled}
@@ -2104,15 +2073,6 @@ function TaskFieldsEditor({
           multiline
         />
       ) : null}
-      <ToggleNumberRow
-        label="Task time"
-        enabled={config.taskDurationEnabled}
-        value={config.taskDurationMinutes}
-        onToggle={(value) => update({ taskDurationEnabled: value, taskDurationMinutes: value ? config.taskDurationMinutes || '0' : '' })}
-        onChangeValue={(value) => update({ taskDurationMinutes: value.replace(/[^0-9]/g, '') })}
-        colors={colors}
-        placeholder="Min"
-      />
     </View>
   );
 }
@@ -2779,34 +2739,6 @@ const styles = StyleSheet.create({
   uploadMediaText: {
     fontSize: 13,
     fontWeight: '900',
-  },
-  subtasksHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    columnGap: 10,
-  },
-  smallOutlineButton: {
-    minHeight: 32,
-    borderWidth: 1,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 4,
-    paddingHorizontal: 9,
-  },
-  smallOutlineText: {
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  subtaskEditorRow: {
-    flexDirection: 'row',
-    columnGap: 8,
-    alignItems: 'center',
-  },
-  subtaskEditorInput: {
-    flex: 1,
-    minWidth: 0,
   },
   toggleNumberRow: {
     minHeight: 48,

@@ -94,13 +94,6 @@ type ExerciseLibraryRow = {
   category_path: string | null;
 };
 
-type ExerciseSubtaskRow = {
-  id: string;
-  exercise_id: string;
-  title: string;
-  sort_order: number;
-};
-
 type VersionRow = {
   id: string;
   owner_account_id: string;
@@ -152,6 +145,10 @@ type ExerciseTimerConfig = {
   activeSeconds: number;
   restSeconds: number;
   rounds: number;
+};
+
+type SessionConfig = {
+  startTime: string | null;
 };
 
 type ParsedTrainingTemplateBody =
@@ -358,32 +355,11 @@ function normalizeUuidList(value: unknown, fieldName: string): string[] {
   return Array.from(new Set(value.map((item, index) => requireUuid(item, `${fieldName}[${index}]`)))).slice(0, 24);
 }
 
-function normalizeTaskSubtasks(value: unknown): Array<{ id: string | null; title: string }> {
-  if (value === null || value === undefined || value === '') return [];
-  if (!Array.isArray(value)) {
-    throw new AppError('VALIDATION_ERROR', 'task.subtasks must be an array.', 400);
-  }
-
-  return value
-    .map((item) => {
-      const record = asRecord(item, 'task.subtask');
-      const title = optionalTrimmedString(record.title);
-      if (!title) return null;
-      return {
-        id: optionalUuid(record.id, 'task.subtask.id'),
-        title,
-      };
-    })
-    .filter((item): item is { id: string | null; title: string } => Boolean(item))
-    .slice(0, 40);
-}
-
 function normalizeTaskConfig(value: unknown, fallback: { title: string; description: string | null }): TemplateTaskConfig {
   const record = normalizeJsonObject(value);
   const videoUrls = normalizeStringList(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url, 'task.videoUrls', 20);
   const mediaNames = normalizeStringList(record.mediaNames ?? record.media_names, 'task.mediaNames', 20, 160).slice(0, videoUrls.length);
   const afterTrainingEnabled = normalizeBoolean(record.afterTrainingEnabled ?? record.after_training_enabled, false);
-  const taskDurationEnabled = normalizeBoolean(record.taskDurationEnabled ?? record.task_duration_enabled, false);
   const enableScore = normalizeBoolean(
     record.afterTrainingFeedbackEnableScore ?? record.after_training_feedback_enable_score,
     true
@@ -397,7 +373,7 @@ function normalizeTaskConfig(value: unknown, fallback: { title: string; descript
     title: optionalTrimmedString(record.title) ?? fallback.title,
     description: optionalTrimmedString(record.description) ?? fallback.description,
     categoryIds: normalizeUuidList(record.categoryIds ?? record.category_ids, 'task.categoryIds'),
-    subtasks: normalizeTaskSubtasks(record.subtasks),
+    subtasks: [],
     videoUrl: videoUrls[0] ?? null,
     videoUrls,
     mediaNames,
@@ -420,13 +396,8 @@ function normalizeTaskConfig(value: unknown, fallback: { title: string; descript
       : null,
     afterTrainingFeedbackEnableIntensity: afterTrainingEnabled,
     afterTrainingFeedbackEnableNote: enableNote,
-    taskDurationEnabled,
-    taskDurationMinutes: taskDurationEnabled
-      ? normalizeInt(record.taskDurationMinutes ?? record.task_duration_minutes ?? 0, 'task.taskDurationMinutes', {
-          min: 0,
-          max: 600,
-        })
-      : null,
+    taskDurationEnabled: false,
+    taskDurationMinutes: null,
     autoAddToActivities: normalizeBoolean(record.autoAddToActivities ?? record.auto_add_to_activities, false),
   };
 }
@@ -454,6 +425,16 @@ function normalizeTime(value: unknown): string | null {
     throw new AppError('VALIDATION_ERROR', 'startTime must be HH:mm or HH:mm:ss.', 400);
   }
   return normalized.length === 5 ? `${normalized}:00` : normalized;
+}
+
+function normalizeSessionConfig(value: unknown, explicitStartTime: unknown): SessionConfig {
+  const record = normalizeJsonObject(value);
+  const startTimeValue = explicitStartTime !== undefined
+    ? explicitStartTime
+    : record.startTime ?? record.start_time;
+  return {
+    startTime: normalizeTime(startTimeValue),
+  };
 }
 
 function normalizeItemConfig(
@@ -496,6 +477,7 @@ function normalizeTemplateItems(value: unknown, templateType: TrainingTemplateTy
     }
     const title = requiredTrimmedString(record.title, 'item.title');
     const description = optionalTrimmedString(record.description);
+    const carriesSessionTiming = templateType === 'week' && itemType === 'session_template';
     return {
       id: optionalUuid(record.id, 'item.id'),
       parentItemId: optionalUuid(record.parentItemId, 'item.parentItemId'),
@@ -505,9 +487,11 @@ function normalizeTemplateItems(value: unknown, templateType: TrainingTemplateTy
       linkedTemplateId: optionalUuid(record.linkedTemplateId, 'item.linkedTemplateId'),
       title,
       description,
-      dayOffset: normalizeInt(record.dayOffset, 'item.dayOffset', { min: 0, max: 365 }) ?? 0,
-      startTime: normalizeTime(record.startTime),
-      durationMinutes: normalizeInt(record.durationMinutes, 'item.durationMinutes', { min: 1, max: 1440, nullable: true }),
+      dayOffset: templateType === 'week' ? normalizeInt(record.dayOffset, 'item.dayOffset', { min: 0, max: 365 }) ?? 0 : 0,
+      startTime: carriesSessionTiming ? normalizeTime(record.startTime) : null,
+      durationMinutes: carriesSessionTiming
+        ? normalizeInt(record.durationMinutes, 'item.durationMinutes', { min: 1, max: 1440, nullable: true })
+        : null,
       sortOrder: normalizeInt(record.sortOrder ?? index, 'item.sortOrder', { min: 0, max: 999 }) ?? index,
       config: normalizeItemConfig(record, itemType, { title, description }),
     };
@@ -547,7 +531,18 @@ export function parseTrainingTemplateBody(body: unknown): ParsedTrainingTemplate
     const templateType = normalizeTemplateType(record.templateType);
     const title = requiredTrimmedString(record.title, 'title');
     const description = optionalTrimmedString(record.description);
-    const metadata = normalizeJsonObject(record.metadata);
+    const metadata = { ...normalizeJsonObject(record.metadata) };
+    if (templateType === 'session') {
+      const explicitSessionStartTime = Object.prototype.hasOwnProperty.call(record, 'sessionStartTime')
+        ? record.sessionStartTime
+        : record.startTime;
+      metadata.session = normalizeSessionConfig(
+        record.sessionConfig ?? record.session ?? metadata.session,
+        explicitSessionStartTime
+      );
+    } else {
+      delete metadata.session;
+    }
     if (templateType === 'task' || templateType === 'exercise') {
       metadata.task = normalizeTaskConfig(record.taskConfig ?? record.task ?? metadata.task, { title, description });
     }
@@ -564,7 +559,9 @@ export function parseTrainingTemplateBody(body: unknown): ParsedTrainingTemplate
       description,
       folderId: optionalUuid(record.folderId, 'folderId'),
       focusAreas: normalizeStringArray(record.focusAreas, 'focusAreas'),
-      durationMinutes: normalizeInt(record.durationMinutes, 'durationMinutes', { min: 1, max: 1440, nullable: true }),
+      durationMinutes: templateType === 'session'
+        ? normalizeInt(record.durationMinutes, 'durationMinutes', { min: 1, max: 1440, nullable: true })
+        : null,
       defaultActivityCategoryId: optionalUuid(record.defaultActivityCategoryId, 'defaultActivityCategoryId'),
       defaultActivityCategoryName: optionalTrimmedString(record.defaultActivityCategoryName),
       status: normalizeTemplateStatus(record.status),
@@ -765,7 +762,7 @@ function normalizeTemplatePayload(
   };
 }
 
-function normalizeLibraryItemPayload(item: ExerciseLibraryRow, subtasks: ExerciseSubtaskRow[]) {
+function normalizeLibraryItemPayload(item: ExerciseLibraryRow) {
   const videoUrl = optionalTrimmedString(item.video_url);
   return {
     id: item.id,
@@ -777,14 +774,6 @@ function normalizeLibraryItemPayload(item: ExerciseLibraryRow, subtasks: Exercis
     categoryPath: item.category_path,
     isSystem: item.is_system === true,
     trainerId: item.trainer_id,
-    subtasks: subtasks
-      .slice()
-      .sort((left, right) => left.sort_order - right.sort_order)
-      .map((subtask) => ({
-        id: subtask.id,
-        title: subtask.title,
-        sortOrder: subtask.sort_order,
-      })),
   };
 }
 
@@ -851,30 +840,9 @@ async function loadExerciseLibraryItems(client: QueryClient, actorUserId: string
     byId.set(row.id, row);
   }
 
-  const libraryItems = Array.from(byId.values());
-  const exerciseIds = libraryItems.map((item) => item.id);
-  if (!exerciseIds.length) return [];
-
-  const { data: subtasksData, error: subtasksError } = await client
-    .from('exercise_subtasks')
-    .select('id, exercise_id, title, sort_order')
-    .in('exercise_id', exerciseIds)
-    .order('sort_order', { ascending: true });
-
-  if (subtasksError) {
-    throw new AppError('INTERNAL_ERROR', subtasksError.message || 'Could not load exercise subtasks.', 500);
-  }
-
-  const subtasksByExerciseId = new Map<string, ExerciseSubtaskRow[]>();
-  for (const subtask of (subtasksData || []) as ExerciseSubtaskRow[]) {
-    const existing = subtasksByExerciseId.get(subtask.exercise_id) || [];
-    existing.push(subtask);
-    subtasksByExerciseId.set(subtask.exercise_id, existing);
-  }
-
-  return libraryItems
+  return Array.from(byId.values())
     .sort((left, right) => left.title.localeCompare(right.title, 'da'))
-    .map((item) => normalizeLibraryItemPayload(item, subtasksByExerciseId.get(item.id) || []));
+    .map(normalizeLibraryItemPayload);
 }
 
 async function loadOwnerTrainingTemplatesPayload(client: QueryClient, actorUserId: string, ownerAccountId: string) {
@@ -1250,10 +1218,6 @@ async function createReusableTemplateFromItem(
     metadata.timer = normalizeExerciseTimer(config.timer);
   }
 
-  const templateDuration =
-    item.durationMinutes ??
-    (taskConfig.taskDurationEnabled ? taskConfig.taskDurationMinutes : null);
-
   const { data, error } = await client
     .from('training_templates')
     .insert({
@@ -1264,7 +1228,7 @@ async function createReusableTemplateFromItem(
       status: 'active',
       folder_id: null,
       focus_areas: [],
-      duration_minutes: templateDuration,
+      duration_minutes: null,
       default_activity_category_id: null,
       default_activity_category_name: null,
       source_task_template_id: item.sourceTaskTemplateId,

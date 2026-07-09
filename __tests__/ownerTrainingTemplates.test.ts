@@ -76,6 +76,7 @@ describe('owner training templates contract', () => {
         description: '  Build-up and finishing  ',
         folderId,
         focusAreas: [' Finishing ', 'First touch', 'Finishing'],
+        sessionStartTime: '10:15',
         durationMinutes: 75,
         defaultActivityCategoryName: ' Training ',
         status: 'active',
@@ -126,7 +127,11 @@ describe('owner training templates contract', () => {
       defaultActivityCategoryName: 'Training',
       status: 'active',
       sourceTaskTemplateId: taskTemplateId,
-      metadata: {},
+      metadata: {
+        session: {
+          startTime: '10:15:00',
+        },
+      },
       items: [
         {
           id: null,
@@ -138,18 +143,15 @@ describe('owner training templates contract', () => {
           title: 'Interval finishing',
           description: 'Two-touch',
           dayOffset: 0,
-          startTime: '10:15:00',
-          durationMinutes: 18,
+          startTime: null,
+          durationMinutes: null,
           sortOrder: 0,
           config: {
             task: {
               title: 'Interval finishing',
               description: 'Two-touch',
               categoryIds: [],
-              subtasks: [
-                { id: null, title: 'Right foot' },
-                { id: null, title: 'Left foot' },
-              ],
+              subtasks: [],
               videoUrl: 'https://example.com/drill.mp4',
               videoUrls: ['https://example.com/drill.mp4'],
               mediaNames: ['Drill video'],
@@ -160,8 +162,8 @@ describe('owner training templates contract', () => {
               afterTrainingFeedbackScoreExplanation: 'Rate technique',
               afterTrainingFeedbackEnableIntensity: true,
               afterTrainingFeedbackEnableNote: true,
-              taskDurationEnabled: true,
-              taskDurationMinutes: 18,
+              taskDurationEnabled: false,
+              taskDurationMinutes: null,
               autoAddToActivities: false,
             },
             timer: {
@@ -198,8 +200,9 @@ describe('owner training templates contract', () => {
         task: {
           title: 'Solo touch work',
           videoUrls: ['https://example.com/touch.png'],
-          taskDurationEnabled: true,
-          taskDurationMinutes: 12,
+          subtasks: [],
+          taskDurationEnabled: false,
+          taskDurationMinutes: null,
         },
       },
       items: [],
@@ -230,8 +233,9 @@ describe('owner training templates contract', () => {
         task: {
           title: 'Repeat sprints',
           videoUrls: ['https://example.com/sprint.mp4'],
-          taskDurationEnabled: true,
-          taskDurationMinutes: 16,
+          subtasks: [],
+          taskDurationEnabled: false,
+          taskDurationMinutes: null,
         },
         timer: {
           activeSeconds: 30,
@@ -240,6 +244,48 @@ describe('owner training templates contract', () => {
         },
       },
       items: [],
+    });
+
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'week',
+        title: ' Week plan ',
+        items: [
+          {
+            itemType: 'session_template',
+            title: ' Team training ',
+            dayOffset: 2,
+            startTime: '18:30',
+            durationMinutes: 75,
+          },
+          {
+            itemType: 'task_template',
+            title: ' Touch work ',
+            dayOffset: 3,
+            startTime: '08:00',
+            durationMinutes: 12,
+          },
+        ],
+      })
+    ).toMatchObject({
+      templateType: 'week',
+      durationMinutes: null,
+      items: [
+        {
+          itemType: 'session_template',
+          dayOffset: 2,
+          startTime: '18:30:00',
+          durationMinutes: 75,
+        },
+        {
+          itemType: 'task_template',
+          dayOffset: 3,
+          startTime: null,
+          durationMinutes: null,
+        },
+      ],
     });
 
     expect(() =>
@@ -322,10 +368,15 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('LibraryPickerCard');
     expect(plan).toContain('selectedReusableTemplateId');
     expect(plan).toContain('selectedLibraryItemId');
+    expect(plan).toContain('sessionStartTimeInput');
+    expect(plan).toContain('Session start time');
     expect(plan).toContain('buildTaskConfigPayloadFromLibraryItem');
+    expect(plan).toContain("const itemCarriesSessionTiming = draft.templateType === 'week' && itemType === 'session_template'");
     expect(plan).toContain("draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0");
     expect(plan).toContain("draft.templateType === 'session' ? 0 : item.dayOffset");
     expect(plan).not.toContain('reusablePickerChip');
+    expect(plan).not.toContain('Subtasks');
+    expect(plan).not.toContain('Task time');
     expect(plan).not.toContain("value: 'activity', label: 'Activity'");
     expect(plan).toContain("router.push('/(tabs)/tasks'");
     expect(plan).toContain('plan.template.create.${type.value}');
@@ -342,6 +393,9 @@ describe('owner training templates contract', () => {
     expect(base44Prompt).toContain('Player og guardian maa ikke have template-admin adgang');
     expect(base44Prompt).toContain('popup/bottom sheet');
     expect(base44Prompt).toContain('Day-vaelger i session builderen');
+    expect(base44Prompt).toContain('sessionStartTime');
+    expect(base44Prompt).toContain('Task og exercise maa ikke have subtasks eller egen task time');
+    expect(base44Prompt).toContain('vis kun starttid og varighed paa `session_template` items');
     expect(base44Prompt).toContain('supabase functions list --project-ref lhpczofddvwcyrgotzha');
   });
 });

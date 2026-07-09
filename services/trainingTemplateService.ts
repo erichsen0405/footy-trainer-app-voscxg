@@ -52,7 +52,6 @@ export interface TrainingTemplateLibraryItem {
   categoryPath: string | null;
   isSystem: boolean;
   trainerId: string | null;
-  subtasks: { id: string; title: string; sortOrder: number }[];
 }
 
 export interface TrainingTemplateItem {
@@ -149,6 +148,8 @@ export interface TrainingTemplateInput {
   description?: string | null;
   folderId?: string | null;
   focusAreas?: string[];
+  metadata?: Record<string, unknown> | null;
+  sessionStartTime?: string | null;
   durationMinutes?: number | null;
   defaultActivityCategoryId?: string | null;
   defaultActivityCategoryName?: string | null;
