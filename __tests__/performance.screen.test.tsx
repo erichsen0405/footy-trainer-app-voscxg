@@ -7,8 +7,11 @@ import PerformanceScreen from '../app/(tabs)/performance';
 const mockUseFootball = jest.fn();
 const mockUseHomeActivities = jest.fn();
 const mockStartAdminPlayer = jest.fn();
+const mockStartAdminTeam = jest.fn();
+const mockExitAdmin = jest.fn();
 const mockSetSelectedContext = jest.fn();
 const mockEnsureRosterLoaded = jest.fn();
+const mockGetTeamMembers = jest.fn();
 const mockFetchSelfFeedbackForActivities = jest.fn();
 const mockActivityCard = jest.fn();
 
@@ -22,6 +25,8 @@ const mockAuthSessionState = {
 };
 const mockTeamPlayerState = {
   players: [] as { id: string; full_name: string; email: string; phone_number?: string }[],
+  teams: [] as { id: string; name: string; admin_id: string; created_at: Date; updated_at: Date }[],
+  selectedContext: { type: null, id: null, name: null } as { type: 'player' | 'team' | null; id: string | null; name: string | null },
   loading: false,
 };
 const mockUserRoleState = {
@@ -32,6 +37,8 @@ jest.mock('@/contexts/AdminContext', () => ({
   useAdmin: () => ({
     ...mockAdminState,
     startAdminPlayer: mockStartAdminPlayer,
+    startAdminTeam: mockStartAdminTeam,
+    exitAdmin: mockExitAdmin,
   }),
 }));
 
@@ -52,8 +59,11 @@ jest.mock('@/contexts/FootballContext', () => ({
 jest.mock('@/contexts/TeamPlayerContext', () => ({
   useTeamPlayer: () => ({
     players: mockTeamPlayerState.players,
+    teams: mockTeamPlayerState.teams,
+    selectedContext: mockTeamPlayerState.selectedContext,
     loading: mockTeamPlayerState.loading,
     ensureRosterLoaded: mockEnsureRosterLoaded,
+    getTeamMembers: mockGetTeamMembers,
     setSelectedContext: mockSetSelectedContext,
   }),
 }));
@@ -90,9 +100,10 @@ jest.mock('@/components/ProgressionSection', () => {
   const React = jest.requireActual('react');
   const { Text, View } = jest.requireActual('react-native');
   return {
-    ProgressionSection: ({ targetUserId }: { targetUserId?: string | null }) => (
+    ProgressionSection: ({ targetUserId, targetUserIds }: { targetUserId?: string | null; targetUserIds?: string[] | null }) => (
       <View testID="mock.progressionSection">
         <Text testID="mock.progressionTarget">{targetUserId ?? 'self'}</Text>
+        <Text testID="mock.progressionTargets">{targetUserIds?.join('|') ?? 'none'}</Text>
       </View>
     ),
   };
@@ -153,10 +164,13 @@ describe('PerformanceScreen', () => {
     mockAdminState.adminTargetType = null;
     mockAuthSessionState.user = { id: 'self-user-id' };
     mockTeamPlayerState.players = [];
+    mockTeamPlayerState.teams = [];
+    mockTeamPlayerState.selectedContext = { type: null, id: null, name: null };
     mockTeamPlayerState.loading = false;
     mockUserRoleState.userRole = 'player';
     mockSetSelectedContext.mockResolvedValue(undefined);
     mockEnsureRosterLoaded.mockReturnValue(new Promise(() => {}));
+    mockGetTeamMembers.mockResolvedValue([]);
     mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
 
     mockUseFootball.mockReturnValue({
@@ -213,73 +227,77 @@ describe('PerformanceScreen', () => {
     expect(queryByTestId('mock.progressionSection')).toBeNull();
   });
 
-  it('shows player dropdown for trainer profiles', () => {
+  it('shows scope filter for trainer profiles', () => {
     mockUserRoleState.userRole = 'trainer';
 
     const { getByTestId } = render(<PerformanceScreen />);
 
-    expect(getByTestId('performance.playerDropdown.trigger')).toBeTruthy();
+    expect(getByTestId('performance.scopeFilter.toggle')).toBeTruthy();
   });
 
-  it('does not show player dropdown for player profiles', () => {
+  it('does not show scope filter for player profiles', () => {
     mockUserRoleState.userRole = 'player';
 
     const { queryByTestId } = render(<PerformanceScreen />);
 
-    expect(queryByTestId('performance.playerDropdown.trigger')).toBeNull();
+    expect(queryByTestId('performance.scopeFilter.toggle')).toBeNull();
   });
 
-  it('only renders trainer-linked players in the dropdown', () => {
+  it('renders trainer-linked players and teams in the scope filter', () => {
     mockUserRoleState.userRole = 'trainer';
     mockTeamPlayerState.players = [
       { id: 'player-1', email: '', full_name: 'Alma Striker' },
       { id: 'player-2', email: '', full_name: 'Birk Fullback' },
     ];
+    mockTeamPlayerState.teams = [
+      { id: 'team-1', name: 'U15', admin_id: 'trainer-1', created_at: new Date(), updated_at: new Date() },
+    ];
 
     const { getByTestId, getByText, queryByTestId } = render(<PerformanceScreen />);
 
-    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+    fireEvent.press(getByTestId('performance.scopeFilter.toggle'));
 
     expect(getByText('Alma Striker')).toBeTruthy();
     expect(getByText('Birk Fullback')).toBeTruthy();
-    expect(queryByTestId('performance.playerDropdown.option.player-3')).toBeNull();
+    expect(getByText('U15')).toBeTruthy();
+    expect(queryByTestId('performance.scopeFilter.option.player.player-3')).toBeNull();
   });
 
-  it('shows the trainer player dropdown loading state', () => {
+  it('shows the trainer scope filter loading state', () => {
     mockUserRoleState.userRole = 'trainer';
     mockEnsureRosterLoaded.mockReturnValue(new Promise(() => {}));
 
     const { getByTestId } = render(<PerformanceScreen />);
 
-    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+    fireEvent.press(getByTestId('performance.scopeFilter.toggle'));
 
-    expect(getByTestId('performance.playerDropdown.loading')).toBeTruthy();
+    expect(getByTestId('performance.scopeFilter.loading')).toBeTruthy();
   });
 
-  it('shows the trainer player dropdown empty state', async () => {
+  it('shows the trainer scope filter empty state', async () => {
     mockUserRoleState.userRole = 'trainer';
     mockEnsureRosterLoaded.mockResolvedValue(undefined);
 
     const { getByTestId } = render(<PerformanceScreen />);
 
-    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+    fireEvent.press(getByTestId('performance.scopeFilter.toggle'));
 
     await waitFor(() => {
-      expect(getByTestId('performance.playerDropdown.empty')).toBeTruthy();
+      expect(getByTestId('performance.scopeFilter.empty')).toBeTruthy();
     });
   });
 
-  it('shows the trainer player dropdown error state', async () => {
+  it('shows the trainer scope filter error state', async () => {
     const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockUserRoleState.userRole = 'trainer';
     mockEnsureRosterLoaded.mockRejectedValue(new Error('roster failed'));
 
     const { getByTestId } = render(<PerformanceScreen />);
 
-    fireEvent.press(getByTestId('performance.playerDropdown.trigger'));
+    fireEvent.press(getByTestId('performance.scopeFilter.toggle'));
 
     await waitFor(() => {
-      expect(getByTestId('performance.playerDropdown.error')).toBeTruthy();
+      expect(getByTestId('performance.scopeFilter.error')).toBeTruthy();
     });
 
     consoleErrorSpy.mockRestore();
@@ -293,8 +311,8 @@ describe('PerformanceScreen', () => {
 
     const screen = render(<PerformanceScreen />);
 
-    fireEvent.press(screen.getByTestId('performance.playerDropdown.trigger'));
-    fireEvent.press(screen.getByTestId('performance.playerDropdown.option.player-1'));
+    fireEvent.press(screen.getByTestId('performance.scopeFilter.toggle'));
+    fireEvent.press(screen.getByTestId('performance.scopeFilter.option.player.player-1'));
 
     await waitFor(() => {
       expect(mockSetSelectedContext).toHaveBeenCalledWith({
@@ -334,6 +352,52 @@ describe('PerformanceScreen', () => {
     expect(screen.getByTestId('mock.progressionTarget').props.children).toBe('player-1');
     fireEvent.press(screen.getByTestId('performance.trophies.toggle'));
     expect(screen.getByTestId('performance.trophies.count.gold').props.children).toBe(1);
+  });
+
+  it('selects a team and passes team members to progression', async () => {
+    mockUserRoleState.userRole = 'trainer';
+    mockTeamPlayerState.players = [
+      { id: 'player-1', email: '', full_name: 'Alma Striker' },
+      { id: 'player-2', email: '', full_name: 'Birk Fullback' },
+    ];
+    mockTeamPlayerState.teams = [
+      { id: 'team-1', name: 'U15', admin_id: 'trainer-1', created_at: new Date(), updated_at: new Date() },
+    ];
+    mockGetTeamMembers.mockResolvedValue([
+      { id: 'player-1', email: '', full_name: 'Alma Striker' },
+      { id: 'player-2', email: '', full_name: 'Birk Fullback' },
+    ]);
+
+    const screen = render(<PerformanceScreen />);
+
+    fireEvent.press(screen.getByTestId('performance.scopeFilter.toggle'));
+    fireEvent.press(screen.getByTestId('performance.scopeFilter.option.team.team-1'));
+
+    await waitFor(() => {
+      expect(mockSetSelectedContext).toHaveBeenCalledWith({
+        type: 'team',
+        id: 'team-1',
+        name: 'U15',
+      });
+      expect(mockStartAdminTeam).toHaveBeenCalledWith('team-1');
+    });
+
+    mockAdminState.adminMode = 'team';
+    mockAdminState.adminTargetId = 'team-1';
+    mockAdminState.adminTargetType = 'team';
+    mockTeamPlayerState.selectedContext = { type: 'team', id: 'team-1', name: 'U15' };
+
+    screen.rerender(<PerformanceScreen />);
+
+    await waitFor(() => {
+      expect(mockGetTeamMembers).toHaveBeenCalledWith('team-1');
+    });
+
+    fireEvent.press(screen.getByTestId('performance.progression.toggle'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock.progressionTargets').props.children).toBe('player-1|player-2');
+    });
   });
 
   it('keeps the selected player visible while selected performance data is loading', () => {

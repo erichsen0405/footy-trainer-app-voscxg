@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import TeamManagement from '@/components/TeamManagement';
@@ -55,6 +56,11 @@ import {
 import { OwnerBrandAssetKind, pickAndUploadOwnerBrandAsset } from '@/utils/ownerBrandAssetUpload';
 
 type CrmTab = 'players' | 'teams' | 'tags' | 'brand';
+
+function getRouteParam(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
 
 type ProfileDraft = {
   crmStatus: OwnerCrmStatus;
@@ -220,8 +226,17 @@ function PlayerCrmScreen() {
   const colorScheme = useColorScheme();
   const colors = getColors(colorScheme);
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{
+    ownerAccountId?: string | string[];
+    playerId?: string | string[];
+    openAt?: string | string[];
+  }>();
   const { userRole, loading: roleLoading } = useUserRole();
   const canManagePlayers = userRole === 'admin' || userRole === 'trainer';
+  const routeOwnerAccountId = getRouteParam(params.ownerAccountId);
+  const routePlayerId = getRouteParam(params.playerId);
+  const routeOpenAt = getRouteParam(params.openAt);
+  const lastRouteOpenKeyRef = useRef<string | null>(null);
 
   const [context, setContext] = useState<OwnerPlayerCrmContext | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
@@ -261,13 +276,23 @@ function PlayerCrmScreen() {
     try {
       const payload = await fetchOwnerPlayerCrmContext();
       setContext(payload);
-      setActiveOwnerAccountId((current) => current || payload.defaultOwnerAccountId);
+      setActiveOwnerAccountId((current) => {
+        if (routeOwnerAccountId && payload.workspaces.some((workspace) => workspace.ownerAccountId === routeOwnerAccountId)) {
+          return routeOwnerAccountId;
+        }
+
+        if (current && payload.workspaces.some((workspace) => workspace.ownerAccountId === current)) {
+          return current;
+        }
+
+        return payload.defaultOwnerAccountId;
+      });
     } catch (error: any) {
       Alert.alert('CRM', error.message || 'Could not load CRM context.');
     } finally {
       setLoading(false);
     }
-  }, [canManagePlayers]);
+  }, [canManagePlayers, routeOwnerAccountId]);
 
   const loadList = useCallback(async (ownerAccountId: string, silent = false) => {
     if (!silent) setLoading(true);
@@ -313,6 +338,14 @@ function PlayerCrmScreen() {
     void loadList(activeOwnerAccountId);
     void loadBrand(activeOwnerAccountId);
   }, [activeOwnerAccountId, loadBrand, loadList]);
+
+  useEffect(() => {
+    if (!routeOwnerAccountId || !context?.workspaces.some((workspace) => workspace.ownerAccountId === routeOwnerAccountId)) {
+      return;
+    }
+
+    setActiveOwnerAccountId(routeOwnerAccountId);
+  }, [context?.workspaces, routeOwnerAccountId]);
 
   useEffect(() => {
     setProfileDraft(createProfileDraft(detail?.player ?? null));
@@ -468,6 +501,21 @@ function PlayerCrmScreen() {
     },
     [activeOwnerAccountId],
   );
+
+  useEffect(() => {
+    if (!routePlayerId || !activeOwnerAccountId || !list?.players.length) return;
+    if (routeOwnerAccountId && routeOwnerAccountId !== activeOwnerAccountId) return;
+
+    const player = list.players.find((candidate) => candidate.playerId === routePlayerId);
+    if (!player) return;
+
+    const routeOpenKey = `${activeOwnerAccountId}:${routePlayerId}:${routeOpenAt ?? 'initial'}`;
+    if (lastRouteOpenKeyRef.current === routeOpenKey) return;
+
+    lastRouteOpenKeyRef.current = routeOpenKey;
+    setActiveTab('players');
+    void openPlayerDetail(player);
+  }, [activeOwnerAccountId, list?.players, openPlayerDetail, routeOpenAt, routeOwnerAccountId, routePlayerId]);
 
   const refreshSelectedDetail = useCallback(
     async (playerId = selectedPlayerId) => {

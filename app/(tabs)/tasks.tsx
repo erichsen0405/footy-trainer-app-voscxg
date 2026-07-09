@@ -29,9 +29,11 @@ import SwipeVideoPlayer from '@/components/SwipeVideoPlayer';
 import ContextConfirmationDialog from '@/components/ContextConfirmationDialog';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
+import { TrainerScopeFilter } from '@/components/TrainerScopeFilter';
 import { taskService } from '@/services/taskService';
 import { forceRefreshNotificationQueue } from '@/utils/notificationScheduler';
 import { emitActivitiesRefreshRequested } from '@/utils/activityEvents';
+import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getTaskModalVideoUrls } from '@/utils/taskModalContent';
 import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
@@ -327,6 +329,22 @@ function organizeFolders(
   return folders;
 }
 
+function taskMatchesAdminScope(
+  task: any,
+  adminMode: string,
+  adminTargetType: string | null,
+  adminTargetId: string | null,
+): boolean {
+  if (adminMode === 'self' || !adminTargetId) return true;
+  if (adminTargetType === 'player') {
+    return String(task?.playerId ?? task?.player_id ?? '').trim() === adminTargetId;
+  }
+  if (adminTargetType === 'team') {
+    return String(task?.teamId ?? task?.team_id ?? '').trim() === adminTargetId;
+  }
+  return true;
+}
+
 // Memoized TaskCard component to prevent unnecessary re-renders
 export const TaskCard = React.memo(
   ({
@@ -604,6 +622,7 @@ export default function TasksScreen() {
   const { user } = useAuthSession();
   const roleInfo = useUserRole() as any;
   const userRole = typeof roleInfo?.userRole === 'string' ? roleInfo.userRole : null;
+  const teamPlayerData = useTeamPlayer() as any;
 
   const contextTasks = footballData?.tasks;
   const tasks = useMemo(() => (contextTasks ?? []) as Task[], [contextTasks]);
@@ -625,16 +644,17 @@ export default function TasksScreen() {
   const adminTargetType = adminData?.adminTargetType ?? adminData?.adminTarget?.type ?? null;
   const adminTargetId = adminData?.adminTargetId ?? adminData?.adminTarget?.id ?? null;
 
-  const rawSelectedContext = adminData?.selectedContext;
+  const rawSelectedContext = teamPlayerData?.selectedContext ?? adminData?.selectedContext;
   const contextName = adminData?.contextName;
   const selectedContext = useMemo(
     () =>
       rawSelectedContext ??
       {
         type: adminTargetType ?? 'player',
+        id: adminTargetId,
         name: contextName ?? '',
       },
-    [rawSelectedContext, adminTargetType, contextName],
+    [rawSelectedContext, adminTargetId, adminTargetType, contextName],
   );
 
   const scheme = useColorScheme();
@@ -682,6 +702,10 @@ export default function TasksScreen() {
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
 
   const safeTasks = useMemo(() => (tasks || []).filter(Boolean) as Task[], [tasks]);
+  const scopedTasks = useMemo(
+    () => safeTasks.filter((task: any) => taskMatchesAdminScope(task, adminMode, adminTargetType, adminTargetId)),
+    [adminMode, adminTargetId, adminTargetType, safeTasks],
+  );
 
   const uniqueCategories = useMemo(() => {
     const map = new Map<string, any>();
@@ -698,7 +722,7 @@ export default function TasksScreen() {
 
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return safeTasks.filter((t: any) => {
+    return scopedTasks.filter((t: any) => {
       const title = String(t?.title ?? '').toLowerCase();
       const desc = String(t?.description ?? '').toLowerCase();
       const categoryIds = (((t as any)?.categoryIds ?? []) as string[]).map(String);
@@ -706,7 +730,7 @@ export default function TasksScreen() {
       const matchesCategory = !selectedCategoryFilterId || categoryIds.includes(selectedCategoryFilterId);
       return matchesSearch && matchesCategory;
     });
-  }, [safeTasks, searchQuery, selectedCategoryFilterId]);
+  }, [scopedTasks, searchQuery, selectedCategoryFilterId]);
 
   const templateTasks = useMemo(
     () =>
@@ -1296,6 +1320,7 @@ export default function TasksScreen() {
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const isTrainerProfile = userRole === 'trainer';
 
   const renderFolder = useCallback(
     ({ item }: { item: FolderItem }) => {
@@ -1326,6 +1351,26 @@ export default function TasksScreen() {
             </Text>
           </View>
         )}
+
+        {isTrainerProfile ? (
+          <TrainerScopeFilter
+            testIDPrefix="tasks.scopeFilter"
+            modalTitle="Tasks"
+            allLabel="All tasks"
+            allDetail="Your task overview"
+            playerDetail="Player tasks"
+            teamDetail="Team tasks"
+            colors={{
+              primary: colors.primary,
+              card: cardBgColor,
+              highlight: colors.highlight,
+              text: textColor,
+              textSecondary: textSecondaryColor,
+            }}
+            isDark={isDark}
+            containerStyle={styles.scopeFilterContainer}
+          />
+        ) : null}
 
         <View style={[styles.searchBarWrap, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}>
           <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={textSecondaryColor} />
@@ -1499,6 +1544,7 @@ export default function TasksScreen() {
     textSecondaryColor,
     searchQuery,
     cardBgColor,
+    isTrainerProfile,
     templateView,
     categoryFilterOpen,
     selectedCategoryFilter,
@@ -1537,7 +1583,12 @@ export default function TasksScreen() {
   // Show loading spinner when data is being fetched
   if (isLoading) {
     return (
-      <AdminContextWrapper isAdmin={isAdminMode} contextName={selectedContext?.name} contextType={adminTargetType || 'player'}>
+      <AdminContextWrapper
+        isAdmin={isAdminMode}
+        contextName={selectedContext?.name}
+        contextType={adminTargetType || 'player'}
+        presentation="none"
+      >
         <View style={[styles.screen, { backgroundColor: bgColor }]}>
           <View style={styles.topBar}>
             <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">Tasks</Text>
@@ -1551,7 +1602,12 @@ export default function TasksScreen() {
   }
 
   return (
-    <AdminContextWrapper isAdmin={isAdminMode} contextName={selectedContext?.name} contextType={adminTargetType || 'player'}>
+    <AdminContextWrapper
+      isAdmin={isAdminMode}
+      contextName={selectedContext?.name}
+      contextType={adminTargetType || 'player'}
+      presentation="none"
+    >
       <View style={[styles.screen, { backgroundColor: bgColor }]} testID="tasks.screen">
         <View style={styles.topBar}>
           <View style={styles.topBarTitleWrap}>
@@ -2221,6 +2277,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   contentContainer: { paddingHorizontal: 18, paddingBottom: 24 },
+  scopeFilterContainer: {
+    marginBottom: 12,
+  },
   topBar: {
     paddingTop: Platform.OS === 'android' ? 54 : 56,
     paddingHorizontal: 18,
