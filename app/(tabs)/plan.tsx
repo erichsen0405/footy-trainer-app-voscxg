@@ -6,6 +6,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,11 +16,15 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
+import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
+import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { getColors } from '@/styles/commonStyles';
 import {
+  TrainingTemplateExerciseTimer,
   TrainingTemplateItemInput,
   TrainingTemplateSummary,
+  TrainingTemplateTaskConfig,
   TrainingTemplateType,
   archiveOwnerTrainingTemplate,
   duplicateOwnerTrainingTemplate,
@@ -29,6 +34,19 @@ import {
   saveOwnerTrainingTemplate,
 } from '@/services/trainingTemplateService';
 import type { OwnerPlayerCrmWorkspace } from '@/services/ownerPlayerCrmService';
+import { pickAndUploadTaskMedia } from '@/utils/taskVideoUpload';
+import {
+  buildTaskMediaNamePayload,
+  buildTaskVideoPayload,
+  getTaskMediaNameFromFileName,
+  getTaskMediaType,
+  isTaskMediaUrl,
+  mergeTaskMedia,
+  normalizeTaskMediaNames,
+  normalizeTaskVideoUrls,
+  removeTaskMediaAt,
+  replaceTaskMediaName,
+} from '@/utils/taskVideos';
 
 type PlanSection = 'templates' | 'tasks' | 'programs' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
@@ -36,6 +54,33 @@ type TemplateTypeFilter = 'all' | TrainingTemplateType;
 
 type DraftItem = TrainingTemplateItemInput & {
   localId: string;
+};
+
+type TaskSubtaskDraft = {
+  localId: string;
+  title: string;
+};
+
+type TaskConfigDraft = {
+  videoUrls: string[];
+  mediaNames: string[];
+  videoUrlInput: string;
+  mediaNameInput: string;
+  reminderEnabled: boolean;
+  reminderMinutes: string;
+  feedbackEnabled: boolean;
+  feedbackDelayMinutes: string;
+  feedbackScoreExplanation: string;
+  taskDurationEnabled: boolean;
+  taskDurationMinutes: string;
+  autoAddToActivities: boolean;
+  subtasks: TaskSubtaskDraft[];
+};
+
+type ExerciseTimerDraft = {
+  activeSeconds: string;
+  restSeconds: string;
+  rounds: string;
 };
 
 type TemplateDraft = {
@@ -46,6 +91,8 @@ type TemplateDraft = {
   folderId: string | null;
   focusInput: string;
   durationInput: string;
+  defaultActivityCategoryName: string;
+  taskConfig: TaskConfigDraft;
   status: TemplateStatusFilter;
   items: DraftItem[];
 };
@@ -80,13 +127,57 @@ const ITEM_TYPES: {
   materialIcon: string;
 }[] = [
   { value: 'task_template', label: 'Task', icon: 'checklist', materialIcon: 'checklist' },
-  { value: 'activity', label: 'Activity', icon: 'calendar', materialIcon: 'event' },
+  { value: 'exercise', label: 'Exercise', icon: 'timer', materialIcon: 'timer' },
   { value: 'session_template', label: 'Session', icon: 'rectangle.3.group', materialIcon: 'dashboard' },
   { value: 'focus', label: 'Focus', icon: 'scope', materialIcon: 'center_focus_strong' },
   { value: 'note', label: 'Note', icon: 'doc.text', materialIcon: 'description' },
+  { value: 'feedback_requirement', label: 'Feedback', icon: 'text.bubble', materialIcon: 'rate_review' },
 ];
 
+const ITEM_TYPES_BY_TEMPLATE: Record<TrainingTemplateType, DraftItem['itemType'][]> = {
+  task: [],
+  session: ['task_template', 'exercise', 'focus', 'note', 'feedback_requirement'],
+  week: ['session_template', 'focus', 'note'],
+};
+
+const DEFAULT_EXERCISE_TIMER: TrainingTemplateExerciseTimer = {
+  activeSeconds: 45,
+  restSeconds: 15,
+  rounds: 3,
+};
+
+function getDefaultItemType(templateType: TrainingTemplateType): DraftItem['itemType'] {
+  return ITEM_TYPES_BY_TEMPLATE[templateType][0] ?? 'task_template';
+}
+
 const createLocalId = () => `item:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+const createLocalSubtaskId = () => `subtask:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+function createEmptyTaskConfigDraft(): TaskConfigDraft {
+  return {
+    videoUrls: [],
+    mediaNames: [],
+    videoUrlInput: '',
+    mediaNameInput: '',
+    reminderEnabled: false,
+    reminderMinutes: '0',
+    feedbackEnabled: false,
+    feedbackDelayMinutes: '0',
+    feedbackScoreExplanation: '',
+    taskDurationEnabled: false,
+    taskDurationMinutes: '',
+    autoAddToActivities: false,
+    subtasks: [{ localId: createLocalSubtaskId(), title: '' }],
+  };
+}
+
+function createEmptyExerciseTimerDraft(): ExerciseTimerDraft {
+  return {
+    activeSeconds: String(DEFAULT_EXERCISE_TIMER.activeSeconds),
+    restSeconds: String(DEFAULT_EXERCISE_TIMER.restSeconds),
+    rounds: String(DEFAULT_EXERCISE_TIMER.rounds),
+  };
+}
 
 function normalizeFocusInput(value: string): string[] {
   return Array.from(
@@ -107,6 +198,135 @@ function parsePositiveInt(value: string): number | null {
   const rounded = Math.round(parsed);
   return rounded > 0 ? rounded : null;
 }
+
+function parseNonNegativeInt(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  return rounded >= 0 ? rounded : null;
+}
+
+function clampNumber(value: number | null, fallback: number, min: number, max: number): number {
+  if (value === null) return fallback;
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeDraftStartTime(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function createTaskConfigDraftFromConfig(config: unknown): TaskConfigDraft {
+  const record = asRecord(config);
+  const videoUrls = normalizeTaskVideoUrls(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url);
+  const mediaNames = normalizeTaskMediaNames(record.mediaNames ?? record.media_names, videoUrls);
+  const subtasks = Array.isArray(record.subtasks)
+    ? record.subtasks
+        .map((subtask) => {
+          const subtaskRecord = asRecord(subtask);
+          const title = typeof subtaskRecord.title === 'string' ? subtaskRecord.title : '';
+          return { localId: typeof subtaskRecord.id === 'string' && subtaskRecord.id ? subtaskRecord.id : createLocalSubtaskId(), title };
+        })
+        .filter((subtask) => subtask.title.trim())
+    : [];
+
+  return {
+    videoUrls,
+    mediaNames,
+    videoUrlInput: '',
+    mediaNameInput: '',
+    reminderEnabled: typeof record.reminderMinutes === 'number' || typeof record.reminder === 'number',
+    reminderMinutes: String(record.reminderMinutes ?? record.reminder ?? record.reminder_minutes ?? 0),
+    feedbackEnabled: record.afterTrainingEnabled === true || record.after_training_enabled === true,
+    feedbackDelayMinutes: String(record.afterTrainingDelayMinutes ?? record.after_training_delay_minutes ?? 0),
+    feedbackScoreExplanation: String(record.afterTrainingFeedbackScoreExplanation ?? record.after_training_feedback_score_explanation ?? ''),
+    taskDurationEnabled: record.taskDurationEnabled === true || record.task_duration_enabled === true,
+    taskDurationMinutes: String(record.taskDurationMinutes ?? record.task_duration_minutes ?? ''),
+    autoAddToActivities: record.autoAddToActivities === true || record.auto_add_to_activities === true,
+    subtasks: subtasks.length ? subtasks : [{ localId: createLocalSubtaskId(), title: '' }],
+  };
+}
+
+function createExerciseTimerDraftFromConfig(config: unknown): ExerciseTimerDraft {
+  const record = asRecord(config);
+  return {
+    activeSeconds: String(record.activeSeconds ?? record.workSeconds ?? DEFAULT_EXERCISE_TIMER.activeSeconds),
+    restSeconds: String(record.restSeconds ?? record.pauseSeconds ?? DEFAULT_EXERCISE_TIMER.restSeconds),
+    rounds: String(record.rounds ?? DEFAULT_EXERCISE_TIMER.rounds),
+  };
+}
+
+function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
+  const videoPayload = buildTaskVideoPayload(config.videoUrls);
+  const mediaNamePayload = buildTaskMediaNamePayload(config.mediaNames, videoPayload.videoUrls);
+  const taskDurationMinutes = config.taskDurationEnabled
+    ? clampNumber(parseNonNegativeInt(config.taskDurationMinutes), 0, 0, 600)
+    : null;
+
+  return {
+    title,
+    description,
+    categoryIds: [],
+    subtasks: config.subtasks
+      .map((subtask) => ({ id: null, title: subtask.title.trim() }))
+      .filter((subtask) => subtask.title),
+    videoUrl: videoPayload.videoUrl,
+    videoUrls: videoPayload.videoUrls,
+    mediaNames: mediaNamePayload.mediaNames,
+    reminderMinutes: config.reminderEnabled ? clampNumber(parseNonNegativeInt(config.reminderMinutes), 0, 0, 1440) : null,
+    afterTrainingEnabled: config.feedbackEnabled,
+    afterTrainingDelayMinutes: config.feedbackEnabled ? clampNumber(parseNonNegativeInt(config.feedbackDelayMinutes), 0, 0, 240) : null,
+    afterTrainingFeedbackEnableScore: true,
+    afterTrainingFeedbackScoreExplanation: config.feedbackEnabled ? config.feedbackScoreExplanation.trim() || null : null,
+    afterTrainingFeedbackEnableIntensity: config.feedbackEnabled,
+    afterTrainingFeedbackEnableNote: true,
+    taskDurationEnabled: config.taskDurationEnabled,
+    taskDurationMinutes,
+    autoAddToActivities: config.autoAddToActivities,
+  };
+}
+
+function buildExerciseTimerPayload(config: ExerciseTimerDraft): TrainingTemplateExerciseTimer {
+  return {
+    activeSeconds: clampNumber(parsePositiveInt(config.activeSeconds), DEFAULT_EXERCISE_TIMER.activeSeconds, 5, 3600),
+    restSeconds: clampNumber(parseNonNegativeInt(config.restSeconds), DEFAULT_EXERCISE_TIMER.restSeconds, 0, 1800),
+    rounds: clampNumber(parsePositiveInt(config.rounds), DEFAULT_EXERCISE_TIMER.rounds, 1, 99),
+  };
+}
+
+function getTaskConfigFromItem(item: DraftItem): TrainingTemplateTaskConfig | null {
+  const config = asRecord(item.config);
+  const task = asRecord(config.task);
+  return task.title ? task as unknown as TrainingTemplateTaskConfig : null;
+}
+
+function getExerciseTimerFromItem(item: DraftItem): TrainingTemplateExerciseTimer | null {
+  const config = asRecord(item.config);
+  const timer = asRecord(config.timer);
+  return typeof timer.activeSeconds === 'number' ? timer as unknown as TrainingTemplateExerciseTimer : null;
+}
+
+function getTaskMediaLabel(url: string): string {
+  const mediaType = getTaskMediaType(url);
+  if (mediaType === 'image') return 'Image';
+  if (mediaType === 'pdf') return 'PDF';
+  if (mediaType === 'video') return 'Video';
+  return 'Media';
+}
+
+type TaskConfigUpdate = TaskConfigDraft | ((current: TaskConfigDraft) => TaskConfigDraft);
 
 function formatDuration(minutes: number | null): string {
   if (!minutes) return 'No duration';
@@ -135,12 +355,15 @@ function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft
     folderId: null,
     focusInput: '',
     durationInput: '',
+    defaultActivityCategoryName: '',
+    taskConfig: createEmptyTaskConfigDraft(),
     status: 'active',
     items: [],
   };
 }
 
 function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDraft {
+  const metadata = asRecord(template.metadata);
   return {
     id: template.id,
     templateType: template.templateType,
@@ -149,6 +372,8 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
     folderId: template.folderId,
     focusInput: template.focusAreas.join(', '),
     durationInput: template.durationMinutes ? String(template.durationMinutes) : '',
+    defaultActivityCategoryName: template.defaultActivityCategoryName ?? '',
+    taskConfig: createTaskConfigDraftFromConfig(metadata.task),
     status: template.status,
     items: template.items.map((item) => ({
       localId: item.id,
@@ -191,7 +416,13 @@ export default function PlanScreen() {
   const [itemDescription, setItemDescription] = useState('');
   const [itemType, setItemType] = useState<DraftItem['itemType']>('task_template');
   const [itemDayOffset, setItemDayOffset] = useState('');
+  const [itemStartTime, setItemStartTime] = useState('');
   const [itemDuration, setItemDuration] = useState('');
+  const [itemTaskConfig, setItemTaskConfig] = useState<TaskConfigDraft>(() => createEmptyTaskConfigDraft());
+  const [itemExerciseTimer, setItemExerciseTimer] = useState<ExerciseTimerDraft>(() => createEmptyExerciseTimerDraft());
+  const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
+  const [uploadingItemMedia, setUploadingItemMedia] = useState(false);
+  const { user } = useAuthSession();
 
   const canAccessPlan = userRole === 'admin' || userRole === 'trainer';
 
@@ -256,23 +487,31 @@ export default function PlanScreen() {
     });
   }, [payload?.templates, statusFilter, typeFilter]);
 
-  const resetItemDraft = useCallback(() => {
+  const allowedItemTypes = useMemo(
+    () => ITEM_TYPES.filter((type) => ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(type.value)),
+    [draft.templateType]
+  );
+
+  const resetItemDraft = useCallback((templateType: TrainingTemplateType = 'session') => {
     setItemTitle('');
     setItemDescription('');
-    setItemType('task_template');
+    setItemType(getDefaultItemType(templateType));
     setItemDayOffset('');
+    setItemStartTime('');
     setItemDuration('');
+    setItemTaskConfig(createEmptyTaskConfigDraft());
+    setItemExerciseTimer(createEmptyExerciseTimerDraft());
   }, []);
 
   const openCreate = useCallback((type: TrainingTemplateType = 'session') => {
     setDraft(createEmptyDraft(type));
-    resetItemDraft();
+    resetItemDraft(type);
     setDraftVisible(true);
   }, [resetItemDraft]);
 
   const openEdit = useCallback((template: TrainingTemplateSummary) => {
     setDraft(createDraftFromTemplate(template));
-    resetItemDraft();
+    resetItemDraft(template.templateType);
     setDraftVisible(true);
   }, [resetItemDraft]);
 
@@ -286,9 +525,39 @@ export default function PlanScreen() {
     }
   }, [activeOwnerAccountId, loadTemplates]);
 
+  const changeDraftTemplateType = useCallback((templateType: TrainingTemplateType) => {
+    setDraft((current) => {
+      const allowed = new Set(ITEM_TYPES_BY_TEMPLATE[templateType]);
+      return {
+        ...current,
+        templateType,
+        defaultActivityCategoryName: templateType === 'session' ? current.defaultActivityCategoryName : '',
+        items: current.items
+          .filter((item) => allowed.has(item.itemType))
+          .map((item, sortOrder) => ({ ...item, sortOrder })),
+      };
+    });
+    resetItemDraft(templateType);
+  }, [resetItemDraft]);
+
   const addDraftItem = useCallback(() => {
     const title = itemTitle.trim();
     if (!title) return;
+    if (!ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(itemType)) return;
+    const description = itemDescription.trim() || null;
+    const startTime = normalizeDraftStartTime(itemStartTime);
+    if (itemStartTime.trim() && !startTime) {
+      Alert.alert('Invalid time', 'Use HH:mm, for example 09:30.');
+      return;
+    }
+    const config: Record<string, unknown> = {};
+    if (itemType === 'task_template' || itemType === 'exercise') {
+      config.task = buildTaskConfigPayload(title, description, itemTaskConfig);
+    }
+    if (itemType === 'exercise') {
+      config.timer = buildExerciseTimerPayload(itemExerciseTimer);
+    }
+
     setDraft((current) => ({
       ...current,
       items: [
@@ -297,16 +566,17 @@ export default function PlanScreen() {
           localId: createLocalId(),
           itemType,
           title,
-          description: itemDescription.trim() || null,
+          description,
           dayOffset: parsePositiveInt(itemDayOffset) ?? 0,
+          startTime,
           durationMinutes: parsePositiveInt(itemDuration),
           sortOrder: current.items.length,
-          config: {},
+          config,
         },
       ],
     }));
-    resetItemDraft();
-  }, [itemDayOffset, itemDescription, itemDuration, itemTitle, itemType, resetItemDraft]);
+    resetItemDraft(draft.templateType);
+  }, [draft.templateType, itemDayOffset, itemDescription, itemDuration, itemExerciseTimer, itemStartTime, itemTaskConfig, itemTitle, itemType, resetItemDraft]);
 
   const moveDraftItem = useCallback((localId: string, direction: -1 | 1) => {
     setDraft((current) => {
@@ -342,6 +612,10 @@ export default function PlanScreen() {
 
     setSaving(true);
     try {
+      const taskConfig = draft.templateType === 'task'
+        ? buildTaskConfigPayload(title, draft.description.trim() || null, draft.taskConfig)
+        : null;
+      const allowed = new Set(ITEM_TYPES_BY_TEMPLATE[draft.templateType]);
       const next = await saveOwnerTrainingTemplate({
         id: draft.id,
         ownerAccountId: activeOwnerAccountId,
@@ -351,11 +625,17 @@ export default function PlanScreen() {
         folderId: draft.folderId,
         focusAreas: normalizeFocusInput(draft.focusInput),
         durationMinutes: parsePositiveInt(draft.durationInput),
+        defaultActivityCategoryName: draft.templateType === 'session' ? draft.defaultActivityCategoryName.trim() || null : null,
         status: draft.status,
-        items: draft.items.map((item, sortOrder) => ({
-          ...item,
-          sortOrder,
-        })),
+        taskConfig,
+        items: draft.templateType === 'task'
+          ? []
+          : draft.items
+              .filter((item) => allowed.has(item.itemType))
+              .map((item, sortOrder) => ({
+                ...item,
+                sortOrder,
+              })),
         changeNote: draft.id ? 'Mobile edit' : 'Mobile create',
       });
       setPayload(next);
@@ -396,6 +676,78 @@ export default function PlanScreen() {
       setSaving(false);
     }
   }, [activeOwnerAccountId]);
+
+  const updateDraftTaskConfig = useCallback((update: TaskConfigUpdate) => {
+    setDraft((current) => ({
+      ...current,
+      taskConfig: typeof update === 'function' ? update(current.taskConfig) : update,
+    }));
+  }, []);
+
+  const addTaskMediaLink = useCallback((scope: 'template' | 'item') => {
+    const updateConfig = scope === 'template' ? updateDraftTaskConfig : setItemTaskConfig;
+    updateConfig((current) => {
+      const url = current.videoUrlInput.trim();
+      if (!url || !isTaskMediaUrl(url)) {
+        Alert.alert('Invalid media', 'Use a video, image, or PDF link.');
+        return current;
+      }
+      const nextMedia = mergeTaskMedia(current.videoUrls, current.mediaNames, url, current.mediaNameInput);
+      return {
+        ...current,
+        videoUrls: nextMedia.urls,
+        mediaNames: nextMedia.names,
+        videoUrlInput: '',
+        mediaNameInput: '',
+      };
+    });
+  }, [updateDraftTaskConfig]);
+
+  const pickTaskMedia = useCallback(async (scope: 'template' | 'item') => {
+    if (!user?.id) {
+      Alert.alert('Upload unavailable', 'You must be logged in to upload files.');
+      return;
+    }
+
+    const updateConfig = scope === 'template' ? updateDraftTaskConfig : setItemTaskConfig;
+    const setUploading = scope === 'template' ? setUploadingTemplateMedia : setUploadingItemMedia;
+    setUploading(true);
+    try {
+      const uploadedMedia = await pickAndUploadTaskMedia(user.id);
+      if (!uploadedMedia) return;
+      updateConfig((current) => {
+        const nextMedia = mergeTaskMedia(
+          current.videoUrls,
+          current.mediaNames,
+          uploadedMedia.publicUrl,
+          current.mediaNameInput || getTaskMediaNameFromFileName(uploadedMedia.fileName)
+        );
+        return {
+          ...current,
+          videoUrls: nextMedia.urls,
+          mediaNames: nextMedia.names,
+          mediaNameInput: '',
+        };
+      });
+      Alert.alert('File uploaded', 'The file has been added.');
+    } catch (uploadError) {
+      Alert.alert('Upload failed', uploadError instanceof Error ? uploadError.message : 'Could not upload file.');
+    } finally {
+      setUploading(false);
+    }
+  }, [updateDraftTaskConfig, user?.id]);
+
+  const removeTaskMedia = useCallback((scope: 'template' | 'item', index: number) => {
+    const updateConfig = scope === 'template' ? updateDraftTaskConfig : setItemTaskConfig;
+    updateConfig((current) => {
+      const nextMedia = removeTaskMediaAt(current.videoUrls, current.mediaNames, index);
+      return {
+        ...current,
+        videoUrls: nextMedia.urls,
+        mediaNames: nextMedia.names,
+      };
+    });
+  }, [updateDraftTaskConfig]);
 
   if (roleLoading || loading) {
     return (
@@ -639,7 +991,7 @@ export default function PlanScreen() {
                         borderColor: active ? getTemplateTone(type.value, colors) : colors.border,
                       },
                     ]}
-                    onPress={() => setDraft((current) => ({ ...current, templateType: type.value }))}
+                    onPress={() => changeDraftTemplateType(type.value)}
                   >
                     <IconSymbol
                       ios_icon_name={type.icon as any}
@@ -684,121 +1036,183 @@ export default function PlanScreen() {
               keyboardType="number-pad"
             />
 
-            <View style={styles.modalSectionHeader}>
-              <Text style={[styles.modalSectionTitle, { color: colors.text }]}>Items</Text>
-              <Text style={[styles.modalSectionCount, { color: colors.textSecondary }]}>{draft.items.length}</Text>
-            </View>
+            {draft.templateType === 'session' ? (
+              <LabeledInput
+                label="Default category"
+                value={draft.defaultActivityCategoryName}
+                onChangeText={(value) => setDraft((current) => ({ ...current, defaultActivityCategoryName: value }))}
+                colors={colors}
+                placeholder="Training"
+              />
+            ) : null}
 
-            <View style={[styles.itemComposer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.itemTypeRow}>
-                {ITEM_TYPES.map((type) => {
-                  const active = itemType === type.value;
+            {draft.templateType === 'task' ? (
+              <TaskFieldsEditor
+                title="Task fields"
+                config={draft.taskConfig}
+                onChange={updateDraftTaskConfig}
+                colors={colors}
+                uploading={uploadingTemplateMedia}
+                onAddMediaLink={() => addTaskMediaLink('template')}
+                onPickMedia={() => pickTaskMedia('template')}
+                onRemoveMedia={(index) => removeTaskMedia('template', index)}
+              />
+            ) : (
+              <>
+                <View style={styles.modalSectionHeader}>
+                  <Text style={[styles.modalSectionTitle, { color: colors.text }]}>Items</Text>
+                  <Text style={[styles.modalSectionCount, { color: colors.textSecondary }]}>{draft.items.length}</Text>
+                </View>
+
+                <View style={[styles.itemComposer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.itemTypeRow}>
+                    {allowedItemTypes.map((type) => {
+                      const active = itemType === type.value;
+                      return (
+                        <TouchableOpacity
+                          key={type.value}
+                          style={[
+                            styles.itemTypeButton,
+                            {
+                              backgroundColor: active ? colors.primary : colors.background,
+                              borderColor: active ? colors.primary : colors.border,
+                            },
+                          ]}
+                          onPress={() => setItemType(type.value)}
+                        >
+                          <IconSymbol
+                            ios_icon_name={type.icon as any}
+                            android_material_icon_name={type.materialIcon as any}
+                            size={15}
+                            color={active ? '#FFFFFF' : colors.textSecondary}
+                          />
+                          <Text style={[styles.itemTypeText, { color: active ? '#FFFFFF' : colors.text }]}>{type.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <TextInput
+                    style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                    value={itemTitle}
+                    onChangeText={setItemTitle}
+                    placeholder="Item title"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                  <TextInput
+                    style={[
+                      styles.input,
+                      styles.multilineInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
+                    ]}
+                    value={itemDescription}
+                    onChangeText={setItemDescription}
+                    placeholder="Item notes"
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                  />
+
+                  {itemType === 'task_template' || itemType === 'exercise' ? (
+                    <TaskFieldsEditor
+                      title={itemType === 'exercise' ? 'Exercise task fields' : 'Task fields'}
+                      config={itemTaskConfig}
+                      onChange={setItemTaskConfig}
+                      colors={colors}
+                      uploading={uploadingItemMedia}
+                      onAddMediaLink={() => addTaskMediaLink('item')}
+                      onPickMedia={() => pickTaskMedia('item')}
+                      onRemoveMedia={(index) => removeTaskMedia('item', index)}
+                    />
+                  ) : null}
+
+                  {itemType === 'exercise' ? (
+                    <ExerciseTimerEditor
+                      timer={itemExerciseTimer}
+                      onChange={setItemExerciseTimer}
+                      colors={colors}
+                    />
+                  ) : null}
+
+                  <View style={styles.itemMetaRow}>
+                    <TextInput
+                      style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      value={itemDayOffset}
+                      onChangeText={(value) => setItemDayOffset(value.replace(/[^0-9]/g, ''))}
+                      placeholder="Day"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="number-pad"
+                    />
+                    <TextInput
+                      style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      value={itemStartTime}
+                      onChangeText={(value) => setItemStartTime(value.replace(/[^0-9:]/g, '').slice(0, 5))}
+                      placeholder="HH:mm"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="numbers-and-punctuation"
+                    />
+                    <TextInput
+                      style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      value={itemDuration}
+                      onChangeText={(value) => setItemDuration(value.replace(/[^0-9]/g, ''))}
+                      placeholder="Min"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.addItemButton, { backgroundColor: colors.primary, opacity: itemTitle.trim() ? 1 : 0.55 }]}
+                    onPress={addDraftItem}
+                    disabled={!itemTitle.trim()}
+                  >
+                    <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
+                    <Text style={styles.addItemText}>Add item</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {draft.items.map((item, index) => {
+                  const timer = getExerciseTimerFromItem(item);
+                  const taskConfig = getTaskConfigFromItem(item);
                   return (
-                    <TouchableOpacity
-                      key={type.value}
-                      style={[
-                        styles.itemTypeButton,
-                        {
-                          backgroundColor: active ? colors.primary : colors.background,
-                          borderColor: active ? colors.primary : colors.border,
-                        },
-                      ]}
-                      onPress={() => setItemType(type.value)}
-                    >
-                      <IconSymbol
-                        ios_icon_name={type.icon as any}
-                        android_material_icon_name={type.materialIcon as any}
-                        size={15}
-                        color={active ? '#FFFFFF' : colors.textSecondary}
-                      />
-                      <Text style={[styles.itemTypeText, { color: active ? '#FFFFFF' : colors.text }]}>{type.label}</Text>
-                    </TouchableOpacity>
+                    <View key={item.localId} style={[styles.draftItemRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <View style={styles.draftItemOrder}>
+                        <Text style={[styles.draftItemIndex, { color: colors.textSecondary }]}>{index + 1}</Text>
+                      </View>
+                      <View style={styles.draftItemBody}>
+                        <Text style={[styles.draftItemTitle, { color: colors.text }]} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={[styles.draftItemMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                          {ITEM_TYPES.find((type) => type.value === item.itemType)?.label ?? item.itemType}
+                          {item.dayOffset ? ` · day ${item.dayOffset + 1}` : ''}
+                          {item.startTime ? ` · ${String(item.startTime).slice(0, 5)}` : ''}
+                          {item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
+                          {timer ? ` · ${timer.rounds} x ${timer.activeSeconds}s/${timer.restSeconds}s` : ''}
+                          {taskConfig?.videoUrls.length ? ` · ${taskConfig.videoUrls.length} media` : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.draftItemActions}>
+                        <TouchableOpacity
+                          style={[styles.itemIconButton, { borderColor: colors.border }]}
+                          onPress={() => moveDraftItem(item.localId, -1)}
+                          disabled={index === 0}
+                        >
+                          <IconSymbol ios_icon_name="arrow.up" android_material_icon_name="arrow_upward" size={16} color={index === 0 ? colors.textSecondary : colors.text} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.itemIconButton, { borderColor: colors.border }]}
+                          onPress={() => moveDraftItem(item.localId, 1)}
+                          disabled={index === draft.items.length - 1}
+                        >
+                          <IconSymbol ios_icon_name="arrow.down" android_material_icon_name="arrow_downward" size={16} color={index === draft.items.length - 1 ? colors.textSecondary : colors.text} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.itemIconButton, { borderColor: colors.border }]} onPress={() => removeDraftItem(item.localId)}>
+                          <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   );
                 })}
-              </View>
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                value={itemTitle}
-                onChangeText={setItemTitle}
-                placeholder="Item title"
-                placeholderTextColor={colors.textSecondary}
-              />
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.multilineInput,
-                  { color: colors.text, borderColor: colors.border, backgroundColor: colors.background },
-                ]}
-                value={itemDescription}
-                onChangeText={setItemDescription}
-                placeholder="Item notes"
-                placeholderTextColor={colors.textSecondary}
-                multiline
-              />
-              <View style={styles.itemMetaRow}>
-                <TextInput
-                  style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                  value={itemDayOffset}
-                  onChangeText={(value) => setItemDayOffset(value.replace(/[^0-9]/g, ''))}
-                  placeholder="Day"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="number-pad"
-                />
-                <TextInput
-                  style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                  value={itemDuration}
-                  onChangeText={(value) => setItemDuration(value.replace(/[^0-9]/g, ''))}
-                  placeholder="Min"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="number-pad"
-                />
-                <TouchableOpacity
-                  style={[styles.addItemButton, { backgroundColor: colors.primary, opacity: itemTitle.trim() ? 1 : 0.55 }]}
-                  onPress={addDraftItem}
-                  disabled={!itemTitle.trim()}
-                >
-                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
-                  <Text style={styles.addItemText}>Add</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {draft.items.map((item, index) => (
-              <View key={item.localId} style={[styles.draftItemRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.draftItemOrder}>
-                  <Text style={[styles.draftItemIndex, { color: colors.textSecondary }]}>{index + 1}</Text>
-                </View>
-                <View style={styles.draftItemBody}>
-                  <Text style={[styles.draftItemTitle, { color: colors.text }]} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={[styles.draftItemMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {ITEM_TYPES.find((type) => type.value === item.itemType)?.label ?? item.itemType}
-                    {item.dayOffset ? ` · day ${item.dayOffset + 1}` : ''}
-                    {item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
-                  </Text>
-                </View>
-                <View style={styles.draftItemActions}>
-                  <TouchableOpacity
-                    style={[styles.itemIconButton, { borderColor: colors.border }]}
-                    onPress={() => moveDraftItem(item.localId, -1)}
-                    disabled={index === 0}
-                  >
-                    <IconSymbol ios_icon_name="arrow.up" android_material_icon_name="arrow_upward" size={16} color={index === 0 ? colors.textSecondary : colors.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.itemIconButton, { borderColor: colors.border }]}
-                    onPress={() => moveDraftItem(item.localId, 1)}
-                    disabled={index === draft.items.length - 1}
-                  >
-                    <IconSymbol ios_icon_name="arrow.down" android_material_icon_name="arrow_downward" size={16} color={index === draft.items.length - 1 ? colors.textSecondary : colors.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.itemIconButton, { borderColor: colors.border }]} onPress={() => removeDraftItem(item.localId)}>
-                    <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={16} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+              </>
+            )}
 
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: colors.primary, opacity: saving ? 0.65 : 1 }]}
@@ -1008,6 +1422,257 @@ function LabeledInput({
         multiline={multiline}
         keyboardType={keyboardType ?? 'default'}
       />
+    </View>
+  );
+}
+
+function TaskFieldsEditor({
+  title,
+  config,
+  onChange,
+  colors,
+  uploading,
+  onAddMediaLink,
+  onPickMedia,
+  onRemoveMedia,
+}: {
+  title: string;
+  config: TaskConfigDraft;
+  onChange: (update: TaskConfigUpdate) => void;
+  colors: ReturnType<typeof getColors>;
+  uploading: boolean;
+  onAddMediaLink: () => void;
+  onPickMedia: () => void;
+  onRemoveMedia: (index: number) => void;
+}) {
+  const update = useCallback((patch: Partial<TaskConfigDraft>) => {
+    onChange((current) => ({ ...current, ...patch }));
+  }, [onChange]);
+
+  const updateSubtask = useCallback((localId: string, titleValue: string) => {
+    onChange((current) => ({
+      ...current,
+      subtasks: current.subtasks.map((subtask) => (subtask.localId === localId ? { ...subtask, title: titleValue } : subtask)),
+    }));
+  }, [onChange]);
+
+  const addSubtask = useCallback(() => {
+    onChange((current) => ({
+      ...current,
+      subtasks: [...current.subtasks, { localId: createLocalSubtaskId(), title: '' }],
+    }));
+  }, [onChange]);
+
+  const removeSubtask = useCallback((localId: string) => {
+    onChange((current) => {
+      const next = current.subtasks.filter((subtask) => subtask.localId !== localId);
+      return {
+        ...current,
+        subtasks: next.length ? next : [{ localId: createLocalSubtaskId(), title: '' }],
+      };
+    });
+  }, [onChange]);
+
+  return (
+    <View style={[styles.taskFieldsCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <Text style={[styles.taskFieldsTitle, { color: colors.text }]}>{title}</Text>
+
+      <View style={styles.mediaInputRow}>
+        <TextInput
+          style={[styles.input, styles.mediaUrlInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={config.videoUrlInput}
+          onChangeText={(value) => update({ videoUrlInput: value })}
+          placeholder="Video, image, or PDF link"
+          placeholderTextColor={colors.textSecondary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+        <TouchableOpacity
+          style={[styles.mediaIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+          onPress={onAddMediaLink}
+          disabled={!config.videoUrlInput.trim()}
+        >
+          <IconSymbol ios_icon_name="link.badge.plus" android_material_icon_name="add_link" size={18} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+      <TextInput
+        style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+        value={config.mediaNameInput}
+        onChangeText={(value) => update({ mediaNameInput: value })}
+        placeholder="Media name"
+        placeholderTextColor={colors.textSecondary}
+      />
+      <TouchableOpacity
+        style={[styles.uploadMediaButton, { borderColor: colors.primary, opacity: uploading ? 0.6 : 1 }]}
+        onPress={onPickMedia}
+        disabled={uploading}
+      >
+        <IconSymbol ios_icon_name="square.and.arrow.up" android_material_icon_name="upload_file" size={18} color={colors.primary} />
+        <Text style={[styles.uploadMediaText, { color: colors.primary }]}>{uploading ? 'Uploading...' : 'Choose media'}</Text>
+      </TouchableOpacity>
+
+      {config.videoUrls.length ? (
+        <TaskMediaListEditor
+          urls={config.videoUrls}
+          names={config.mediaNames}
+          onChange={(urls, names) => update({ videoUrls: urls, mediaNames: names })}
+          getLabel={getTaskMediaLabel}
+          onRemove={onRemoveMedia}
+          onRename={(index, name) => update({ mediaNames: replaceTaskMediaName(config.mediaNames, config.videoUrls, index, name) })}
+          disabled={uploading}
+          backgroundColor={colors.card}
+          borderColor={colors.border}
+          textColor={colors.text}
+          secondaryTextColor={colors.textSecondary}
+          accentColor={colors.primary}
+          dangerColor={colors.error}
+          testIDPrefix="plan.template.taskMedia"
+        />
+      ) : null}
+
+      <View style={styles.subtasksHeader}>
+        <Text style={[styles.taskFieldsSubtitle, { color: colors.textSecondary }]}>Subtasks</Text>
+        <TouchableOpacity style={[styles.smallOutlineButton, { borderColor: colors.border }]} onPress={addSubtask}>
+          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={15} color={colors.primary} />
+          <Text style={[styles.smallOutlineText, { color: colors.text }]}>Add</Text>
+        </TouchableOpacity>
+      </View>
+      {config.subtasks.map((subtask) => (
+        <View key={subtask.localId} style={styles.subtaskEditorRow}>
+          <TextInput
+            style={[styles.input, styles.subtaskEditorInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+            value={subtask.title}
+            onChangeText={(value) => updateSubtask(subtask.localId, value)}
+            placeholder="Subtask"
+            placeholderTextColor={colors.textSecondary}
+          />
+          <TouchableOpacity style={[styles.mediaIconButton, { borderColor: colors.border, backgroundColor: colors.card }]} onPress={() => removeSubtask(subtask.localId)}>
+            <IconSymbol ios_icon_name="minus" android_material_icon_name="remove" size={18} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+      ))}
+
+      <ToggleNumberRow
+        label="Reminder before start"
+        enabled={config.reminderEnabled}
+        value={config.reminderMinutes}
+        onToggle={(value) => update({ reminderEnabled: value, reminderMinutes: value ? config.reminderMinutes || '0' : '0' })}
+        onChangeValue={(value) => update({ reminderMinutes: value.replace(/[^0-9]/g, '') })}
+        colors={colors}
+        placeholder="Min"
+      />
+      <ToggleNumberRow
+        label="Post-training feedback"
+        enabled={config.feedbackEnabled}
+        value={config.feedbackDelayMinutes}
+        onToggle={(value) => update({ feedbackEnabled: value, feedbackDelayMinutes: value ? config.feedbackDelayMinutes || '0' : '0' })}
+        onChangeValue={(value) => update({ feedbackDelayMinutes: value.replace(/[^0-9]/g, '') })}
+        colors={colors}
+        placeholder="Delay"
+      />
+      {config.feedbackEnabled ? (
+        <TextInput
+          style={[styles.input, styles.multilineInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={config.feedbackScoreExplanation}
+          onChangeText={(value) => update({ feedbackScoreExplanation: value })}
+          placeholder="Score explanation"
+          placeholderTextColor={colors.textSecondary}
+          multiline
+        />
+      ) : null}
+      <ToggleNumberRow
+        label="Task time"
+        enabled={config.taskDurationEnabled}
+        value={config.taskDurationMinutes}
+        onToggle={(value) => update({ taskDurationEnabled: value, taskDurationMinutes: value ? config.taskDurationMinutes || '0' : '' })}
+        onChangeValue={(value) => update({ taskDurationMinutes: value.replace(/[^0-9]/g, '') })}
+        colors={colors}
+        placeholder="Min"
+      />
+    </View>
+  );
+}
+
+function ToggleNumberRow({
+  label,
+  enabled,
+  value,
+  onToggle,
+  onChangeValue,
+  colors,
+  placeholder,
+}: {
+  label: string;
+  enabled: boolean;
+  value: string;
+  onToggle: (value: boolean) => void;
+  onChangeValue: (value: string) => void;
+  colors: ReturnType<typeof getColors>;
+  placeholder: string;
+}) {
+  return (
+    <View style={[styles.toggleNumberRow, { borderColor: colors.border }]}>
+      <View style={styles.toggleNumberLabel}>
+        <Text style={[styles.toggleNumberText, { color: colors.text }]} numberOfLines={1}>{label}</Text>
+      </View>
+      <Switch value={enabled} onValueChange={onToggle} />
+      {enabled ? (
+        <TextInput
+          style={[styles.input, styles.toggleNumberInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={value}
+          onChangeText={onChangeValue}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="number-pad"
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function ExerciseTimerEditor({
+  timer,
+  onChange,
+  colors,
+}: {
+  timer: ExerciseTimerDraft;
+  onChange: (update: ExerciseTimerDraft | ((current: ExerciseTimerDraft) => ExerciseTimerDraft)) => void;
+  colors: ReturnType<typeof getColors>;
+}) {
+  const update = useCallback((patch: Partial<ExerciseTimerDraft>) => {
+    onChange((current) => ({ ...current, ...patch }));
+  }, [onChange]);
+
+  return (
+    <View style={[styles.timerEditor, { backgroundColor: colors.background, borderColor: colors.border }]}>
+      <Text style={[styles.taskFieldsSubtitle, { color: colors.textSecondary }]}>Interval timer</Text>
+      <View style={styles.timerInputRow}>
+        <TextInput
+          style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={timer.activeSeconds}
+          onChangeText={(value) => update({ activeSeconds: value.replace(/[^0-9]/g, '') })}
+          placeholder="Work sec"
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="number-pad"
+        />
+        <TextInput
+          style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={timer.restSeconds}
+          onChangeText={(value) => update({ restSeconds: value.replace(/[^0-9]/g, '') })}
+          placeholder="Rest sec"
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="number-pad"
+        />
+        <TextInput
+          style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={timer.rounds}
+          onChangeText={(value) => update({ rounds: value.replace(/[^0-9]/g, '') })}
+          placeholder="Rounds"
+          placeholderTextColor={colors.textSecondary}
+          keyboardType="number-pad"
+        />
+      </View>
     </View>
   );
 }
@@ -1452,11 +2117,122 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     columnGap: 5,
     paddingHorizontal: 13,
+    marginTop: 8,
   },
   addItemText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '900',
+  },
+  taskFieldsCard: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    rowGap: 8,
+    marginTop: 8,
+  },
+  taskFieldsTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  taskFieldsSubtitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  mediaInputRow: {
+    flexDirection: 'row',
+    columnGap: 8,
+    alignItems: 'center',
+  },
+  mediaUrlInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mediaIconButton: {
+    width: 44,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadMediaButton: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: 7,
+  },
+  uploadMediaText: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  subtasksHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 10,
+  },
+  smallOutlineButton: {
+    minHeight: 32,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 4,
+    paddingHorizontal: 9,
+  },
+  smallOutlineText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  subtaskEditorRow: {
+    flexDirection: 'row',
+    columnGap: 8,
+    alignItems: 'center',
+  },
+  subtaskEditorInput: {
+    flex: 1,
+    minWidth: 0,
+  },
+  toggleNumberRow: {
+    minHeight: 48,
+    borderTopWidth: 1,
+    paddingTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  toggleNumberLabel: {
+    flex: 1,
+    minWidth: 0,
+  },
+  toggleNumberText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  toggleNumberInput: {
+    width: 82,
+    minHeight: 40,
+  },
+  timerEditor: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    rowGap: 8,
+    marginTop: 8,
+  },
+  timerInputRow: {
+    flexDirection: 'row',
+    columnGap: 8,
+  },
+  timerInput: {
+    flex: 1,
+    minWidth: 0,
   },
   draftItemRow: {
     minHeight: 64,

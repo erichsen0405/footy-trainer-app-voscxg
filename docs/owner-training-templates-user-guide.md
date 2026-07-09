@@ -33,15 +33,23 @@ Her kan traeneren oprette og administrere tre typer skabeloner:
 ## Grundbegreber
 
 `Task template`  
-En enkelt genbrugelig opgave, fx "First touch wall passes".
+En enkelt genbrugelig opgave, fx "First touch wall passes". Den har samme
+felter som normale opgaver: beskrivelse, medier, subtasks, reminder, feedback
+og task time.
 
 `Session template`  
-En traeningssession, fx "Finishing session", som kan bestaa af flere task items,
-activity items, fokusnoter og varighed.
+En traeningssession, fx "Finishing session". Sessionen er det, der senere kan
+blive til en aktivitet i kalenderen, og den kan have standardkategori som
+"Training". Den kan bestaa af task items, exercise items, feedback, fokusnoter
+og varighed.
 
 `Week template`  
-En ugeplan, fx "U13 finishing week", hvor items kan have day offset, saa de
+En ugeplan, fx "U13 finishing week", hvor sessioner kan have day offset, saa de
 ligger paa dag 1, dag 2 osv.
+
+`Exercise item`
+En opgaveblok inde i en session med samme opgavefelter som en normal opgave og
+en ekstra intervaltimer: aktiv arbejdstid, pause og antal runder.
 
 `Version`  
 Hver gang en skabelon oprettes, redigeres, duplikeres, arkiveres eller
@@ -60,7 +68,7 @@ stabil version, selvom skabelonen bliver redigeret bagefter.
 5. Tilfoej evt. beskrivelse.
 6. Tilfoej evt. fokusomraader, adskilt med komma.
 7. Tilfoej evt. samlet varighed i minutter.
-8. Tilfoej items til skabelonen.
+8. Tilfoej items, hvis typen er `Session` eller `Week`.
 9. Tryk `Save template`.
 
 Titel er paakraevet. Beskrivelse, fokusomraader, varighed og items kan tilfoejes
@@ -68,20 +76,45 @@ loebende.
 
 ## Tilfoej Items Til En Skabelon
 
-I builderen kan du tilfoeje items som:
+I en `Session` kan du tilfoeje:
 
 - `Task`
-- `Activity`
+- `Exercise`
+- `Feedback`
+- `Focus`
+- `Note`
+
+I en `Week` kan du tilfoeje:
+
 - `Session`
 - `Focus`
 - `Note`
 
-For hvert item kan du angive:
+For hvert item kan du angive placering:
 
 - titel
 - noter/beskrivelse
 - dagnummer/day offset
+- starttid
 - varighed i minutter
+
+For `Task` og `Exercise` kan du derudover angive de samme felter som paa normale
+opgaver:
+
+- video-, billede- og PDF-link
+- upload af billede, video eller PDF
+- medienavne og sortering
+- subtasks
+- reminder foer start
+- post-training feedback
+- score-forklaring til feedback
+- task time
+
+For `Exercise` kan du ogsaa angive:
+
+- aktiv arbejdstid i sekunder
+- pause mellem arbejde i sekunder
+- antal runder
 
 Brug pilene paa item-raekken til at flytte items op og ned. Brug skraldespanden
 til at fjerne et item fra skabelonen.
@@ -205,9 +238,10 @@ Test dette flow som traener:
 2. Bekraeft at bundmenuen viser `Overblik`, `Spillere`, `Plan`, `Bibliotek`.
 3. Aabn `Plan`.
 4. Opret en `Session` skabelon.
-5. Tilfoej mindst to items.
-6. Gem skabelonen.
-7. Rediger skabelonen og gem igen.
-8. Dupliker skabelonen.
-9. Arkiver kopien.
-10. Skift til `Archived` og gendan kopien.
+5. Tilfoej et `Task` item med media/subtasks.
+6. Tilfoej et `Exercise` item med aktiv tid, pause og runder.
+7. Gem skabelonen.
+8. Rediger skabelonen og gem igen.
+9. Dupliker skabelonen.
+10. Arkiver kopien.
+11. Skift til `Archived` og gendan kopien.

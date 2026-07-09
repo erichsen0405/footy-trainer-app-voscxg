@@ -4,7 +4,33 @@ import type { OwnerPlayerCrmOwner, OwnerPlayerCrmWorkspace } from '@/services/ow
 
 export type TrainingTemplateType = 'task' | 'session' | 'week';
 export type TrainingTemplateStatus = 'active' | 'archived';
-export type TrainingTemplateItemType = 'task_template' | 'activity' | 'session_template' | 'note' | 'focus';
+export type TrainingTemplateItemType = 'task_template' | 'exercise' | 'session_template' | 'note' | 'focus' | 'feedback_requirement';
+
+export interface TrainingTemplateExerciseTimer {
+  activeSeconds: number;
+  restSeconds: number;
+  rounds: number;
+}
+
+export interface TrainingTemplateTaskConfig {
+  title: string;
+  description: string | null;
+  categoryIds: string[];
+  subtasks: { id?: string | null; title: string }[];
+  videoUrl: string | null;
+  videoUrls: string[];
+  mediaNames: string[];
+  reminderMinutes: number | null;
+  afterTrainingEnabled: boolean;
+  afterTrainingDelayMinutes: number | null;
+  afterTrainingFeedbackEnableScore: boolean;
+  afterTrainingFeedbackScoreExplanation: string | null;
+  afterTrainingFeedbackEnableIntensity: boolean;
+  afterTrainingFeedbackEnableNote: boolean;
+  taskDurationEnabled: boolean;
+  taskDurationMinutes: number | null;
+  autoAddToActivities: boolean;
+}
 
 export interface TrainingTemplateFolder {
   id: string;
@@ -44,9 +70,12 @@ export interface TrainingTemplateSummary {
   folderName: string | null;
   focusAreas: string[];
   durationMinutes: number | null;
+  defaultActivityCategoryId: string | null;
+  defaultActivityCategoryName: string | null;
   sourceTaskTemplateId: string | null;
   activeVersionId: string | null;
   versionNumber: number;
+  metadata: Record<string, unknown>;
   itemCount: number;
   createdBy: string | null;
   updatedBy: string | null;
@@ -106,8 +135,11 @@ export interface TrainingTemplateInput {
   folderId?: string | null;
   focusAreas?: string[];
   durationMinutes?: number | null;
+  defaultActivityCategoryId?: string | null;
+  defaultActivityCategoryName?: string | null;
   status?: TrainingTemplateStatus;
   sourceTaskTemplateId?: string | null;
+  taskConfig?: TrainingTemplateTaskConfig | null;
   items?: TrainingTemplateItemInput[];
   changeNote?: string | null;
 }

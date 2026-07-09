@@ -126,18 +126,45 @@ Returnerer owner, actor, folders, templates og summary.
   "folderId": null,
   "focusAreas": ["Finishing", "First touch"],
   "durationMinutes": 75,
+  "defaultActivityCategoryName": "Training",
   "status": "active",
   "sourceTaskTemplateId": null,
   "items": [
     {
-      "itemType": "task_template",
-      "title": "First touch warm-up",
+      "itemType": "exercise",
+      "title": "Interval finishing",
       "description": "Two-touch pattern before finishing.",
       "dayOffset": 0,
-      "startTime": null,
-      "durationMinutes": 15,
+      "startTime": "10:15",
+      "durationMinutes": 18,
       "sortOrder": 0,
-      "config": {}
+      "config": {
+        "task": {
+          "title": "Interval finishing",
+          "description": "Two-touch pattern before finishing.",
+          "categoryIds": [],
+          "subtasks": [
+            { "title": "Right foot" },
+            { "title": "Left foot" }
+          ],
+          "videoUrls": ["https://example.com/drill.mp4"],
+          "mediaNames": ["Drill video"],
+          "reminderMinutes": 10,
+          "afterTrainingEnabled": true,
+          "afterTrainingDelayMinutes": 15,
+          "afterTrainingFeedbackEnableScore": true,
+          "afterTrainingFeedbackScoreExplanation": "Rate technique",
+          "afterTrainingFeedbackEnableNote": true,
+          "taskDurationEnabled": true,
+          "taskDurationMinutes": 18,
+          "autoAddToActivities": false
+        },
+        "timer": {
+          "activeSeconds": 45,
+          "restSeconds": 15,
+          "rounds": 4
+        }
+      }
     }
   ],
   "changeNote": "Base44 edit"
@@ -152,11 +179,63 @@ Returnerer owner, actor, folders, templates og summary.
 
 `itemType` kan vaere:
 
-- `task_template`
-- `activity`
-- `session_template`
-- `focus`
-- `note`
+- `task_template`: kun i session templates
+- `exercise`: kun i session templates, med `config.task` og `config.timer`
+- `feedback_requirement`: kun i session templates
+- `session_template`: kun i week templates
+- `focus`: session og week templates
+- `note`: session og week templates
+
+Task templates har ikke item-liste. De gemmer opgavefelterne direkte i
+`metadata.task` via `taskConfig`:
+
+```json
+{
+  "action": "upsertTemplate",
+  "ownerAccountId": "<owner_account uuid>",
+  "templateType": "task",
+  "title": "Solo touch work",
+  "taskConfig": {
+    "subtasks": [{ "title": "Wall passes" }],
+    "videoUrls": ["https://example.com/touch.png"],
+    "mediaNames": ["Technique image"],
+    "reminderMinutes": 0,
+    "afterTrainingEnabled": false,
+    "taskDurationEnabled": true,
+    "taskDurationMinutes": 12
+  }
+}
+```
+
+Session templates er selve aktivitets-/traeningssessionen. Brug
+`defaultActivityCategoryId` eller `defaultActivityCategoryName` paa sessionen,
+ikke et `activity` item.
+
+Exercise er en opgave med samme opgavefelter som normale tasks plus
+intervaltimer:
+
+```json
+{
+  "itemType": "exercise",
+  "title": "Core finisher",
+  "config": {
+    "task": {
+      "subtasks": [{ "title": "Plank" }],
+      "videoUrls": [],
+      "mediaNames": [],
+      "afterTrainingEnabled": true,
+      "afterTrainingDelayMinutes": 0,
+      "taskDurationEnabled": true,
+      "taskDurationMinutes": 8
+    },
+    "timer": {
+      "activeSeconds": 40,
+      "restSeconds": 20,
+      "rounds": 5
+    }
+  }
+}
+```
 
 ### Duplicate
 
@@ -240,9 +319,12 @@ Returnerer owner, actor, folders, templates og summary.
     folderName: string | null;
     focusAreas: string[];
     durationMinutes: number | null;
+    defaultActivityCategoryId: string | null;
+    defaultActivityCategoryName: string | null;
     sourceTaskTemplateId: string | null;
     activeVersionId: string | null;
     versionNumber: number;
+    metadata: Record<string, unknown>;
     itemCount: number;
     createdBy: string | null;
     updatedBy: string | null;
@@ -275,7 +357,6 @@ Eksisterende tabeller, der kan linkes til:
 
 - `task_templates`
 - `task_template_categories`
-- `activity_series`
 - `exercise_library`
 
 Versioner oprettes efter hver create/update/duplicate/archive/restore, saa
@@ -312,12 +393,16 @@ Byg en desktop-effektiv template builder i eksisterende owner portal:
 
 Session-template:
 
-- kan indeholde task-template items, activity items, notes og focus items
-- viser samlet varighed og fokusomraader
+- er selve sessionen/aktiviteten og kan have default aktivitetskategori
+- kan indeholde task-template items, exercise items, feedback requirements,
+  notes og focus items
+- task og exercise items skal have samme opgavefelter som normale task
+  templates: medier, subtasks, reminder, feedback og task time
+- exercise items skal ogsaa have intervaltimer med aktiv tid, pause og runder
 
 Week-template:
 
-- kan indeholde flere sessioner eller items med `dayOffset`
+- kan indeholde flere session templates eller focus/note items med `dayOffset`
 - preview skal vise dag 1, dag 2 osv.
 
 ## Error Handling
@@ -336,14 +421,17 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
 
 - Migration `20260709150000_owner_training_templates.sql` er pushed med
   `supabase db push --yes`.
+- Migration `20260709162000_training_template_item_logic.sql` er pushed med
+  `supabase db push --yes`. Migrationen migrerer legacy `activity` items til
+  `exercise` og laegger den nye item-type constraint paa.
 - Efter deployment returnerer `supabase db push --dry-run`: remote database is
   up to date.
-- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE`.
+- Edge Function `manageTrainingTemplates` er deployet og `ACTIVE` version 2,
+  opdateret `2026-07-09 15:07:26 UTC`.
 - No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`, ikke
   `404`.
-- `supabase migration list --linked` blev forsøgt, men Supabase pooler-auth
-  fejlede efter retries og bad om `SUPABASE_DB_PASSWORD`. Brug `db push
-  --dry-run` status ovenfor som remote migration-verifikation for denne branch.
+- `supabase migration list --linked` viser baade `20260709150000` og
+  `20260709162000` som remote-applied.
 
 Verificeringskommandoer:
 

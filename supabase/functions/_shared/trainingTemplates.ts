@@ -19,7 +19,7 @@ export type TrainingTemplateAction =
 
 export type TrainingTemplateType = 'task' | 'session' | 'week';
 export type TrainingTemplateStatus = 'active' | 'archived';
-export type TrainingTemplateItemType = 'task_template' | 'activity' | 'session_template' | 'note' | 'focus';
+export type TrainingTemplateItemType = 'task_template' | 'exercise' | 'session_template' | 'note' | 'focus' | 'feedback_requirement';
 
 type OwnerAccountRow = {
   id: string;
@@ -52,6 +52,8 @@ type TemplateRow = {
   folder_id: string | null;
   focus_areas: string[];
   duration_minutes: number | null;
+  default_activity_category_id: string | null;
+  default_activity_category_name: string | null;
   source_task_template_id: string | null;
   active_version_id: string | null;
   metadata: Record<string, unknown>;
@@ -109,6 +111,32 @@ type TemplateItemInput = {
   config: Record<string, unknown>;
 };
 
+type TemplateTaskConfig = {
+  title: string;
+  description: string | null;
+  categoryIds: string[];
+  subtasks: Array<{ id: string | null; title: string }>;
+  videoUrl: string | null;
+  videoUrls: string[];
+  mediaNames: string[];
+  reminderMinutes: number | null;
+  afterTrainingEnabled: boolean;
+  afterTrainingDelayMinutes: number | null;
+  afterTrainingFeedbackEnableScore: boolean;
+  afterTrainingFeedbackScoreExplanation: string | null;
+  afterTrainingFeedbackEnableIntensity: boolean;
+  afterTrainingFeedbackEnableNote: boolean;
+  taskDurationEnabled: boolean;
+  taskDurationMinutes: number | null;
+  autoAddToActivities: boolean;
+};
+
+type ExerciseTimerConfig = {
+  activeSeconds: number;
+  restSeconds: number;
+  rounds: number;
+};
+
 type ParsedTrainingTemplateBody =
   | { action: 'context' }
   | { action: 'list'; ownerAccountId: string }
@@ -123,8 +151,11 @@ type ParsedTrainingTemplateBody =
       folderId: string | null;
       focusAreas: string[];
       durationMinutes: number | null;
+      defaultActivityCategoryId: string | null;
+      defaultActivityCategoryName: string | null;
       status: TrainingTemplateStatus;
       sourceTaskTemplateId: string | null;
+      metadata: Record<string, unknown>;
       items: TemplateItemInput[];
       changeNote: string | null;
     }
@@ -134,7 +165,12 @@ type ParsedTrainingTemplateBody =
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TEMPLATE_TYPES = new Set(['task', 'session', 'week']);
 const TEMPLATE_STATUSES = new Set(['active', 'archived']);
-const ITEM_TYPES = new Set(['task_template', 'activity', 'session_template', 'note', 'focus']);
+const ITEM_TYPES = new Set(['task_template', 'exercise', 'session_template', 'note', 'focus', 'feedback_requirement']);
+const ITEM_TYPES_BY_TEMPLATE: Record<TrainingTemplateType, Set<TrainingTemplateItemType>> = {
+  task: new Set([]),
+  session: new Set(['task_template', 'exercise', 'focus', 'note', 'feedback_requirement']),
+  week: new Set(['session_template', 'focus', 'note']),
+};
 const COACH_ACCESS_ROLES = new Set(['owner', 'admin', 'coach', 'assistant_coach']);
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
@@ -261,6 +297,138 @@ function normalizeJsonObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function normalizeBoolean(value: unknown, defaultValue: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return defaultValue;
+}
+
+function normalizeStringList(value: unknown, fieldName: string, maxItems: number, maxLength = 2000): string[] {
+  if (value === null || value === undefined || value === '') return [];
+  const rawValues = Array.isArray(value) ? value : [value];
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const raw of rawValues) {
+    if (typeof raw !== 'string') {
+      throw new AppError('VALIDATION_ERROR', `${fieldName} must contain strings.`, 400);
+    }
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > maxLength) {
+      throw new AppError('VALIDATION_ERROR', `${fieldName} is too long.`, 400);
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(trimmed);
+    if (output.length >= maxItems) break;
+  }
+
+  return output;
+}
+
+function normalizeUuidList(value: unknown, fieldName: string): string[] {
+  if (value === null || value === undefined || value === '') return [];
+  if (!Array.isArray(value)) {
+    throw new AppError('VALIDATION_ERROR', `${fieldName} must be an array.`, 400);
+  }
+  return Array.from(new Set(value.map((item, index) => requireUuid(item, `${fieldName}[${index}]`)))).slice(0, 24);
+}
+
+function normalizeTaskSubtasks(value: unknown): Array<{ id: string | null; title: string }> {
+  if (value === null || value === undefined || value === '') return [];
+  if (!Array.isArray(value)) {
+    throw new AppError('VALIDATION_ERROR', 'task.subtasks must be an array.', 400);
+  }
+
+  return value
+    .map((item) => {
+      const record = asRecord(item, 'task.subtask');
+      const title = optionalTrimmedString(record.title);
+      if (!title) return null;
+      return {
+        id: optionalUuid(record.id, 'task.subtask.id'),
+        title,
+      };
+    })
+    .filter((item): item is { id: string | null; title: string } => Boolean(item))
+    .slice(0, 40);
+}
+
+function normalizeTaskConfig(value: unknown, fallback: { title: string; description: string | null }): TemplateTaskConfig {
+  const record = normalizeJsonObject(value);
+  const videoUrls = normalizeStringList(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url, 'task.videoUrls', 20);
+  const mediaNames = normalizeStringList(record.mediaNames ?? record.media_names, 'task.mediaNames', 20, 160).slice(0, videoUrls.length);
+  const afterTrainingEnabled = normalizeBoolean(record.afterTrainingEnabled ?? record.after_training_enabled, false);
+  const taskDurationEnabled = normalizeBoolean(record.taskDurationEnabled ?? record.task_duration_enabled, false);
+  const enableScore = normalizeBoolean(
+    record.afterTrainingFeedbackEnableScore ?? record.after_training_feedback_enable_score,
+    true
+  );
+  const enableNote = normalizeBoolean(
+    record.afterTrainingFeedbackEnableNote ?? record.after_training_feedback_enable_note,
+    true
+  );
+
+  return {
+    title: optionalTrimmedString(record.title) ?? fallback.title,
+    description: optionalTrimmedString(record.description) ?? fallback.description,
+    categoryIds: normalizeUuidList(record.categoryIds ?? record.category_ids, 'task.categoryIds'),
+    subtasks: normalizeTaskSubtasks(record.subtasks),
+    videoUrl: videoUrls[0] ?? null,
+    videoUrls,
+    mediaNames,
+    reminderMinutes: normalizeInt(record.reminderMinutes ?? record.reminder ?? record.reminder_minutes, 'task.reminderMinutes', {
+      min: 0,
+      max: 1440,
+      nullable: true,
+    }),
+    afterTrainingEnabled,
+    afterTrainingDelayMinutes: afterTrainingEnabled
+      ? normalizeInt(
+          record.afterTrainingDelayMinutes ?? record.after_training_delay_minutes ?? 0,
+          'task.afterTrainingDelayMinutes',
+          { min: 0, max: 240 }
+        )
+      : null,
+    afterTrainingFeedbackEnableScore: enableScore,
+    afterTrainingFeedbackScoreExplanation: enableScore
+      ? optionalTrimmedString(record.afterTrainingFeedbackScoreExplanation ?? record.after_training_feedback_score_explanation)
+      : null,
+    afterTrainingFeedbackEnableIntensity: afterTrainingEnabled,
+    afterTrainingFeedbackEnableNote: enableNote,
+    taskDurationEnabled,
+    taskDurationMinutes: taskDurationEnabled
+      ? normalizeInt(record.taskDurationMinutes ?? record.task_duration_minutes ?? 0, 'task.taskDurationMinutes', {
+          min: 0,
+          max: 600,
+        })
+      : null,
+    autoAddToActivities: normalizeBoolean(record.autoAddToActivities ?? record.auto_add_to_activities, false),
+  };
+}
+
+function normalizeExerciseTimer(value: unknown): ExerciseTimerConfig {
+  const record = normalizeJsonObject(value);
+  return {
+    activeSeconds: normalizeInt(
+      record.activeSeconds ?? record.workSeconds ?? record.active_work_seconds ?? 45,
+      'timer.activeSeconds',
+      { min: 5, max: 3600 }
+    ) ?? 45,
+    restSeconds: normalizeInt(record.restSeconds ?? record.pauseSeconds ?? record.rest_seconds ?? 15, 'timer.restSeconds', {
+      min: 0,
+      max: 1800,
+    }) ?? 15,
+    rounds: normalizeInt(record.rounds ?? 3, 'timer.rounds', { min: 1, max: 99 }) ?? 3,
+  };
+}
+
 function normalizeTime(value: unknown): string | null {
   const normalized = optionalTrimmedString(value);
   if (!normalized) return null;
@@ -270,28 +438,60 @@ function normalizeTime(value: unknown): string | null {
   return normalized.length === 5 ? `${normalized}:00` : normalized;
 }
 
-function normalizeTemplateItems(value: unknown): TemplateItemInput[] {
+function normalizeItemConfig(
+  record: Record<string, unknown>,
+  itemType: TrainingTemplateItemType,
+  fallback: { title: string; description: string | null }
+): Record<string, unknown> {
+  const config = normalizeJsonObject(record.config);
+  const nextConfig: Record<string, unknown> = { ...config };
+
+  if (itemType === 'task_template' || itemType === 'exercise') {
+    nextConfig.task = normalizeTaskConfig(
+      (config.task ?? record.taskConfig ?? record.task ?? config) as unknown,
+      fallback
+    );
+  }
+
+  if (itemType === 'exercise') {
+    nextConfig.timer = normalizeExerciseTimer(config.timer ?? record.timer);
+  }
+
+  return nextConfig;
+}
+
+function normalizeTemplateItems(value: unknown, templateType: TrainingTemplateType): TemplateItemInput[] {
   if (value === null || value === undefined) return [];
   if (!Array.isArray(value)) {
     throw new AppError('VALIDATION_ERROR', 'items must be an array.', 400);
   }
 
+  if (templateType === 'task' && value.length > 0) {
+    throw new AppError('VALIDATION_ERROR', 'Task templates store task fields directly and cannot contain items.', 400);
+  }
+
   return value.map((item, index) => {
     const record = asRecord(item, 'item');
+    const itemType = normalizeItemType(record.itemType);
+    if (!ITEM_TYPES_BY_TEMPLATE[templateType].has(itemType)) {
+      throw new AppError('VALIDATION_ERROR', `${itemType} is not allowed in ${templateType} templates.`, 400);
+    }
+    const title = requiredTrimmedString(record.title, 'item.title');
+    const description = optionalTrimmedString(record.description);
     return {
       id: optionalUuid(record.id, 'item.id'),
       parentItemId: optionalUuid(record.parentItemId, 'item.parentItemId'),
-      itemType: normalizeItemType(record.itemType),
+      itemType,
       sourceTaskTemplateId: optionalUuid(record.sourceTaskTemplateId, 'item.sourceTaskTemplateId'),
       sourceActivitySeriesId: optionalUuid(record.sourceActivitySeriesId, 'item.sourceActivitySeriesId'),
       linkedTemplateId: optionalUuid(record.linkedTemplateId, 'item.linkedTemplateId'),
-      title: requiredTrimmedString(record.title, 'item.title'),
-      description: optionalTrimmedString(record.description),
+      title,
+      description,
       dayOffset: normalizeInt(record.dayOffset, 'item.dayOffset', { min: 0, max: 365 }) ?? 0,
       startTime: normalizeTime(record.startTime),
       durationMinutes: normalizeInt(record.durationMinutes, 'item.durationMinutes', { min: 1, max: 1440, nullable: true }),
       sortOrder: normalizeInt(record.sortOrder ?? index, 'item.sortOrder', { min: 0, max: 999 }) ?? index,
-      config: normalizeJsonObject(record.config),
+      config: normalizeItemConfig(record, itemType, { title, description }),
     };
   });
 }
@@ -326,19 +526,30 @@ export function parseTrainingTemplateBody(body: unknown): ParsedTrainingTemplate
   }
 
   if (action === 'upsertTemplate') {
+    const templateType = normalizeTemplateType(record.templateType);
+    const title = requiredTrimmedString(record.title, 'title');
+    const description = optionalTrimmedString(record.description);
+    const metadata = normalizeJsonObject(record.metadata);
+    if (templateType === 'task') {
+      metadata.task = normalizeTaskConfig(record.taskConfig ?? record.task ?? metadata.task, { title, description });
+    }
+
     return {
       action,
       ownerAccountId,
       templateId: optionalUuid(record.id ?? record.templateId, 'templateId'),
-      templateType: normalizeTemplateType(record.templateType),
-      title: requiredTrimmedString(record.title, 'title'),
-      description: optionalTrimmedString(record.description),
+      templateType,
+      title,
+      description,
       folderId: optionalUuid(record.folderId, 'folderId'),
       focusAreas: normalizeStringArray(record.focusAreas, 'focusAreas'),
       durationMinutes: normalizeInt(record.durationMinutes, 'durationMinutes', { min: 1, max: 1440, nullable: true }),
+      defaultActivityCategoryId: optionalUuid(record.defaultActivityCategoryId, 'defaultActivityCategoryId'),
+      defaultActivityCategoryName: optionalTrimmedString(record.defaultActivityCategoryName),
       status: normalizeTemplateStatus(record.status),
       sourceTaskTemplateId: optionalUuid(record.sourceTaskTemplateId, 'sourceTaskTemplateId'),
-      items: normalizeTemplateItems(record.items),
+      metadata,
+      items: normalizeTemplateItems(record.items, templateType),
       changeNote: optionalTrimmedString(record.changeNote),
     };
   }
@@ -514,9 +725,12 @@ function normalizeTemplatePayload(
     folderName: folder?.name ?? null,
     focusAreas: template.focus_areas || [],
     durationMinutes: template.duration_minutes,
+    defaultActivityCategoryId: template.default_activity_category_id,
+    defaultActivityCategoryName: template.default_activity_category_name,
     sourceTaskTemplateId: template.source_task_template_id,
     activeVersionId: template.active_version_id,
     versionNumber: latestVersion?.version_number ?? 0,
+    metadata: template.metadata || {},
     itemCount: items.length,
     createdBy: template.created_by,
     updatedBy: template.updated_by,
@@ -957,7 +1171,10 @@ async function upsertTemplate(
     folder_id: input.folderId,
     focus_areas: input.focusAreas,
     duration_minutes: input.durationMinutes,
+    default_activity_category_id: input.defaultActivityCategoryId,
+    default_activity_category_name: input.defaultActivityCategoryName,
     source_task_template_id: input.sourceTaskTemplateId,
+    metadata: input.metadata,
     updated_by: actorUserId,
     archived_at: archivedAt,
   };
@@ -1018,6 +1235,8 @@ async function duplicateTemplate(
       folder_id: source.folder_id,
       focus_areas: source.focus_areas || [],
       duration_minutes: source.duration_minutes,
+      default_activity_category_id: source.default_activity_category_id,
+      default_activity_category_name: source.default_activity_category_name,
       source_task_template_id: source.source_task_template_id,
       metadata: source.metadata || {},
       created_by: actorUserId,

@@ -11,6 +11,7 @@ const folderId = '44444444-4444-4444-8444-444444444444';
 const taskTemplateId = '55555555-5555-4555-8555-555555555555';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260709150000_owner_training_templates.sql');
+const itemLogicMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709162000_training_template_item_logic.sql');
 const functionPath = path.join(process.cwd(), 'supabase/functions/manageTrainingTemplates/index.ts');
 const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/trainingTemplates.ts');
 const servicePath = path.join(process.cwd(), 'services/trainingTemplateService.ts');
@@ -20,6 +21,7 @@ const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-training-te
 
 describe('owner training templates contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
+  const itemLogicMigration = fs.readFileSync(itemLogicMigrationPath, 'utf8');
   const edgeFunction = fs.readFileSync(functionPath, 'utf8');
   const shared = fs.readFileSync(sharedPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
@@ -34,7 +36,8 @@ describe('owner training templates contract', () => {
     expect(migration).toContain('create table if not exists public.template_versions');
     expect(migration).toContain('owner_account_id uuid not null references public.owner_accounts');
     expect(migration).toContain("template_type in ('task', 'session', 'week')");
-    expect(migration).toContain("item_type in ('task_template', 'activity', 'session_template', 'note', 'focus')");
+    expect(itemLogicMigration).toContain("item_type in ('task_template', 'exercise', 'session_template', 'note', 'focus', 'feedback_requirement')");
+    expect(itemLogicMigration).toContain('default_activity_category_name');
     expect(migration).toContain('snapshot jsonb not null');
     expect(migration).toContain('public.has_owner_account_coach_access(owner_account_id, (select auth.uid()))');
     expect(migration).toContain('Players and guardians');
@@ -60,24 +63,43 @@ describe('owner training templates contract', () => {
         action: 'upsertTemplate',
         ownerAccountId,
         id: templateId,
-        templateType: 'week',
-        title: ' Finishing week ',
+        templateType: 'session',
+        title: ' Finishing session ',
         description: '  Build-up and finishing  ',
         folderId,
         focusAreas: [' Finishing ', 'First touch', 'Finishing'],
-        durationMinutes: 240,
+        durationMinutes: 75,
+        defaultActivityCategoryName: ' Training ',
         status: 'active',
         sourceTaskTemplateId: taskTemplateId,
         items: [
           {
-            itemType: 'task_template',
+            itemType: 'exercise',
             sourceTaskTemplateId: taskTemplateId,
-            title: ' Warm-up ',
+            title: ' Interval finishing ',
             description: ' Two-touch ',
-            dayOffset: 1,
-            durationMinutes: 20,
+            startTime: '10:15',
+            dayOffset: 0,
+            durationMinutes: 18,
             sortOrder: 0,
-            config: { intensity: 'medium' },
+            config: {
+              task: {
+                videoUrls: ['https://example.com/drill.mp4'],
+                mediaNames: ['Drill video'],
+                subtasks: [{ title: 'Right foot' }, { title: 'Left foot' }],
+                reminderMinutes: 10,
+                afterTrainingEnabled: true,
+                afterTrainingDelayMinutes: 15,
+                afterTrainingFeedbackScoreExplanation: 'Rate technique',
+                taskDurationEnabled: true,
+                taskDurationMinutes: 18,
+              },
+              timer: {
+                activeSeconds: 45,
+                restSeconds: 15,
+                rounds: 4,
+              },
+            },
           },
         ],
         changeNote: ' Base44 edit ',
@@ -86,33 +108,114 @@ describe('owner training templates contract', () => {
       action: 'upsertTemplate',
       ownerAccountId,
       templateId,
-      templateType: 'week',
-      title: 'Finishing week',
+      templateType: 'session',
+      title: 'Finishing session',
       description: 'Build-up and finishing',
       folderId,
       focusAreas: ['Finishing', 'First touch'],
-      durationMinutes: 240,
+      durationMinutes: 75,
+      defaultActivityCategoryId: null,
+      defaultActivityCategoryName: 'Training',
       status: 'active',
       sourceTaskTemplateId: taskTemplateId,
+      metadata: {},
       items: [
         {
           id: null,
           parentItemId: null,
-          itemType: 'task_template',
+          itemType: 'exercise',
           sourceTaskTemplateId: taskTemplateId,
           sourceActivitySeriesId: null,
           linkedTemplateId: null,
-          title: 'Warm-up',
+          title: 'Interval finishing',
           description: 'Two-touch',
-          dayOffset: 1,
-          startTime: null,
-          durationMinutes: 20,
+          dayOffset: 0,
+          startTime: '10:15:00',
+          durationMinutes: 18,
           sortOrder: 0,
-          config: { intensity: 'medium' },
+          config: {
+            task: {
+              title: 'Interval finishing',
+              description: 'Two-touch',
+              categoryIds: [],
+              subtasks: [
+                { id: null, title: 'Right foot' },
+                { id: null, title: 'Left foot' },
+              ],
+              videoUrl: 'https://example.com/drill.mp4',
+              videoUrls: ['https://example.com/drill.mp4'],
+              mediaNames: ['Drill video'],
+              reminderMinutes: 10,
+              afterTrainingEnabled: true,
+              afterTrainingDelayMinutes: 15,
+              afterTrainingFeedbackEnableScore: true,
+              afterTrainingFeedbackScoreExplanation: 'Rate technique',
+              afterTrainingFeedbackEnableIntensity: true,
+              afterTrainingFeedbackEnableNote: true,
+              taskDurationEnabled: true,
+              taskDurationMinutes: 18,
+              autoAddToActivities: false,
+            },
+            timer: {
+              activeSeconds: 45,
+              restSeconds: 15,
+              rounds: 4,
+            },
+          },
         },
       ],
       changeNote: 'Base44 edit',
     });
+  });
+
+  it('keeps task templates as task config and rejects mismatched item types', () => {
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'task',
+        title: ' Solo touch work ',
+        taskConfig: {
+          videoUrls: ['https://example.com/touch.png'],
+          subtasks: [{ title: 'Wall passes' }],
+          taskDurationEnabled: true,
+          taskDurationMinutes: 12,
+        },
+        items: [],
+      })
+    ).toMatchObject({
+      action: 'upsertTemplate',
+      templateType: 'task',
+      metadata: {
+        task: {
+          title: 'Solo touch work',
+          videoUrls: ['https://example.com/touch.png'],
+          taskDurationEnabled: true,
+          taskDurationMinutes: 12,
+        },
+      },
+      items: [],
+    });
+
+    expect(() =>
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'week',
+        title: 'Bad week',
+        items: [{ itemType: 'task_template', title: 'Loose task' }],
+      })
+    ).toThrow('task_template is not allowed in week templates.');
+
+    expect(() =>
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'session',
+        title: 'Bad session',
+        items: [{ itemType: 'activity', title: 'Old activity item' }],
+      })
+    ).toThrow('itemType is invalid.');
   });
 
   it('normalizes list payload summary shape', () => {
@@ -162,6 +265,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('duplicateOwnerTrainingTemplate');
     expect(plan).toContain('archiveOwnerTrainingTemplate');
     expect(plan).toContain('restoreOwnerTrainingTemplate');
+    expect(plan).toContain("value: 'exercise', label: 'Exercise'");
+    expect(plan).toContain('Interval timer');
+    expect(plan).not.toContain("value: 'activity', label: 'Activity'");
     expect(plan).toContain("router.push('/(tabs)/tasks'");
     expect(plan).toContain('plan.template.create.${type.value}');
   });
