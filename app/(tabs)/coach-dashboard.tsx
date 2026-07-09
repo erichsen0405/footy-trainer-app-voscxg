@@ -268,9 +268,18 @@ export default function CoachDashboardScreen() {
     setFilters(emptyFilters);
   }, []);
 
-  const openPlayerCrm = useCallback(() => {
-    router.push('/(tabs)/player-crm' as any);
-  }, [router]);
+  const openPlayerCrm = useCallback(
+    (playerId?: string) => {
+      router.push({
+        pathname: '/(tabs)/player-crm',
+        params: {
+          ...(activeOwnerAccountId ? { ownerAccountId: activeOwnerAccountId } : {}),
+          ...(playerId ? { playerId, openAt: String(Date.now()) } : {}),
+        },
+      } as any);
+    },
+    [activeOwnerAccountId, router]
+  );
 
   const openPlayerTasks = useCallback(
     (playerId: string) => {
@@ -505,7 +514,7 @@ export default function CoachDashboardScreen() {
                   <TouchableOpacity
                     key={alert.id}
                     style={[styles.alertRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={openPlayerCrm}
+                    onPress={() => openPlayerCrm(alert.playerId)}
                     testID={`coachDashboard.alert.${alert.type}`}
                   >
                     <View style={[styles.alertStripe, { backgroundColor: severityColor(alert.severity, colors) }]} />
@@ -539,7 +548,7 @@ export default function CoachDashboardScreen() {
                     key={player.playerId}
                     player={player}
                     colors={colors}
-                    onOpenCrm={openPlayerCrm}
+                    onOpenCrm={() => openPlayerCrm(player.playerId)}
                     onOpenTasks={() => openPlayerTasks(player.playerId)}
                     onOpenProgress={() => openPlayerProgress(player.playerId)}
                   />

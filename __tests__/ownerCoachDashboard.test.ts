@@ -15,6 +15,7 @@ const functionPath = path.join(process.cwd(), 'supabase/functions/getOwnerCoachD
 const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/ownerCoachDashboard.ts');
 const servicePath = path.join(process.cwd(), 'services/ownerCoachDashboardService.ts');
 const screenPath = path.join(process.cwd(), 'app/(tabs)/coach-dashboard.tsx');
+const playerCrmPath = path.join(process.cwd(), 'app/(tabs)/player-crm.tsx');
 const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-coach-dashboard-prompt.md');
 
@@ -197,6 +198,7 @@ describe('owner coach dashboard contract', () => {
   const shared = fs.readFileSync(sharedPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
   const screen = fs.readFileSync(screenPath, 'utf8');
+  const playerCrm = fs.readFileSync(playerCrmPath, 'utf8');
   const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
 
@@ -294,9 +296,16 @@ describe('owner coach dashboard contract', () => {
     expect(screen).toContain('coachDashboard.alert.');
     expect(screen).toContain('coachDashboard.playerCard');
     expect(screen).toContain('AsyncStorage.setItem(filtersStorageKey');
-    expect(screen).toContain("router.push('/(tabs)/player-crm'");
+    expect(screen).toContain("pathname: '/(tabs)/player-crm'");
+    expect(screen).toContain('ownerAccountId: activeOwnerAccountId');
+    expect(screen).toContain('playerId, openAt: String(Date.now())');
     expect(screen).toContain("router.push('/(tabs)/tasks'");
     expect(screen).toContain("router.push('/(tabs)/performance'");
+    expect(playerCrm).toContain('useLocalSearchParams');
+    expect(playerCrm).toContain('routeOwnerAccountId');
+    expect(playerCrm).toContain('routePlayerId');
+    expect(playerCrm).toContain('lastRouteOpenKeyRef');
+    expect(playerCrm).toContain('void openPlayerDetail(player)');
   });
 
   it('documents Base44 reuse, owner scope, endpoint contract and mobile parity', () => {
