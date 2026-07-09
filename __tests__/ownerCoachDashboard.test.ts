@@ -308,5 +308,6 @@ describe('owner coach dashboard contract', () => {
     expect(base44Prompt).toContain('effective seat');
     expect(base44Prompt).toContain('Mobilappen har samme kernefunktionalitet');
     expect(base44Prompt).toContain('No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`');
+    expect(base44Prompt).toContain('20260709100000 | 20260709100000 | 2026-07-09 10:00:00');
   });
 });

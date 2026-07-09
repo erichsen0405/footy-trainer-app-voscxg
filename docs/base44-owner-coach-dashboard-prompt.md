@@ -111,10 +111,8 @@ Remote status per 2026-07-09 paa project `lhpczofddvwcyrgotzha`:
 - Edge Function `getOwnerCoachDashboard` er deployet og `ACTIVE`.
 - No-auth smoke test returnerer `401` med `UNAUTHORIZED_NO_AUTH_HEADER`, ikke
   `404`.
-- `supabase migration list --linked` blev forsøgt, men Supabase pooleren
-  returnerede auth/connection fejl efter retries og bad om
-  `SUPABASE_DB_PASSWORD`. Brug dry-run resultatet ovenfor som remote
-  migrationsverifikation for denne leverance.
+- `supabase migration list --linked` viser
+  `20260709100000 | 20260709100000 | 2026-07-09 10:00:00`.
 
 ## Access
 
