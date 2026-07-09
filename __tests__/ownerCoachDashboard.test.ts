@@ -305,9 +305,10 @@ describe('owner coach dashboard contract', () => {
     expect(screen).toContain('coachDashboard.filters');
     expect(screen).toContain('coachDashboard.scopeFilter.toggle');
     expect(screen).toContain("type DashboardScopeType = 'all' | 'team' | 'player'");
-    expect(screen).toContain('getScopedDashboardMetrics');
-    expect(screen).toContain('activityMatchesScope');
-    expect(screen).toContain('alertMatchesScope');
+    expect(screen).toContain('getFilteredDashboardPlayers');
+    expect(screen).toContain('getFilteredDashboardMetrics');
+    expect(screen).toContain('activityMatchesDashboardFilters');
+    expect(screen).toContain('alertMatchesDashboardFilters');
     expect(screen).toContain("handleSelectScope('team'");
     expect(screen).toContain("handleSelectScope('player'");
     expect(screen).toContain('coachDashboard.alert.');
@@ -378,6 +379,7 @@ describe('owner coach dashboard contract', () => {
     expect(base44Prompt).toContain("`no_plan` alerts skal navigere til `KlubAktiviteter`");
     expect(base44Prompt).toContain('dashboard-scope filterknap');
     expect(base44Prompt).toContain('Aktiviteter matches paa `activity.teamId`');
+    expect(base44Prompt).toContain('skal fungere som dashboard-filtre inden for valgt scope');
     expect(base44Prompt).toContain("KPI'er/alerts/activities/player list skifter scope");
   });
 });

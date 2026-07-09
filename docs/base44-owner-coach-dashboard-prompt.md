@@ -223,7 +223,7 @@ Dashboardet skal bygges til desktop scanning:
 - KPI-strip: players, alerts, open tasks, today, week, completion, player seats
 - alert feed sorteret efter severity
 - today/week activities med player count, team og open task count
-- filtrerbar player table med status, teams, tags, level, position og alerts
+- dashboard-filtre for status, teams, tags, level, position og alerts
 - quick actions fra hver spiller til player detail, tasks, reports, program,
   goals og chat
 
@@ -246,14 +246,16 @@ Dashboard-scope filter:
 - Filterknappen skal ligge synligt i dashboardets topomraade, men visuelt
   diskret. Naar der er valgt hold eller spiller, maa knappen gerne have en
   subtil ramme/highlight, saa det er tydeligt at dashboardet er scoped.
-- Scope `Alle spillere` viser hele payloaden.
+- Scope `Alle spillere` viser hele payloaden, medmindre der er aktive filterchips.
 - Scope `Hold` skal filtrere KPI'er, alerts, today/week activities og player
   table til spillere paa valgt hold. Aktiviteter matches paa `activity.teamId`
   eller overlap mellem `activity.playerIds` og spillere paa holdet.
 - Scope `Spiller` skal filtrere KPI'er, alerts, today/week activities og player
   table til valgt spiller via `playerId`.
 - Eksisterende table-filtre for status, team, tags, level, position og alerts
-  maa stadig kunne bruges til at indsnævre player table inden for valgt scope.
+  skal fungere som dashboard-filtre inden for valgt scope. Det betyder, at de
+  samme filtre skal paavirke KPI'er, alerts, today/week activities og player
+  table, ikke kun player table.
 - Scope-valget maa ikke skifte owner/workspace eller oprette Base44-interne
   business entities. Det er kun en visningsfiltrering af data fra
   `getOwnerCoachDashboard`.
@@ -298,7 +300,8 @@ Test minimum:
   og no plan
 - dashboard-scope filter paa web og mobil kan vaelge `Alle spillere`, et hold
   eller en spiller, og KPI'er/alerts/activities/player list skifter scope
-- filter paa team, tag, status, level og position
+- filter paa team, tag, status, level, position og alerts filtrerer ogsaa
+  KPI'er/alerts/activities/player list
 - web, iOS og Android smoke
 
 CI-equivalent checks foer merge:

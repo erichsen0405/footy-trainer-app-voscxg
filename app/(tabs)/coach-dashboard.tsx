@@ -136,31 +136,46 @@ function getScopedPlayers(dashboard: OwnerCoachDashboardPayload, filters: Dashbo
   return dashboard.players.filter((player) => player.playerId === filters.scopeId);
 }
 
-function activityMatchesScope(
+function getDashboardFilterTeamIds(filters: DashboardFilters): Set<string> {
+  const teamIds = new Set<string>();
+  if (filters.scopeType === 'team' && filters.scopeId) {
+    teamIds.add(filters.scopeId);
+  }
+  if (filters.teamId) {
+    teamIds.add(filters.teamId);
+  }
+  return teamIds;
+}
+
+function getFilteredDashboardPlayers(
+  dashboard: OwnerCoachDashboardPayload,
+  filters: DashboardFilters
+): OwnerCoachDashboardPlayer[] {
+  return getScopedPlayers(dashboard, filters).filter((player) => playerMatchesFilters(player, filters));
+}
+
+function activityMatchesDashboardFilters(
   activity: OwnerCoachDashboardActivity,
   filters: DashboardFilters,
-  scopedPlayerIds: Set<string>
+  filteredPlayerIds: Set<string>
 ): boolean {
-  if (filters.scopeType === 'all' || !filters.scopeId) return true;
-  if (filters.scopeType === 'team') {
-    return activity.teamId === filters.scopeId || activity.playerIds.some((playerId) => scopedPlayerIds.has(playerId));
+  if (filteredPlayerIds.size === 0) return false;
+  if (activity.playerIds.some((playerId) => filteredPlayerIds.has(playerId))) {
+    return true;
   }
-  return activity.playerIds.includes(filters.scopeId);
+
+  const selectedTeamIds = getDashboardFilterTeamIds(filters);
+  return Boolean(activity.teamId && selectedTeamIds.has(activity.teamId));
 }
 
-function alertMatchesScope(
+function alertMatchesDashboardFilters(
   alert: OwnerCoachDashboardAlert,
-  filters: DashboardFilters,
-  scopedPlayerIds: Set<string>
+  filteredPlayerIds: Set<string>
 ): boolean {
-  if (filters.scopeType === 'all' || !filters.scopeId) return true;
-  if (filters.scopeType === 'team') {
-    return alert.teamIds.includes(filters.scopeId) || scopedPlayerIds.has(alert.playerId);
-  }
-  return alert.playerId === filters.scopeId;
+  return filteredPlayerIds.has(alert.playerId);
 }
 
-function getScopedDashboardMetrics(
+function getFilteredDashboardMetrics(
   players: OwnerCoachDashboardPlayer[],
   todayActivities: OwnerCoachDashboardActivity[],
   weekActivities: OwnerCoachDashboardActivity[]
@@ -313,7 +328,7 @@ export default function CoachDashboardScreen() {
     }
   }, [dashboard, filters.scopeId, filters.scopeType]);
 
-  const scopedDashboard = useMemo(() => {
+  const filteredDashboard = useMemo(() => {
     if (!dashboard) {
       return {
         players: [],
@@ -324,34 +339,31 @@ export default function CoachDashboardScreen() {
       };
     }
 
-    const players = getScopedPlayers(dashboard, filters);
+    const players = getFilteredDashboardPlayers(dashboard, filters);
     const playerIds = new Set(players.map((player) => player.playerId));
-    const alerts = dashboard.alerts.filter((alert) => alertMatchesScope(alert, filters, playerIds));
-    const todayActivities = dashboard.today.activities.filter((activity) => activityMatchesScope(activity, filters, playerIds));
-    const weekActivities = dashboard.week.activities.filter((activity) => activityMatchesScope(activity, filters, playerIds));
+    const alerts = dashboard.alerts.filter((alert) => alertMatchesDashboardFilters(alert, playerIds));
+    const todayActivities = dashboard.today.activities.filter((activity) =>
+      activityMatchesDashboardFilters(activity, filters, playerIds)
+    );
+    const weekActivities = dashboard.week.activities.filter((activity) =>
+      activityMatchesDashboardFilters(activity, filters, playerIds)
+    );
 
     return {
       players,
       alerts,
       todayActivities,
       weekActivities,
-      metrics:
-        filters.scopeType === 'all'
-          ? dashboard.metrics
-          : getScopedDashboardMetrics(players, todayActivities, weekActivities),
+      metrics: getFilteredDashboardMetrics(players, todayActivities, weekActivities),
     };
   }, [dashboard, filters]);
 
-  const filteredPlayers = useMemo(() => {
-    return scopedDashboard.players.filter((player) => playerMatchesFilters(player, filters));
-  }, [filters, scopedDashboard.players]);
-
   const metricCards = useMemo(() => {
-    const metrics = scopedDashboard.metrics;
+    const metrics = filteredDashboard.metrics;
     if (!metrics || !dashboard) return [];
     return [
       { label: 'Players', value: String(metrics.totalPlayers), tone: colors.primary },
-      { label: 'Alerts', value: String(scopedDashboard.alerts.length), tone: colors.error },
+      { label: 'Alerts', value: String(filteredDashboard.alerts.length), tone: colors.error },
       { label: 'Open tasks', value: String(metrics.openTasks), tone: colors.warning },
       { label: 'Today', value: String(metrics.todayActivities), tone: colors.secondary },
       {
@@ -369,8 +381,8 @@ export default function CoachDashboardScreen() {
     colors.success,
     colors.warning,
     dashboard,
-    scopedDashboard.alerts.length,
-    scopedDashboard.metrics,
+    filteredDashboard.alerts.length,
+    filteredDashboard.metrics,
   ]);
 
   const handleRefresh = useCallback(async () => {
@@ -813,10 +825,10 @@ export default function CoachDashboardScreen() {
 
             {renderFilterRow()}
 
-            <SectionTitle title="Alerts" count={scopedDashboard.alerts.length} colors={colors} />
-            {scopedDashboard.alerts.length ? (
+            <SectionTitle title="Alerts" count={filteredDashboard.alerts.length} colors={colors} />
+            {filteredDashboard.alerts.length ? (
               <View style={styles.sectionStack}>
-                {scopedDashboard.alerts.slice(0, 8).map((alert) => (
+                {filteredDashboard.alerts.slice(0, 8).map((alert) => (
                   <TouchableOpacity
                     key={alert.id}
                     style={[styles.alertRow, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -840,16 +852,16 @@ export default function CoachDashboardScreen() {
               <EmptyInline text="No players need attention right now." colors={colors} />
             )}
 
-            <SectionTitle title="Today" count={scopedDashboard.todayActivities.length} colors={colors} />
-            <ActivityList activities={scopedDashboard.todayActivities.slice(0, 6)} colors={colors} />
+            <SectionTitle title="Today" count={filteredDashboard.todayActivities.length} colors={colors} />
+            <ActivityList activities={filteredDashboard.todayActivities.slice(0, 6)} colors={colors} />
 
-            <SectionTitle title="This Week" count={scopedDashboard.weekActivities.length} colors={colors} />
-            <ActivityList activities={scopedDashboard.weekActivities.slice(0, 8)} colors={colors} />
+            <SectionTitle title="This Week" count={filteredDashboard.weekActivities.length} colors={colors} />
+            <ActivityList activities={filteredDashboard.weekActivities.slice(0, 8)} colors={colors} />
 
-            <SectionTitle title="Players" count={filteredPlayers.length} colors={colors} />
-            {filteredPlayers.length ? (
+            <SectionTitle title="Players" count={filteredDashboard.players.length} colors={colors} />
+            {filteredDashboard.players.length ? (
               <View style={styles.sectionStack}>
-                {filteredPlayers.map((player) => (
+                {filteredDashboard.players.map((player) => (
                   <PlayerCard
                     key={player.playerId}
                     player={player}
