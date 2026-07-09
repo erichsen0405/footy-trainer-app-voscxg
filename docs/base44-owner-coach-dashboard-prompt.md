@@ -218,6 +218,8 @@ effective seats selv.
 Dashboardet skal bygges til desktop scanning:
 
 - owner/workspace switcher, hvis brugeren har adgang til flere owners
+- diskret dashboard-scope filterknap, hvor brugeren kan vaelge `Alle
+  spillere`, et hold eller en spiller at se dashboard-informationer for
 - KPI-strip: players, alerts, open tasks, today, week, completion, player seats
 - alert feed sorteret efter severity
 - today/week activities med player count, team og open task count
@@ -238,6 +240,23 @@ Alert click-adfaerd:
 For `program`, `goals`, `reports` og `chat` skal Base44 kun linke til
 eksisterende eller feature-flagged routes. Byg ikke de senere features fra
 #285, #289, #291 eller #294 som del af #282.
+
+Dashboard-scope filter:
+
+- Filterknappen skal ligge synligt i dashboardets topomraade, men visuelt
+  diskret. Naar der er valgt hold eller spiller, maa knappen gerne have en
+  subtil ramme/highlight, saa det er tydeligt at dashboardet er scoped.
+- Scope `Alle spillere` viser hele payloaden.
+- Scope `Hold` skal filtrere KPI'er, alerts, today/week activities og player
+  table til spillere paa valgt hold. Aktiviteter matches paa `activity.teamId`
+  eller overlap mellem `activity.playerIds` og spillere paa holdet.
+- Scope `Spiller` skal filtrere KPI'er, alerts, today/week activities og player
+  table til valgt spiller via `playerId`.
+- Eksisterende table-filtre for status, team, tags, level, position og alerts
+  maa stadig kunne bruges til at indsnævre player table inden for valgt scope.
+- Scope-valget maa ikke skifte owner/workspace eller oprette Base44-interne
+  business entities. Det er kun en visningsfiltrering af data fra
+  `getOwnerCoachDashboard`.
 
 ## Empty, Loading And Error States
 
@@ -277,6 +296,8 @@ Test minimum:
 - alerts for missing tasks, inactive players, new feedback, upcoming sessions
 - `no_plan` alert klikker til `KlubAktiviteter`/mobil Home med korrekt spillerfilter
   og no plan
+- dashboard-scope filter paa web og mobil kan vaelge `Alle spillere`, et hold
+  eller en spiller, og KPI'er/alerts/activities/player list skifter scope
 - filter paa team, tag, status, level og position
 - web, iOS og Android smoke
 

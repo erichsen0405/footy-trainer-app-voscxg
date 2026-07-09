@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -29,7 +30,11 @@ import {
   fetchOwnerCoachDashboard,
 } from '@/services/ownerCoachDashboardService';
 
+type DashboardScopeType = 'all' | 'team' | 'player';
+
 type DashboardFilters = {
+  scopeType: DashboardScopeType;
+  scopeId: string | null;
   status: string | null;
   teamId: string | null;
   tagId: string | null;
@@ -39,6 +44,8 @@ type DashboardFilters = {
 };
 
 const emptyFilters: DashboardFilters = {
+  scopeType: 'all',
+  scopeId: null,
   status: null,
   teamId: null,
   tagId: null,
@@ -87,7 +94,8 @@ function severityColor(severity: OwnerCoachDashboardAlert['severity'], colors: R
 
 function hasActiveFilters(filters: DashboardFilters): boolean {
   return Boolean(
-    filters.status ||
+    (filters.scopeType !== 'all' && filters.scopeId) ||
+      filters.status ||
       filters.teamId ||
       filters.tagId ||
       filters.level ||
@@ -106,6 +114,80 @@ function playerMatchesFilters(player: OwnerCoachDashboardPlayer, filters: Dashbo
   return true;
 }
 
+function getDashboardScopeLabel(dashboard: OwnerCoachDashboardPayload | null, filters: DashboardFilters): string {
+  if (!dashboard || filters.scopeType === 'all' || !filters.scopeId) return 'All players';
+  if (filters.scopeType === 'team') {
+    return dashboard.filters.teams.find((team) => team.id === filters.scopeId)?.name ?? 'Selected team';
+  }
+  return dashboard.players.find((player) => player.playerId === filters.scopeId)?.displayName ?? 'Selected player';
+}
+
+function getDashboardScopeKicker(filters: DashboardFilters): string {
+  if (filters.scopeType === 'team') return 'Team view';
+  if (filters.scopeType === 'player') return 'Player view';
+  return 'Dashboard view';
+}
+
+function getScopedPlayers(dashboard: OwnerCoachDashboardPayload, filters: DashboardFilters): OwnerCoachDashboardPlayer[] {
+  if (filters.scopeType === 'all' || !filters.scopeId) return dashboard.players;
+  if (filters.scopeType === 'team') {
+    return dashboard.players.filter((player) => player.teamIds.includes(filters.scopeId as string));
+  }
+  return dashboard.players.filter((player) => player.playerId === filters.scopeId);
+}
+
+function activityMatchesScope(
+  activity: OwnerCoachDashboardActivity,
+  filters: DashboardFilters,
+  scopedPlayerIds: Set<string>
+): boolean {
+  if (filters.scopeType === 'all' || !filters.scopeId) return true;
+  if (filters.scopeType === 'team') {
+    return activity.teamId === filters.scopeId || activity.playerIds.some((playerId) => scopedPlayerIds.has(playerId));
+  }
+  return activity.playerIds.includes(filters.scopeId);
+}
+
+function alertMatchesScope(
+  alert: OwnerCoachDashboardAlert,
+  filters: DashboardFilters,
+  scopedPlayerIds: Set<string>
+): boolean {
+  if (filters.scopeType === 'all' || !filters.scopeId) return true;
+  if (filters.scopeType === 'team') {
+    return alert.teamIds.includes(filters.scopeId) || scopedPlayerIds.has(alert.playerId);
+  }
+  return alert.playerId === filters.scopeId;
+}
+
+function getScopedDashboardMetrics(
+  players: OwnerCoachDashboardPlayer[],
+  todayActivities: OwnerCoachDashboardActivity[],
+  weekActivities: OwnerCoachDashboardActivity[]
+): OwnerCoachDashboardPayload['metrics'] {
+  const openTasks = players.reduce((sum, player) => sum + player.openTasks, 0);
+  const completedTasks = players.reduce((sum, player) => sum + player.completedTasks, 0);
+  const taskTotal = openTasks + completedTasks;
+
+  return {
+    totalPlayers: players.length,
+    activePlayers: players.filter((player) => player.crmStatus === 'active').length,
+    trialPlayers: players.filter((player) => player.crmStatus === 'trial').length,
+    pausedPlayers: players.filter((player) => player.crmStatus === 'paused').length,
+    formerPlayers: players.filter((player) => player.crmStatus === 'former').length,
+    playersMissingTasks: players.filter((player) => player.missingTasks > 0).length,
+    inactivePlayers: players.filter((player) => player.isInactive).length,
+    playersWithoutPlan: players.filter((player) => player.withoutPlan).length,
+    newFeedback: players.reduce((sum, player) => sum + player.recentFeedbackCount, 0),
+    todayActivities: todayActivities.length,
+    weekActivities: weekActivities.length,
+    upcomingSessions: players.reduce((sum, player) => sum + player.upcomingActivitiesCount, 0),
+    openTasks,
+    completedTasks,
+    taskCompletionRate: taskTotal ? Math.round((completedTasks / taskTotal) * 100) : null,
+  };
+}
+
 export default function CoachDashboardScreen() {
   const colorScheme = useColorScheme();
   const colors = getColors(colorScheme);
@@ -118,6 +200,7 @@ export default function CoachDashboardScreen() {
   const [dashboard, setDashboard] = useState<OwnerCoachDashboardPayload | null>(null);
   const [filters, setFilters] = useState<DashboardFilters>(emptyFilters);
   const [savedFilters, setSavedFilters] = useState<DashboardFilters | null>(null);
+  const [scopeSelectorVisible, setScopeSelectorVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -217,17 +300,58 @@ export default function CoachDashboardScreen() {
     };
   }, [activeOwnerAccountId]);
 
+  useEffect(() => {
+    if (!dashboard || filters.scopeType === 'all' || !filters.scopeId) return;
+
+    const scopeExists =
+      filters.scopeType === 'team'
+        ? dashboard.filters.teams.some((team) => team.id === filters.scopeId)
+        : dashboard.players.some((player) => player.playerId === filters.scopeId);
+
+    if (!scopeExists) {
+      setFilters((current) => ({ ...current, scopeType: 'all', scopeId: null }));
+    }
+  }, [dashboard, filters.scopeId, filters.scopeType]);
+
+  const scopedDashboard = useMemo(() => {
+    if (!dashboard) {
+      return {
+        players: [],
+        alerts: [],
+        todayActivities: [],
+        weekActivities: [],
+        metrics: null,
+      };
+    }
+
+    const players = getScopedPlayers(dashboard, filters);
+    const playerIds = new Set(players.map((player) => player.playerId));
+    const alerts = dashboard.alerts.filter((alert) => alertMatchesScope(alert, filters, playerIds));
+    const todayActivities = dashboard.today.activities.filter((activity) => activityMatchesScope(activity, filters, playerIds));
+    const weekActivities = dashboard.week.activities.filter((activity) => activityMatchesScope(activity, filters, playerIds));
+
+    return {
+      players,
+      alerts,
+      todayActivities,
+      weekActivities,
+      metrics:
+        filters.scopeType === 'all'
+          ? dashboard.metrics
+          : getScopedDashboardMetrics(players, todayActivities, weekActivities),
+    };
+  }, [dashboard, filters]);
+
   const filteredPlayers = useMemo(() => {
-    const players = dashboard?.players ?? [];
-    return players.filter((player) => playerMatchesFilters(player, filters));
-  }, [dashboard?.players, filters]);
+    return scopedDashboard.players.filter((player) => playerMatchesFilters(player, filters));
+  }, [filters, scopedDashboard.players]);
 
   const metricCards = useMemo(() => {
-    const metrics = dashboard?.metrics;
-    if (!metrics) return [];
+    const metrics = scopedDashboard.metrics;
+    if (!metrics || !dashboard) return [];
     return [
       { label: 'Players', value: String(metrics.totalPlayers), tone: colors.primary },
-      { label: 'Alerts', value: String(dashboard.alerts.length), tone: colors.error },
+      { label: 'Alerts', value: String(scopedDashboard.alerts.length), tone: colors.error },
       { label: 'Open tasks', value: String(metrics.openTasks), tone: colors.warning },
       { label: 'Today', value: String(metrics.todayActivities), tone: colors.secondary },
       {
@@ -237,7 +361,17 @@ export default function CoachDashboardScreen() {
       },
       { label: 'Seats left', value: String(dashboard.seatStatus.playerSeats?.seatsAvailable ?? '-'), tone: colors.accent },
     ];
-  }, [colors.accent, colors.error, colors.primary, colors.secondary, colors.success, colors.warning, dashboard]);
+  }, [
+    colors.accent,
+    colors.error,
+    colors.primary,
+    colors.secondary,
+    colors.success,
+    colors.warning,
+    dashboard,
+    scopedDashboard.alerts.length,
+    scopedDashboard.metrics,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     if (!canAccessCoachDashboard) return;
@@ -266,6 +400,16 @@ export default function CoachDashboardScreen() {
 
   const handleClearFilters = useCallback(() => {
     setFilters(emptyFilters);
+  }, []);
+
+  const handleSelectScope = useCallback((scopeType: DashboardScopeType, scopeId: string | null) => {
+    setFilters((current) => ({
+      ...current,
+      scopeType,
+      scopeId,
+      teamId: scopeType === 'team' ? null : current.teamId,
+    }));
+    setScopeSelectorVisible(false);
   }, []);
 
   const openPlayerCrm = useCallback(
@@ -467,6 +611,139 @@ export default function CoachDashboardScreen() {
     );
   };
 
+  const renderScopeSelector = () => {
+    if (!dashboard) return null;
+
+    const scopeActive = filters.scopeType !== 'all' && Boolean(filters.scopeId);
+
+    return (
+      <>
+        <View style={styles.scopeFilterBlock} testID="coachDashboard.scopeFilter">
+          <TouchableOpacity
+            style={[
+              styles.scopeFilterButton,
+              {
+                backgroundColor: colors.card,
+                borderColor: scopeActive ? colors.success : colors.border,
+                shadowColor: scopeActive ? colors.success : '#000000',
+              },
+            ]}
+            onPress={() => setScopeSelectorVisible(true)}
+            activeOpacity={0.86}
+            testID="coachDashboard.scopeFilter.toggle"
+          >
+            <View
+              style={[
+                styles.scopeFilterIcon,
+                {
+                  backgroundColor: scopeActive ? `${colors.success}18` : colors.background,
+                  borderColor: scopeActive ? colors.success : colors.border,
+                },
+              ]}
+            >
+              <IconSymbol
+                ios_icon_name="line.3.horizontal.decrease.circle"
+                android_material_icon_name="filter_list"
+                size={18}
+                color={scopeActive ? colors.success : colors.textSecondary}
+              />
+            </View>
+            <View style={styles.scopeFilterTextBlock}>
+              <Text style={[styles.scopeFilterKicker, { color: colors.textSecondary }]} numberOfLines={1}>
+                {getDashboardScopeKicker(filters)}
+              </Text>
+              <Text style={[styles.scopeFilterLabel, { color: colors.text }]} numberOfLines={1}>
+                {getDashboardScopeLabel(dashboard, filters)}
+              </Text>
+            </View>
+            <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <Modal
+          visible={scopeSelectorVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setScopeSelectorVisible(false)}
+        >
+          <View style={styles.modalRoot}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={() => setScopeSelectorVisible(false)}
+              accessibilityLabel="Close dashboard scope filter"
+            />
+            <View style={[styles.scopeSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.scopeSheetHeader}>
+                <View>
+                  <Text style={[styles.scopeSheetTitle, { color: colors.text }]}>Show dashboard for</Text>
+                  <Text style={[styles.scopeSheetSubtitle, { color: colors.textSecondary }]}>
+                    Choose all players, one team or one player.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.scopeCloseButton, { borderColor: colors.border }]}
+                  onPress={() => setScopeSelectorVisible(false)}
+                  accessibilityLabel="Close dashboard scope filter"
+                >
+                  <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={18} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.scopeSheetList} showsVerticalScrollIndicator={false}>
+                <ScopeOption
+                  label="All players"
+                  detail="Whole workspace"
+                  active={filters.scopeType === 'all' || !filters.scopeId}
+                  icon="rectangle.3.group"
+                  materialIcon="dashboard"
+                  onPress={() => handleSelectScope('all', null)}
+                  colors={colors}
+                />
+
+                {dashboard.filters.teams.length ? (
+                  <View style={styles.scopeOptionGroup}>
+                    <Text style={[styles.scopeGroupLabel, { color: colors.textSecondary }]}>Teams</Text>
+                    {dashboard.filters.teams.map((team) => (
+                      <ScopeOption
+                        key={team.id}
+                        label={team.name}
+                        detail={`${team.memberCount} players`}
+                        active={filters.scopeType === 'team' && filters.scopeId === team.id}
+                        icon="person.3.fill"
+                        materialIcon="groups"
+                        onPress={() => handleSelectScope('team', team.id)}
+                        colors={colors}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+
+                {dashboard.players.length ? (
+                  <View style={styles.scopeOptionGroup}>
+                    <Text style={[styles.scopeGroupLabel, { color: colors.textSecondary }]}>Players</Text>
+                    {dashboard.players.map((player) => (
+                      <ScopeOption
+                        key={player.playerId}
+                        label={player.displayName}
+                        detail={player.teams[0]?.name ?? player.primaryPosition ?? statusLabel(player.crmStatus)}
+                        active={filters.scopeType === 'player' && filters.scopeId === player.playerId}
+                        icon="person.fill"
+                        materialIcon="person"
+                        onPress={() => handleSelectScope('player', player.playerId)}
+                        colors={colors}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  };
+
   if (roleLoading || loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -519,6 +796,8 @@ export default function CoachDashboardScreen() {
 
         {dashboard ? (
           <>
+            {renderScopeSelector()}
+
             <View style={styles.metricGrid}>
               {metricCards.map((metric) => (
                 <View key={metric.label} style={[styles.metricCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -534,10 +813,10 @@ export default function CoachDashboardScreen() {
 
             {renderFilterRow()}
 
-            <SectionTitle title="Alerts" count={dashboard.alerts.length} colors={colors} />
-            {dashboard.alerts.length ? (
+            <SectionTitle title="Alerts" count={scopedDashboard.alerts.length} colors={colors} />
+            {scopedDashboard.alerts.length ? (
               <View style={styles.sectionStack}>
-                {dashboard.alerts.slice(0, 8).map((alert) => (
+                {scopedDashboard.alerts.slice(0, 8).map((alert) => (
                   <TouchableOpacity
                     key={alert.id}
                     style={[styles.alertRow, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -561,11 +840,11 @@ export default function CoachDashboardScreen() {
               <EmptyInline text="No players need attention right now." colors={colors} />
             )}
 
-            <SectionTitle title="Today" count={dashboard.today.activities.length} colors={colors} />
-            <ActivityList activities={dashboard.today.activities.slice(0, 6)} colors={colors} />
+            <SectionTitle title="Today" count={scopedDashboard.todayActivities.length} colors={colors} />
+            <ActivityList activities={scopedDashboard.todayActivities.slice(0, 6)} colors={colors} />
 
-            <SectionTitle title="This Week" count={dashboard.week.activities.length} colors={colors} />
-            <ActivityList activities={dashboard.week.activities.slice(0, 8)} colors={colors} />
+            <SectionTitle title="This Week" count={scopedDashboard.weekActivities.length} colors={colors} />
+            <ActivityList activities={scopedDashboard.weekActivities.slice(0, 8)} colors={colors} />
 
             <SectionTitle title="Players" count={filteredPlayers.length} colors={colors} />
             {filteredPlayers.length ? (
@@ -625,6 +904,66 @@ function FilterChip({
       <Text style={[styles.filterChipText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
         {label}
       </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ScopeOption({
+  label,
+  detail,
+  active,
+  icon,
+  materialIcon,
+  onPress,
+  colors,
+}: {
+  label: string;
+  detail: string;
+  active: boolean;
+  icon: string;
+  materialIcon: string;
+  onPress: () => void;
+  colors: ReturnType<typeof getColors>;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.scopeOptionButton,
+        {
+          backgroundColor: active ? `${colors.success}12` : colors.background,
+          borderColor: active ? colors.success : colors.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.86}
+    >
+      <View
+        style={[
+          styles.scopeOptionIcon,
+          {
+            backgroundColor: active ? `${colors.success}18` : colors.card,
+            borderColor: active ? colors.success : colors.border,
+          },
+        ]}
+      >
+        <IconSymbol
+          ios_icon_name={icon as any}
+          android_material_icon_name={materialIcon as any}
+          size={18}
+          color={active ? colors.success : colors.textSecondary}
+        />
+      </View>
+      <View style={styles.scopeOptionTextBlock}>
+        <Text style={[styles.scopeOptionLabel, { color: colors.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[styles.scopeOptionDetail, { color: colors.textSecondary }]} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      {active ? (
+        <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={19} color={colors.success} />
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -877,6 +1216,128 @@ const styles = StyleSheet.create({
   filterActions: {
     flexDirection: 'row',
     columnGap: 8,
+  },
+  scopeFilterBlock: {
+    marginBottom: 14,
+  },
+  scopeFilterButton: {
+    minHeight: 58,
+    borderWidth: 1.5,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  scopeFilterIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scopeFilterTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scopeFilterKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  scopeFilterLabel: {
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  modalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.34)',
+    padding: 16,
+  },
+  scopeSheet: {
+    maxHeight: '78%',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+  },
+  scopeSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    columnGap: 12,
+    marginBottom: 12,
+  },
+  scopeSheetTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  scopeSheetSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  scopeCloseButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scopeSheetList: {
+    marginHorizontal: -2,
+  },
+  scopeOptionGroup: {
+    marginTop: 12,
+  },
+  scopeGroupLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+    marginBottom: 7,
+    paddingHorizontal: 2,
+  },
+  scopeOptionButton: {
+    minHeight: 56,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+    marginBottom: 7,
+  },
+  scopeOptionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scopeOptionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scopeOptionLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  scopeOptionDetail: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
   },
   smallActionButton: {
     minHeight: 34,

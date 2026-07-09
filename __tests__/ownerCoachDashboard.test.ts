@@ -303,6 +303,13 @@ describe('owner coach dashboard contract', () => {
     expect(tabLayout).toContain('<Stack.Screen name="coach-dashboard" />');
     expect(screen).toContain('fetchOwnerCoachDashboard');
     expect(screen).toContain('coachDashboard.filters');
+    expect(screen).toContain('coachDashboard.scopeFilter.toggle');
+    expect(screen).toContain("type DashboardScopeType = 'all' | 'team' | 'player'");
+    expect(screen).toContain('getScopedDashboardMetrics');
+    expect(screen).toContain('activityMatchesScope');
+    expect(screen).toContain('alertMatchesScope');
+    expect(screen).toContain("handleSelectScope('team'");
+    expect(screen).toContain("handleSelectScope('player'");
     expect(screen).toContain('coachDashboard.alert.');
     expect(screen).toContain('coachDashboard.playerCard');
     expect(screen).toContain('AsyncStorage.setItem(filtersStorageKey');
@@ -369,5 +376,8 @@ describe('owner coach dashboard contract', () => {
     expect(base44Prompt).toContain('20260709100000 | 20260709100000 | 2026-07-09 10:00:00');
     expect(base44Prompt).toContain('20260709113000 | 20260709113000 | 2026-07-09 11:30:00');
     expect(base44Prompt).toContain("`no_plan` alerts skal navigere til `KlubAktiviteter`");
+    expect(base44Prompt).toContain('dashboard-scope filterknap');
+    expect(base44Prompt).toContain('Aktiviteter matches paa `activity.teamId`');
+    expect(base44Prompt).toContain("KPI'er/alerts/activities/player list skifter scope");
   });
 });
