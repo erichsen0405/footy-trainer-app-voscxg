@@ -8,6 +8,7 @@ const mockUseAdmin = jest.fn();
 const mockCreateTask = jest.fn();
 const mockUseAuthSession = jest.fn();
 const mockUseUserRole = jest.fn();
+const mockUseTeamPlayer = jest.fn();
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
@@ -23,6 +24,10 @@ jest.mock('@/contexts/AuthSessionContext', () => ({
 
 jest.mock('@/hooks/useUserRole', () => ({
   useUserRole: () => mockUseUserRole(),
+}));
+
+jest.mock('@/contexts/TeamPlayerContext', () => ({
+  useTeamPlayer: () => mockUseTeamPlayer(),
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -135,6 +140,18 @@ describe('Tasks redesigned template screen', () => {
       adminTargetId: null,
       selectedContext: null,
       contextName: null,
+      startAdminPlayer: jest.fn(),
+      startAdminTeam: jest.fn(),
+      exitAdmin: jest.fn(),
+    });
+
+    mockUseTeamPlayer.mockReturnValue({
+      players: [],
+      teams: [],
+      selectedContext: { type: null, id: null, name: null },
+      loading: false,
+      ensureRosterLoaded: jest.fn().mockResolvedValue({ players: [], teams: [] }),
+      setSelectedContext: jest.fn().mockResolvedValue(undefined),
     });
 
     mockUseFootball.mockReturnValue(baseFootball());
@@ -192,9 +209,20 @@ describe('Tasks redesigned template screen', () => {
       adminTargetId: 'player-1',
       selectedContext: { type: 'player', name: 'Spiller A' },
       contextName: 'Spiller A',
+      startAdminPlayer: jest.fn(),
+      startAdminTeam: jest.fn(),
+      exitAdmin: jest.fn(),
+    });
+    mockUseTeamPlayer.mockReturnValue({
+      players: [{ id: 'player-1', email: '', full_name: 'Spiller A' }],
+      teams: [],
+      selectedContext: { type: 'player', id: 'player-1', name: 'Spiller A' },
+      loading: false,
+      ensureRosterLoaded: jest.fn().mockResolvedValue({ players: [], teams: [] }),
+      setSelectedContext: jest.fn().mockResolvedValue(undefined),
     });
     mockUseFootball.mockReturnValue(baseFootball({
-      tasks: [baseTask({ id: 'admin-task-1', title: 'Spilleropgave', userId: 'trainer-1' })],
+      tasks: [baseTask({ id: 'admin-task-1', title: 'Spilleropgave', userId: 'trainer-1', playerId: 'player-1' })],
     }));
 
     const { getByTestId, queryByTestId } = render(<TasksScreen />);

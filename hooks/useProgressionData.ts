@@ -109,6 +109,7 @@ interface UseProgressionDataArgs {
   intensityCategoryId?: string | null;
   categories: ActivityCategory[];
   targetUserId?: string | null;
+  targetUserIds?: string[] | null;
 }
 
 interface UseProgressionDataResult {
@@ -128,6 +129,17 @@ interface UseProgressionDataResult {
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizeTargetUserIds = (values: string[] | null | undefined): string[] => {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? '').trim())
+        .filter((value) => value.length > 0)
+    )
+  );
+};
 
 const isTransientProgressionFetchError = (error: unknown) => {
   const message = String((error as any)?.message || '').toLowerCase();
@@ -454,6 +466,7 @@ export function useProgressionData({
   intensityCategoryId,
   categories,
   targetUserId,
+  targetUserIds,
 }: UseProgressionDataArgs): UseProgressionDataResult {
   const [focusEntries, setFocusEntries] = useState<ProgressionEntry[]>([]);
   const [focusEntriesPrevious, setFocusEntriesPrevious] = useState<ProgressionEntry[]>([]);
@@ -480,6 +493,8 @@ export function useProgressionData({
   const [requiresLogin, setRequiresLogin] = useState(false);
   const mountedRef = useRef(true);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasExplicitTargetUserIds = Array.isArray(targetUserIds);
+  const targetUserIdsKey = useMemo(() => normalizeTargetUserIds(targetUserIds).join('|'), [targetUserIds]);
 
   const runIfMounted = useCallback((fn: () => void) => {
     if (mountedRef.current) fn();
@@ -632,9 +647,26 @@ export function useProgressionData({
         runIfMounted(() => setRequiresLogin(true));
         return;
       }
-      const ownerUserId = typeof targetUserId === 'string' && targetUserId.trim().length > 0
+      const explicitTargetUserIds = targetUserIdsKey ? targetUserIdsKey.split('|') : [];
+      const singleTargetUserId = typeof targetUserId === 'string' && targetUserId.trim().length > 0
         ? targetUserId.trim()
-        : userId;
+        : null;
+      const ownerUserIds = explicitTargetUserIds.length
+        ? explicitTargetUserIds
+        : hasExplicitTargetUserIds
+          ? []
+          : singleTargetUserId
+            ? [singleTargetUserId]
+            : [userId];
+      const primaryOwnerUserId = ownerUserIds[0] ?? userId;
+
+      if (!ownerUserIds.length) {
+        clearDataState();
+        runIfMounted(() => setRequiresLogin(false));
+        return;
+      }
+      const applyOwnerFilter = (query: any, column: string) =>
+        ownerUserIds.length === 1 ? query.eq(column, ownerUserIds[0]) : query.in(column, ownerUserIds);
 
       runIfMounted(() => setRequiresLogin(false));
 
@@ -743,99 +775,107 @@ export function useProgressionData({
         { data: taskCounterExternalCurrent, error: taskCounterExternalCurrentError },
         { data: taskCounterExternalPrevious, error: taskCounterExternalPreviousError },
       ] = await Promise.all([
-        (supabase as any)
-          .from('task_template_self_feedback')
-          .select(focusSelect)
-          .eq('user_id', ownerUserId)
+        applyOwnerFilter(
+          (supabase as any).from('task_template_self_feedback').select(focusSelect),
+          'user_id'
+        )
           .gte('created_at', periodStart.toISOString())
           .order('created_at', { ascending: true }),
-        (supabase as any)
-          .from('task_template_self_feedback')
-          .select(focusSelect)
-          .eq('user_id', ownerUserId)
+        applyOwnerFilter(
+          (supabase as any).from('task_template_self_feedback').select(focusSelect),
+          'user_id'
+        )
           .gte('created_at', previousStart.toISOString())
           .lt('created_at', periodStart.toISOString())
           .order('created_at', { ascending: true }),
-        supabase
-          .from('activity_tasks')
-          .select(activityTaskSelect)
-          .not('task_template_id', 'is', null)
-          .gte('activities.activity_date', periodStartDate)
-          .lt('activities.activity_date', periodEndDate)
-          .eq('activities.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase
+            .from('activity_tasks')
+            .select(activityTaskSelect)
+            .not('task_template_id', 'is', null)
+            .gte('activities.activity_date', periodStartDate)
+            .lt('activities.activity_date', periodEndDate),
+          'activities.user_id'
+        )
           .order('created_at', { ascending: true }),
-        supabase
-          .from('activity_tasks')
-          .select(activityTaskSelect)
-          .not('task_template_id', 'is', null)
-          .gte('activities.activity_date', previousStartDate)
-          .lt('activities.activity_date', periodStartDate)
-          .eq('activities.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase
+            .from('activity_tasks')
+            .select(activityTaskSelect)
+            .not('task_template_id', 'is', null)
+            .gte('activities.activity_date', previousStartDate)
+            .lt('activities.activity_date', periodStartDate),
+          'activities.user_id'
+        )
           .order('created_at', { ascending: true }),
-        supabase
-          .from('activities')
-          .select(activitySelect)
-          .eq('user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('activities').select(activitySelect),
+          'user_id'
+        )
           .gte('activity_date', periodStartDate)
           .lt('activity_date', periodEndDate)
           .order('activity_date', { ascending: true }),
-        supabase
-          .from('activities')
-          .select(activitySelect)
-          .eq('user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('activities').select(activitySelect),
+          'user_id'
+        )
           .gte('activity_date', previousStartDate)
           .lt('activity_date', periodStartDate)
           .order('activity_date', { ascending: true }),
-        supabase
-          .from('external_event_tasks')
-          .select(externalTaskSelect)
-          .or('task_template_id.not.is.null,feedback_template_id.not.is.null')
-          .eq('events_local_meta.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase
+            .from('external_event_tasks')
+            .select(externalTaskSelect)
+            .or('task_template_id.not.is.null,feedback_template_id.not.is.null'),
+          'events_local_meta.user_id'
+        )
           .gte('events_local_meta.events_external.start_date', periodStartDate)
           .lt('events_local_meta.events_external.start_date', periodEndDate)
           .order('created_at', { ascending: true }),
-        supabase
-          .from('external_event_tasks')
-          .select(externalTaskSelect)
-          .or('task_template_id.not.is.null,feedback_template_id.not.is.null')
-          .eq('events_local_meta.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase
+            .from('external_event_tasks')
+            .select(externalTaskSelect)
+            .or('task_template_id.not.is.null,feedback_template_id.not.is.null'),
+          'events_local_meta.user_id'
+        )
           .gte('events_local_meta.events_external.start_date', previousStartDate)
           .lt('events_local_meta.events_external.start_date', periodStartDate)
           .order('created_at', { ascending: true }),
-        supabase
-          .from('events_local_meta')
-          .select(externalIntensitySelect)
-          .eq('user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('events_local_meta').select(externalIntensitySelect),
+          'user_id'
+        )
           .gte('events_external.start_date', periodStartDate)
           .lt('events_external.start_date', periodEndDate),
-        supabase
-          .from('events_local_meta')
-          .select(externalIntensitySelect)
-          .eq('user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('events_local_meta').select(externalIntensitySelect),
+          'user_id'
+        )
           .gte('events_external.start_date', previousStartDate)
           .lt('events_external.start_date', periodStartDate),
-        supabase
-          .from('activity_tasks')
-          .select(taskCounterInternalSelect)
-          .eq('activities.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('activity_tasks').select(taskCounterInternalSelect),
+          'activities.user_id'
+        )
           .gte('activities.activity_date', periodStartDate)
           .lt('activities.activity_date', periodEndDate),
-        supabase
-          .from('activity_tasks')
-          .select(taskCounterInternalSelect)
-          .eq('activities.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('activity_tasks').select(taskCounterInternalSelect),
+          'activities.user_id'
+        )
           .gte('activities.activity_date', previousStartDate)
           .lt('activities.activity_date', previousEndDate),
-        supabase
-          .from('external_event_tasks')
-          .select(taskCounterExternalSelect)
-          .eq('events_local_meta.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('external_event_tasks').select(taskCounterExternalSelect),
+          'events_local_meta.user_id'
+        )
           .gte('events_local_meta.events_external.start_date', periodStartDate)
           .lt('events_local_meta.events_external.start_date', periodEndDate),
-        supabase
-          .from('external_event_tasks')
-          .select(taskCounterExternalSelect)
-          .eq('events_local_meta.user_id', ownerUserId)
+        applyOwnerFilter(
+          supabase.from('external_event_tasks').select(taskCounterExternalSelect),
+          'events_local_meta.user_id'
+        )
           .gte('events_local_meta.events_external.start_date', previousStartDate)
           .lt('events_local_meta.events_external.start_date', previousEndDate),
       ]);
@@ -910,7 +950,7 @@ export function useProgressionData({
         const { data: taskCounterFeedbackRows, error: taskCounterFeedbackError } = await supabase
           .from('task_template_self_feedback')
           .select('activity_id, task_template_id, task_instance_id, rating, note, created_at')
-          .eq('user_id', ownerUserId)
+          .in('user_id', ownerUserIds)
           .in('activity_id', taskCounterActivityIds)
           .order('created_at', { ascending: false });
 
@@ -989,14 +1029,14 @@ export function useProgressionData({
 
       const focusRows = [...(focusCurrent || []), ...(focusPrevious || [])];
       const possibleTemplateIds = [
-        ...(possibleCurrent || []).map(row => row?.task_template_id),
-        ...(possiblePrevious || []).map(row => row?.task_template_id),
-        ...(externalPossibleCurrent || []).map(row => row?.task_template_id ?? row?.feedback_template_id),
-        ...(externalPossiblePrevious || []).map(row => row?.task_template_id ?? row?.feedback_template_id),
+        ...(possibleCurrent || []).map((row: any) => row?.task_template_id),
+        ...(possiblePrevious || []).map((row: any) => row?.task_template_id),
+        ...(externalPossibleCurrent || []).map((row: any) => row?.task_template_id ?? row?.feedback_template_id),
+        ...(externalPossiblePrevious || []).map((row: any) => row?.task_template_id ?? row?.feedback_template_id),
       ];
       const uniqueTemplateIds = Array.from(
         new Set(
-          [...focusRows.map(row => row?.task_template_id), ...possibleTemplateIds]
+          [...focusRows.map((row: any) => row?.task_template_id), ...possibleTemplateIds]
             .filter(Boolean)
             .map((id: any) => String(id))
         )
@@ -1168,7 +1208,7 @@ export function useProgressionData({
           ...entry,
           sessionKey: buildSessionKey({
             eventId: meta?.event_id ?? meta?.external_event_id ?? null,
-            userId: meta?.user_id ?? ownerUserId,
+            userId: meta?.user_id ?? primaryOwnerUserId,
             date: meta?.activity_date ?? null,
             time: meta?.activity_time ?? null,
           }),
@@ -1180,7 +1220,7 @@ export function useProgressionData({
         const event = meta.events_external ?? {};
         const activityDate = event.start_date ?? null;
         const activityTime = event.start_time ?? null;
-        const ownerId = meta.user_id ?? ownerUserId;
+        const ownerId = meta.user_id ?? primaryOwnerUserId;
         const eventId = event.id ?? meta.external_event_id ?? null;
         const templateId =
           row.task_template_id ? String(row.task_template_id) : row.feedback_template_id ? String(row.feedback_template_id) : null;
@@ -1231,7 +1271,7 @@ export function useProgressionData({
           focusColor: categoryMeta?.color,
           sessionKey: buildSessionKey({
             eventId,
-            userId: row.user_id ?? ownerUserId,
+            userId: row.user_id ?? primaryOwnerUserId,
             date: activityDate || row.created_at,
             time: activityTime,
           }),
@@ -1256,28 +1296,28 @@ export function useProgressionData({
         return `${prefix}:${normalized}`;
       };
       const toCurrentPossibleIds = [
-        ...(taskCounterInternalCurrent || []).map(row => mapTaskCounterId('internal', row)),
-        ...taskCounterExternalCurrentFiltered.map(row => mapTaskCounterId('external', row)),
+        ...(taskCounterInternalCurrent || []).map((row: any) => mapTaskCounterId('internal', row)),
+        ...taskCounterExternalCurrentFiltered.map((row: any) => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toCurrentCompletedIds = [
         ...(taskCounterInternalCurrent || [])
-          .filter(row => isInternalTaskCompletedForCounter(row))
-          .map(row => mapTaskCounterId('internal', row)),
+          .filter((row: any) => isInternalTaskCompletedForCounter(row))
+          .map((row: any) => mapTaskCounterId('internal', row)),
         ...taskCounterExternalCurrentFiltered
-          .filter(row => isExternalTaskCompletedForCounter(row))
-          .map(row => mapTaskCounterId('external', row)),
+          .filter((row: any) => isExternalTaskCompletedForCounter(row))
+          .map((row: any) => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toPreviousPossibleIds = [
-        ...(taskCounterInternalPrevious || []).map(row => mapTaskCounterId('internal', row)),
-        ...taskCounterExternalPreviousFiltered.map(row => mapTaskCounterId('external', row)),
+        ...(taskCounterInternalPrevious || []).map((row: any) => mapTaskCounterId('internal', row)),
+        ...taskCounterExternalPreviousFiltered.map((row: any) => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const toPreviousCompletedIds = [
         ...(taskCounterInternalPrevious || [])
-          .filter(row => isInternalTaskCompletedForCounter(row))
-          .map(row => mapTaskCounterId('internal', row)),
+          .filter((row: any) => isInternalTaskCompletedForCounter(row))
+          .map((row: any) => mapTaskCounterId('internal', row)),
         ...taskCounterExternalPreviousFiltered
-          .filter(row => isExternalTaskCompletedForCounter(row))
-          .map(row => mapTaskCounterId('external', row)),
+          .filter((row: any) => isExternalTaskCompletedForCounter(row))
+          .map((row: any) => mapTaskCounterId('external', row)),
       ].filter(Boolean) as string[];
       const mappedIntensityCurrent = [
         ...(intensityCurrent || []).map(mapIntensityRow),
@@ -1367,7 +1407,18 @@ export function useProgressionData({
     } finally {
       runIfMounted(() => setIsLoading(false));
     }
-  }, [days, targetUserId, mapFocusFeedbackRow, mapFocusPossibleRow, mapIntensityRow, categoryMap, clearDataState, runIfMounted]);
+  }, [
+    days,
+    targetUserId,
+    hasExplicitTargetUserIds,
+    targetUserIdsKey,
+    mapFocusFeedbackRow,
+    mapFocusPossibleRow,
+    mapIntensityRow,
+    categoryMap,
+    clearDataState,
+    runIfMounted,
+  ]);
 
   const scheduleRefetch = useCallback(
     (delayMs: number = 250) => {

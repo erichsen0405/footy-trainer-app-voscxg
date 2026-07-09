@@ -7,6 +7,7 @@ const mockUseFootball = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockUseAuthSession = jest.fn();
 const mockUseUserRole = jest.fn();
+const mockUseTeamPlayer = jest.fn();
 
 jest.mock('@/contexts/FootballContext', () => ({
   useFootball: () => mockUseFootball(),
@@ -22,6 +23,10 @@ jest.mock('@/contexts/AuthSessionContext', () => ({
 
 jest.mock('@/hooks/useUserRole', () => ({
   useUserRole: () => mockUseUserRole(),
+}));
+
+jest.mock('@/contexts/TeamPlayerContext', () => ({
+  useTeamPlayer: () => mockUseTeamPlayer(),
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -93,6 +98,18 @@ describe('Tasks delete confirmation modal', () => {
       adminTargetId: null,
       selectedContext: null,
       contextName: null,
+      startAdminPlayer: jest.fn(),
+      startAdminTeam: jest.fn(),
+      exitAdmin: jest.fn(),
+    });
+
+    mockUseTeamPlayer.mockReturnValue({
+      players: [],
+      teams: [],
+      selectedContext: { type: null, id: null, name: null },
+      loading: false,
+      ensureRosterLoaded: jest.fn().mockResolvedValue({ players: [], teams: [] }),
+      setSelectedContext: jest.fn().mockResolvedValue(undefined),
     });
 
     mockUseFootball.mockReturnValue({

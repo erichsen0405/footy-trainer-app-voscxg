@@ -20,6 +20,7 @@ import {
 type Props = {
   categories: ActivityCategory[];
   targetUserId?: string | null;
+  targetUserIds?: string[] | null;
 };
 
 type TierHistoryEntry = {
@@ -38,7 +39,7 @@ type TierTaskItem = {
   scoreExplanation?: string | null;
 };
 
-export function ProgressionSection({ categories, targetUserId = null }: Props) {
+export function ProgressionSection({ categories, targetUserId = null, targetUserIds = null }: Props) {
   const colorScheme = useColorScheme();
   const palette = useMemo(() => CommonStyles.getColors(colorScheme), [colorScheme]);
 
@@ -63,6 +64,7 @@ export function ProgressionSection({ categories, targetUserId = null }: Props) {
       intensityCategoryId: metric === 'intensity' ? selectedCategoryId : null,
       categories,
       targetUserId,
+      targetUserIds,
     });
   const hasFocusedOnceRef = useRef(false);
 
