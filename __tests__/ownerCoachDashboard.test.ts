@@ -339,6 +339,9 @@ describe('owner coach dashboard contract', () => {
       expect(homeSource).toContain('startAdminTeam(option.id)');
       expect(homeSource).toContain('exitAdmin()');
       expect(homeSource).toContain("kind: 'team'");
+      expect(homeSource).toContain('activityScopeFilterButtonActive');
+      expect(homeSource).toContain('presentation="compact"');
+      expect(homeSource).not.toContain('You can only edit content you created yourself.');
     });
 
     expect(home).toContain("adminTargetType === 'team'");

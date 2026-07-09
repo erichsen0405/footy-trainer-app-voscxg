@@ -1143,12 +1143,21 @@ export default function HomeScreen() {
   const lastStatsRefreshCompletedAtRef = useRef(0);
   const lastRoutePlayerOpenKeyRef = useRef<string | null>(null);
   const activityScopeButtonLabel = useMemo(() => {
-    if (adminMode === 'self') return 'All';
+    if (adminMode === 'self') return 'Filter';
     if (selectedContext?.name) return selectedContext.name;
     if (adminTargetType === 'team') return 'Team';
     if (adminTargetType === 'player') return 'Player';
-    return 'All';
+    return 'Filter';
   }, [adminMode, adminTargetType, selectedContext?.name]);
+  const activityScopeButtonIcon = useMemo(() => {
+    if (adminMode !== 'self' && adminTargetType === 'team') {
+      return { ios: 'person.3.fill', android: 'groups' } as const;
+    }
+    if (adminMode !== 'self' && adminTargetType === 'player') {
+      return { ios: 'person.crop.circle', android: 'person' } as const;
+    }
+    return { ios: 'line.3.horizontal.decrease.circle', android: 'filter_list' } as const;
+  }, [adminMode, adminTargetType]);
 
   const activityScopeOptions = useMemo<ActivityScopeOption[]>(() => {
     const playerOptions = (Array.isArray(players) ? players : []).map((player: Player) => ({
@@ -3059,7 +3068,17 @@ export default function HomeScreen() {
                   style={[
                     styles.loadMoreButton,
                     styles.activityScopeFilterButton,
-                    { backgroundColor: isDark ? '#2a2a2a' : colors.card, borderColor: isDark ? '#444' : colors.highlight },
+                    adminMode !== 'self' && styles.activityScopeFilterButtonActive,
+                    {
+                      backgroundColor:
+                        adminMode !== 'self'
+                          ? isDark ? 'rgba(76, 175, 80, 0.13)' : 'rgba(255, 255, 255, 0.72)'
+                          : isDark ? '#2a2a2a' : colors.card,
+                      borderColor:
+                        adminMode !== 'self'
+                          ? isDark ? 'rgba(112, 214, 143, 0.26)' : 'rgba(47, 125, 70, 0.22)'
+                          : isDark ? '#444' : colors.highlight,
+                    },
                   ]}
                   onPress={handleOpenActivityScopeModal}
                   accessibilityRole="button"
@@ -3067,13 +3086,17 @@ export default function HomeScreen() {
                   testID="home.activityScopeFilter.toggle"
                 >
                   <IconSymbol
-                    ios_icon_name="line.3.horizontal.decrease.circle"
-                    android_material_icon_name="filter_list"
-                    size={14}
-                    color={isDark ? '#e3e3e3' : colors.text}
+                    ios_icon_name={activityScopeButtonIcon.ios}
+                    android_material_icon_name={activityScopeButtonIcon.android}
+                    size={13}
+                    color={adminMode !== 'self' ? (isDark ? '#8EE0A8' : '#2F7D46') : isDark ? '#e3e3e3' : colors.text}
                   />
                   <Text
-                    style={[styles.loadMoreButtonText, styles.activityScopeFilterText, { color: isDark ? '#e3e3e3' : colors.text }]}
+                    style={[
+                      styles.loadMoreButtonText,
+                      styles.activityScopeFilterText,
+                      { color: adminMode !== 'self' ? (isDark ? '#D8F6E1' : '#243B2B') : isDark ? '#e3e3e3' : colors.text },
+                    ]}
                     numberOfLines={1}
                   >
                     {activityScopeButtonLabel}
@@ -3118,6 +3141,7 @@ export default function HomeScreen() {
     handleOpenPreviousWeeksModal,
     handleOpenActivityScopeModal,
     activityScopeButtonLabel,
+    activityScopeButtonIcon,
     handleOpenCreateModal,
     handleOpenIntensityModal,
     performanceMetrics,
@@ -3160,24 +3184,8 @@ export default function HomeScreen() {
   const ListHeaderComponent = useCallback(() => (
     <>
       <HomeBrandHeader />
-
-      {/* STEP E: Static inline info-box when adminMode !== 'self' */}
-      {adminMode !== 'self' && (
-        <View style={[styles.adminInfoBox, { backgroundColor: isDark ? '#3a2a1a' : '#FFF3E0', borderColor: isDark ? '#B8860B' : '#FF9800' }]}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="warning"
-            size={20}
-            color={isDark ? '#FFB74D' : '#F57C00'}
-          />
-          <Text style={[styles.adminInfoText, { color: isDark ? '#FFB74D' : '#E65100' }]}>
-            You can only edit content you created yourself.
-          </Text>
-        </View>
-      )}
-
     </>
-  ), [adminMode, isDark]);
+  ), []);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (
@@ -3189,6 +3197,7 @@ export default function HomeScreen() {
       isAdmin={isAdminMode}
       contextName={selectedContext?.name ?? undefined}
       contextType={adminTargetType || 'player'}
+      presentation="compact"
     >
       <StatusBar barStyle="dark-content" />
       
@@ -3488,24 +3497,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // Admin Info Box
-  adminInfoBox: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-  },
-  adminInfoText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
-  },
-
   // Create Button
   createButton: {
     backgroundColor: '#4CAF50',
@@ -3570,10 +3561,16 @@ const styles = StyleSheet.create({
     columnGap: 6,
   },
   activityScopeFilterButton: {
-    maxWidth: 190,
+    maxWidth: 168,
+  },
+  activityScopeFilterButtonActive: {
+    shadowColor: '#2F7D46',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
   },
   activityScopeFilterText: {
-    maxWidth: 140,
+    maxWidth: 118,
   },
   loadMoreButtonSecondary: {
     minWidth: 58,
