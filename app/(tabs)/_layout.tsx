@@ -151,7 +151,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/library',
       icon: 'book.fill',
       materialIcon: 'menu_book',
-      label: 'Library',
+      label: isTrainer ? 'Bibliotek' : 'Library',
     };
 
     const coachDashboardTab: TabBarItem = {
@@ -159,7 +159,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/coach-dashboard',
       icon: 'chart.bar.fill',
       materialIcon: 'dashboard',
-      label: 'Coach',
+      label: 'Overblik',
     };
 
     const playerCrmTab: TabBarItem = {
@@ -167,7 +167,15 @@ function FloatingTabsLayout({
       route: '/(tabs)/player-crm',
       icon: 'person.2.fill',
       materialIcon: 'groups',
-      label: 'CRM',
+      label: 'Spillere',
+    };
+
+    const planTab: TabBarItem = {
+      name: 'plan',
+      route: '/(tabs)/plan',
+      icon: 'calendar.badge.clock',
+      materialIcon: 'event_note',
+      label: 'Plan',
     };
 
     const profileTab: TabBarItem = {
@@ -178,15 +186,14 @@ function FloatingTabsLayout({
       label: 'Profile',
     };
 
-    const tabsForRole: TabBarItem[] = [homeTab, taskTab];
-
-    if (isPlayer || isTrainer) {
-      tabsForRole.push(performanceTab);
+    if (isTrainer) {
+      return [coachDashboardTab, playerCrmTab, planTab, libraryTab];
     }
 
-    if (isTrainer) {
-      tabsForRole.unshift(coachDashboardTab);
-      tabsForRole.push(playerCrmTab);
+    const tabsForRole: TabBarItem[] = [homeTab, taskTab];
+
+    if (isPlayer) {
+      tabsForRole.push(performanceTab);
     }
 
     tabsForRole.push(libraryTab, profileTab);
@@ -208,6 +215,7 @@ function FloatingTabsLayout({
         <Stack.Screen name="tasks" />
         <Stack.Screen name="performance" />
         <Stack.Screen name="player-crm" />
+        <Stack.Screen name="plan" />
         <Stack.Screen name="library" />
         <Stack.Screen name="profile" />
       </Stack>

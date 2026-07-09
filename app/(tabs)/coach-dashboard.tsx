@@ -783,8 +783,19 @@ export default function CoachDashboardScreen() {
       >
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
-            <Text style={[styles.title, { color: colors.text }]}>Coach Dashboard</Text>
-            {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+            <Text style={[styles.title, { color: colors.text }]}>Overblik</Text>
+            <View style={styles.headerActions}>
+              {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+              <TouchableOpacity
+                style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+                onPress={() => router.push('/(tabs)/profile' as any)}
+                activeOpacity={0.84}
+                accessibilityLabel="Open profile and settings"
+                testID="coachDashboard.profileButton"
+              >
+                <IconSymbol ios_icon_name="person.crop.circle" android_material_icon_name="account_circle" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
             {activeWorkspace?.name ?? dashboard?.ownerAccount.name ?? 'Owner workspace'}
@@ -1137,6 +1148,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 38,
+    columnGap: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  headerIconButton: {
+    width: 38,
+    height: 38,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 29,
