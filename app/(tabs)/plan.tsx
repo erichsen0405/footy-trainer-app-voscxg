@@ -53,6 +53,7 @@ type PlanSection = 'templates' | 'tasks' | 'programs' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
 type TemplateTypeFilter = 'all' | TrainingTemplateType;
 type ItemSourceMode = 'new' | 'saved' | 'library';
+type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
 
 type DraftItem = TrainingTemplateItemInput & {
   localId: string;
@@ -285,6 +286,20 @@ function createTaskConfigDraftFromLibraryItem(item: TrainingTemplateLibraryItem)
   };
 }
 
+function getTaskConfigMediaCount(value: unknown): number {
+  const record = asRecord(value);
+  return normalizeTaskVideoUrls(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url).length;
+}
+
+function getTemplateTaskConfig(template: TrainingTemplateSummary): Record<string, unknown> {
+  return asRecord(asRecord(template.metadata).task);
+}
+
+function getTemplateTimer(template: TrainingTemplateSummary): TrainingTemplateExerciseTimer | null {
+  const timer = asRecord(asRecord(template.metadata).timer);
+  return typeof timer.activeSeconds === 'number' ? timer as unknown as TrainingTemplateExerciseTimer : null;
+}
+
 function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
   const videoPayload = buildTaskVideoPayload(config.videoUrls);
   const mediaNamePayload = buildTaskMediaNamePayload(config.mediaNames, videoPayload.videoUrls);
@@ -431,7 +446,7 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
       linkedTemplateId: item.linkedTemplateId,
       title: item.title,
       description: item.description,
-      dayOffset: item.dayOffset,
+      dayOffset: template.templateType === 'session' ? 0 : item.dayOffset,
       startTime: item.startTime,
       durationMinutes: item.durationMinutes,
       sortOrder: item.sortOrder,
@@ -469,6 +484,7 @@ export default function PlanScreen() {
   const [itemSourceMode, setItemSourceMode] = useState<ItemSourceMode>('new');
   const [selectedReusableTemplateId, setSelectedReusableTemplateId] = useState<string | null>(null);
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
+  const [itemPickerMode, setItemPickerMode] = useState<ItemPickerMode>(null);
   const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
   const [uploadingItemMedia, setUploadingItemMedia] = useState(false);
   const { user } = useAuthSession();
@@ -580,6 +596,7 @@ export default function PlanScreen() {
     setItemSourceMode('new');
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
+    setItemPickerMode(null);
   }, []);
 
   const openCreate = useCallback((type: TrainingTemplateType = 'session') => {
@@ -613,7 +630,11 @@ export default function PlanScreen() {
         defaultActivityCategoryName: templateType === 'session' ? current.defaultActivityCategoryName : '',
         items: current.items
           .filter((item) => allowed.has(item.itemType))
-          .map((item, sortOrder) => ({ ...item, sortOrder })),
+          .map((item, sortOrder) => ({
+            ...item,
+            dayOffset: templateType === 'session' ? 0 : item.dayOffset,
+            sortOrder,
+          })),
       };
     });
     resetItemDraft(templateType);
@@ -624,12 +645,14 @@ export default function PlanScreen() {
     setItemSourceMode('new');
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
+    setItemPickerMode(null);
   }, []);
 
   const changeItemSourceMode = useCallback((nextSourceMode: ItemSourceMode) => {
     setItemSourceMode(nextSourceMode);
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
+    setItemPickerMode(nextSourceMode === 'saved' || nextSourceMode === 'library' ? nextSourceMode : null);
   }, []);
 
   const addDraftItem = useCallback(() => {
@@ -687,7 +710,7 @@ export default function PlanScreen() {
           linkedTemplateId: reusableTemplate?.id ?? null,
           title,
           description,
-          dayOffset: parsePositiveInt(itemDayOffset) ?? 0,
+          dayOffset: draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0,
           startTime,
           durationMinutes: parsePositiveInt(itemDuration),
           sortOrder: current.items.length,
@@ -770,6 +793,7 @@ export default function PlanScreen() {
               .filter((item) => allowed.has(item.itemType))
               .map((item, sortOrder) => ({
                 ...item,
+                dayOffset: draft.templateType === 'session' ? 0 : item.dayOffset,
                 sortOrder,
               })),
         changeNote: draft.id ? 'Mobile edit' : 'Mobile create',
@@ -1274,63 +1298,27 @@ export default function PlanScreen() {
                       </View>
 
                       {itemSourceMode === 'saved' ? (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reusablePickerRow}>
-                          {reusableTemplates.length ? (
-                            reusableTemplates.map((template) => {
-                              const active = selectedReusableTemplateId === template.id;
-                              return (
-                                <TouchableOpacity
-                                  key={template.id}
-                                  style={[
-                                    styles.reusablePickerChip,
-                                    {
-                                      backgroundColor: active ? colors.primary : colors.background,
-                                      borderColor: active ? colors.primary : colors.border,
-                                    },
-                                  ]}
-                                  onPress={() => setSelectedReusableTemplateId(template.id)}
-                                  activeOpacity={0.84}
-                                >
-                                  <Text style={[styles.reusablePickerText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-                                    {template.title}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })
-                          ) : (
-                            <Text style={[styles.pickerEmptyText, { color: colors.textSecondary }]}>No saved templates</Text>
-                          )}
-                        </ScrollView>
+                        <PickerTrigger
+                          title={selectedReusableTemplate?.title ?? 'Choose saved template'}
+                          detail={selectedReusableTemplate ? `${templateTypeLabel(selectedReusableTemplate.templateType)} template` : 'Saved tasks and exercises open in a popup'}
+                          icon={selectedReusableTemplate?.templateType === 'exercise' ? 'timer' : 'checklist'}
+                          materialIcon={selectedReusableTemplate?.templateType === 'exercise' ? 'timer' : 'checklist'}
+                          colors={colors}
+                          selected={Boolean(selectedReusableTemplate)}
+                          onPress={() => setItemPickerMode('saved')}
+                        />
                       ) : null}
 
                       {itemSourceMode === 'library' ? (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.reusablePickerRow}>
-                          {libraryItems.length ? (
-                            libraryItems.map((libraryItem) => {
-                              const active = selectedLibraryItemId === libraryItem.id;
-                              return (
-                                <TouchableOpacity
-                                  key={libraryItem.id}
-                                  style={[
-                                    styles.reusablePickerChip,
-                                    {
-                                      backgroundColor: active ? colors.primary : colors.background,
-                                      borderColor: active ? colors.primary : colors.border,
-                                    },
-                                  ]}
-                                  onPress={() => setSelectedLibraryItemId(libraryItem.id)}
-                                  activeOpacity={0.84}
-                                >
-                                  <Text style={[styles.reusablePickerText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-                                    {libraryItem.title}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })
-                          ) : (
-                            <Text style={[styles.pickerEmptyText, { color: colors.textSecondary }]}>No library items</Text>
-                          )}
-                        </ScrollView>
+                        <PickerTrigger
+                          title={selectedLibraryItem?.title ?? 'Choose from library'}
+                          detail={selectedLibraryItem?.categoryPath ?? 'Library exercises open in a popup'}
+                          icon="books.vertical"
+                          materialIcon="library_books"
+                          colors={colors}
+                          selected={Boolean(selectedLibraryItem)}
+                          onPress={() => setItemPickerMode('library')}
+                        />
                       ) : null}
                     </>
                   ) : null}
@@ -1377,14 +1365,16 @@ export default function PlanScreen() {
                   ) : null}
 
                   <View style={styles.itemMetaRow}>
-                    <TextInput
-                      style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                      value={itemDayOffset}
-                      onChangeText={(value) => setItemDayOffset(value.replace(/[^0-9]/g, ''))}
-                      placeholder="Day"
-                      placeholderTextColor={colors.textSecondary}
-                      keyboardType="number-pad"
-                    />
+                    {draft.templateType === 'week' ? (
+                      <TextInput
+                        style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                        value={itemDayOffset}
+                        onChangeText={(value) => setItemDayOffset(value.replace(/[^0-9]/g, ''))}
+                        placeholder="Day"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="number-pad"
+                      />
+                    ) : null}
                     <TextInput
                       style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                       value={itemStartTime}
@@ -1426,7 +1416,7 @@ export default function PlanScreen() {
                         </Text>
                         <Text style={[styles.draftItemMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                           {ITEM_TYPES.find((type) => type.value === item.itemType)?.label ?? item.itemType}
-                          {item.dayOffset ? ` · day ${item.dayOffset + 1}` : ''}
+                          {draft.templateType === 'week' && item.dayOffset ? ` · day ${item.dayOffset + 1}` : ''}
                           {item.startTime ? ` · ${String(item.startTime).slice(0, 5)}` : ''}
                           {item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
                           {timer ? ` · ${timer.rounds} x ${timer.activeSeconds}s/${timer.restSeconds}s` : ''}
@@ -1470,6 +1460,295 @@ export default function PlanScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      <ReusableItemPickerModal
+        visible={itemPickerMode !== null}
+        mode={itemPickerMode}
+        itemType={itemType}
+        templates={reusableTemplates}
+        libraryItems={libraryItems}
+        selectedTemplateId={selectedReusableTemplateId}
+        selectedLibraryItemId={selectedLibraryItemId}
+        colors={colors}
+        onClose={() => setItemPickerMode(null)}
+        onSelectTemplate={(template) => {
+          setSelectedReusableTemplateId(template.id);
+          setItemPickerMode(null);
+        }}
+        onSelectLibraryItem={(libraryItem) => {
+          setSelectedLibraryItemId(libraryItem.id);
+          setItemPickerMode(null);
+        }}
+      />
+    </View>
+  );
+}
+
+function PickerTrigger({
+  title,
+  detail,
+  icon,
+  materialIcon,
+  selected,
+  colors,
+  onPress,
+}: {
+  title: string;
+  detail: string;
+  icon: string;
+  materialIcon: string;
+  selected: boolean;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.pickerTrigger,
+        {
+          backgroundColor: colors.background,
+          borderColor: selected ? colors.primary : colors.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.84}
+    >
+      <View style={[styles.pickerTriggerIcon, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={18} color={colors.primary} />
+      </View>
+      <View style={styles.pickerTriggerBody}>
+        <Text style={[styles.pickerTriggerTitle, { color: colors.text }]} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={[styles.pickerTriggerDetail, { color: colors.textSecondary }]} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
+
+function ReusableItemPickerModal({
+  visible,
+  mode,
+  itemType,
+  templates,
+  libraryItems,
+  selectedTemplateId,
+  selectedLibraryItemId,
+  colors,
+  onClose,
+  onSelectTemplate,
+  onSelectLibraryItem,
+}: {
+  visible: boolean;
+  mode: ItemPickerMode;
+  itemType: DraftItem['itemType'];
+  templates: TrainingTemplateSummary[];
+  libraryItems: TrainingTemplateLibraryItem[];
+  selectedTemplateId: string | null;
+  selectedLibraryItemId: string | null;
+  colors: ReturnType<typeof getColors>;
+  onClose: () => void;
+  onSelectTemplate: (template: TrainingTemplateSummary) => void;
+  onSelectLibraryItem: (item: TrainingTemplateLibraryItem) => void;
+}) {
+  const isSaved = mode === 'saved';
+  const title = isSaved
+    ? `Choose saved ${itemType === 'exercise' ? 'exercise' : 'task'}`
+    : 'Choose from library';
+  const emptyText = isSaved ? 'No saved templates yet.' : 'No library items available.';
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.pickerOverlay}>
+        <View style={[styles.pickerSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <View style={styles.pickerHeader}>
+            <View style={styles.headerCopy}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>{title}</Text>
+              <Text style={[styles.pickerSubtitle, { color: colors.textSecondary }]}>
+                {isSaved ? 'Saved templates' : 'Exercise library'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+              onPress={onClose}
+              activeOpacity={0.84}
+            >
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.pickerList} showsVerticalScrollIndicator={false}>
+            {isSaved ? (
+              templates.length ? (
+                templates.map((template) => (
+                  <TemplatePickerCard
+                    key={template.id}
+                    template={template}
+                    selected={selectedTemplateId === template.id}
+                    colors={colors}
+                    onPress={() => onSelectTemplate(template)}
+                  />
+                ))
+              ) : (
+                <PickerEmptyState text={emptyText} colors={colors} />
+              )
+            ) : libraryItems.length ? (
+              libraryItems.map((libraryItem) => (
+                <LibraryPickerCard
+                  key={libraryItem.id}
+                  item={libraryItem}
+                  selected={selectedLibraryItemId === libraryItem.id}
+                  colors={colors}
+                  onPress={() => onSelectLibraryItem(libraryItem)}
+                />
+              ))
+            ) : (
+              <PickerEmptyState text={emptyText} colors={colors} />
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function TemplatePickerCard({
+  template,
+  selected,
+  colors,
+  onPress,
+}: {
+  template: TrainingTemplateSummary;
+  selected: boolean;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+}) {
+  const tone = getTemplateTone(template.templateType, colors);
+  const taskConfig = getTemplateTaskConfig(template);
+  const timer = getTemplateTimer(template);
+  const mediaCount = getTaskConfigMediaCount(taskConfig);
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.templateCard,
+        styles.pickerCard,
+        {
+          backgroundColor: colors.card,
+          borderColor: selected ? colors.primary : colors.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.86}
+    >
+      <View style={styles.templateHeader}>
+        <View style={[styles.templateIcon, { backgroundColor: `${tone}18`, borderColor: tone }]}>
+          <IconSymbol
+            ios_icon_name={TEMPLATE_TYPES.find((type) => type.value === template.templateType)?.icon as any}
+            android_material_icon_name={TEMPLATE_TYPES.find((type) => type.value === template.templateType)?.materialIcon as any}
+            size={20}
+            color={tone}
+          />
+        </View>
+        <View style={styles.templateTitleBlock}>
+          <Text style={[styles.templateTitle, { color: colors.text }]} numberOfLines={1}>
+            {template.title}
+          </Text>
+          <Text style={[styles.templateMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+            {templateTypeLabel(template.templateType)} · v{template.versionNumber}
+            {timer ? ` · ${timer.rounds} x ${timer.activeSeconds}s/${timer.restSeconds}s` : ''}
+          </Text>
+        </View>
+        {selected ? (
+          <View style={[styles.statusBadge, { borderColor: colors.primary }]}>
+            <Text style={[styles.statusBadgeText, { color: colors.primary }]}>Selected</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {template.description ? (
+        <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={2}>
+          {template.description}
+        </Text>
+      ) : null}
+
+      <View style={styles.templatePills}>
+        <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} />
+        {mediaCount ? <InfoPill text={`${mediaCount} media`} colors={colors} /> : null}
+        {template.focusAreas.slice(0, 2).map((focus) => (
+          <InfoPill key={focus} text={focus} colors={colors} />
+        ))}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function LibraryPickerCard({
+  item,
+  selected,
+  colors,
+  onPress,
+}: {
+  item: TrainingTemplateLibraryItem;
+  selected: boolean;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.templateCard,
+        styles.pickerCard,
+        {
+          backgroundColor: colors.card,
+          borderColor: selected ? colors.primary : colors.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.86}
+    >
+      <View style={styles.templateHeader}>
+        <View style={[styles.templateIcon, { backgroundColor: `${colors.warning}18`, borderColor: colors.warning }]}>
+          <IconSymbol ios_icon_name="books.vertical" android_material_icon_name="library_books" size={20} color={colors.warning} />
+        </View>
+        <View style={styles.templateTitleBlock}>
+          <Text style={[styles.templateTitle, { color: colors.text }]} numberOfLines={1}>
+            {item.title}
+          </Text>
+          <Text style={[styles.templateMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+            Library · {item.isSystem ? 'FootballCoach' : 'Coach'}
+          </Text>
+        </View>
+        {selected ? (
+          <View style={[styles.statusBadge, { borderColor: colors.primary }]}>
+            <Text style={[styles.statusBadgeText, { color: colors.primary }]}>Selected</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {item.description ? (
+        <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={2}>
+          {item.description}
+        </Text>
+      ) : null}
+
+      <View style={styles.templatePills}>
+        {item.categoryPath ? <InfoPill text={item.categoryPath} colors={colors} /> : null}
+        {item.videoUrls.length ? <InfoPill text={`${item.videoUrls.length} media`} colors={colors} /> : null}
+        {item.subtasks.length ? <InfoPill text={`${item.subtasks.length} subtasks`} colors={colors} /> : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function PickerEmptyState({ text, colors }: { text: string; colors: ReturnType<typeof getColors> }) {
+  return (
+    <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={28} color={colors.textSecondary} />
+      <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>{text}</Text>
     </View>
   );
 }
@@ -2361,27 +2640,73 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
   },
-  reusablePickerRow: {
-    columnGap: 6,
-    paddingBottom: 8,
-  },
-  reusablePickerChip: {
-    minHeight: 34,
-    maxWidth: 180,
+  pickerTrigger: {
+    minHeight: 58,
     borderWidth: 1,
     borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  pickerTriggerIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 10,
   },
-  reusablePickerText: {
-    fontSize: 12,
-    fontWeight: '800',
+  pickerTriggerBody: {
+    flex: 1,
+    minWidth: 0,
   },
-  pickerEmptyText: {
-    minHeight: 34,
+  pickerTriggerTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  pickerTriggerDetail: {
     fontSize: 12,
-    fontWeight: '800',
-    paddingTop: 8,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    maxHeight: '84%',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 18,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 12,
+    marginBottom: 12,
+  },
+  pickerTitle: {
+    fontSize: 21,
+    fontWeight: '900',
+  },
+  pickerSubtitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  pickerList: {
+    rowGap: 10,
+    paddingBottom: 12,
+  },
+  pickerCard: {
+    borderWidth: 2,
   },
   itemMetaRow: {
     flexDirection: 'row',

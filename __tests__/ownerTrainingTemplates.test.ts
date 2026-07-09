@@ -316,9 +316,16 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("value: 'exercise', label: 'Exercise'");
     expect(plan).toContain('Interval timer');
     expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
+    expect(plan).toContain('type ItemPickerMode');
+    expect(plan).toContain('ReusableItemPickerModal');
+    expect(plan).toContain('TemplatePickerCard');
+    expect(plan).toContain('LibraryPickerCard');
     expect(plan).toContain('selectedReusableTemplateId');
     expect(plan).toContain('selectedLibraryItemId');
     expect(plan).toContain('buildTaskConfigPayloadFromLibraryItem');
+    expect(plan).toContain("draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0");
+    expect(plan).toContain("draft.templateType === 'session' ? 0 : item.dayOffset");
+    expect(plan).not.toContain('reusablePickerChip');
     expect(plan).not.toContain("value: 'activity', label: 'Activity'");
     expect(plan).toContain("router.push('/(tabs)/tasks'");
     expect(plan).toContain('plan.template.create.${type.value}');
@@ -333,6 +340,8 @@ describe('owner training templates contract', () => {
     expect(base44Prompt).toContain('training_templates');
     expect(base44Prompt).toContain('template_versions');
     expect(base44Prompt).toContain('Player og guardian maa ikke have template-admin adgang');
+    expect(base44Prompt).toContain('popup/bottom sheet');
+    expect(base44Prompt).toContain('Day-vaelger i session builderen');
     expect(base44Prompt).toContain('supabase functions list --project-ref lhpczofddvwcyrgotzha');
   });
 });

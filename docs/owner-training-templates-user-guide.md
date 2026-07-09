@@ -102,9 +102,11 @@ For hvert item kan du angive placering:
 
 - titel
 - noter/beskrivelse
-- dagnummer/day offset
 - starttid
 - varighed i minutter
+
+`Day` vises kun, naar du arbejder med en `Week` skabelon. En `Session`
+er altid samme dag som aktiviteten, saa session-items har ikke day-vaelger.
 
 For `Task` og `Exercise` kan du derudover angive de samme felter som paa normale
 opgaver:
@@ -133,6 +135,10 @@ vaelge mellem tre kilder:
   reminder og tid.
 - `Saved`: vaelg en eksisterende gemt `Task` eller `Exercise` skabelon.
 - `Library`: vaelg en oevelse fra biblioteket.
+
+Paa mobil aabner `Saved` og `Library` en popup med kort, saa du kan gennemse
+gemte tasks, exercises og library-oevelser i samme kortstil som resten af
+Plan/Bibliotek.
 
 Hvis du bruger `New` eller `Library`, bliver itemet automatisk gemt som sin egen
 selvstaendige `Task` eller `Exercise` skabelon, naar du gemmer sessionen eller

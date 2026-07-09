@@ -476,11 +476,16 @@ Byg en desktop-effektiv template builder i eksisterende owner portal:
 - folder/kategori filter
 - liste med titel, type, varighed, fokusomraader, item count og version
 - handlinger: opret, rediger, dupliker, arkiver, gendan
-- builder med ordered items, drag/reorder, day offset, duration og preview
+- builder med ordered items, drag/reorder, starttid, duration og preview
+- paa mobil skal valg af `Saved` eller `Library` aabne en popup/bottom sheet med
+  de samme kort-typer som resten af template/library UI'et; vis ikke saved eller
+  library listen som smaa inline chips i formularen
 
 Session-template:
 
 - er selve sessionen/aktiviteten og kan have default aktivitetskategori
+- session items ligger per default paa samme dag som sessionen; vis ikke
+  `dayOffset`/Day-vaelger i session builderen
 - kan indeholde task-template items, exercise items, feedback requirements,
   notes og focus items
 - task og exercise items kan oprettes som nye inline items, vaelges fra gemte
@@ -493,6 +498,8 @@ Week-template:
 
 - kan indeholde task-template items, exercise items, session templates eller
   focus/note items med `dayOffset`
+- vis Day-vaelgeren i week builderen, da week items fordeles paa dag 1, dag 2
+  osv.
 - task og exercise items bruger samme `New`/`Saved`/`Library` flow som session
   templates
 - preview skal vise dag 1, dag 2 osv.
