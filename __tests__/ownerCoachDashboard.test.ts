@@ -329,6 +329,22 @@ describe('owner coach dashboard contract', () => {
     expect(playerCrm).toContain('void openPlayerDetail(player)');
   });
 
+  it('adds a trainer-only mobile activity scope filter for players and teams', () => {
+    [home, homeIos].forEach((homeSource) => {
+      expect(homeSource).toContain('home.activityScopeFilter.toggle');
+      expect(homeSource).toContain('isTrainerProfile');
+      expect(homeSource).toContain('canFilterActivities: isTrainerProfile');
+      expect(homeSource).toContain('ensureRosterLoaded()');
+      expect(homeSource).toContain('startAdminPlayer(option.id)');
+      expect(homeSource).toContain('startAdminTeam(option.id)');
+      expect(homeSource).toContain('exitAdmin()');
+      expect(homeSource).toContain("kind: 'team'");
+    });
+
+    expect(home).toContain("adminTargetType === 'team'");
+    expect(homeIos).toContain("adminTargetType === 'team'");
+  });
+
   it('routes no-plan alert actions to player-scoped activities for web clients', () => {
     expect(noPlanActivityTargetMigration).toContain("alert->>'type' = 'no_plan'");
     expect(noPlanActivityTargetMigration).toContain("jsonb_build_object('target', 'activities', 'playerId'");

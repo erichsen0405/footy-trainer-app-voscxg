@@ -58,7 +58,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { BackHandler, FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground, InteractionManager } from 'react-native';
+import { BackHandler, FlatList, View, Text, StyleSheet, Pressable, StatusBar, RefreshControl, Platform, useColorScheme, DeviceEventEmitter, Image, ImageBackground, InteractionManager, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Stop, LinearGradient as SvgLinearGradient, Circle, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -68,7 +68,8 @@ import { useHomeActivities } from '@/hooks/useHomeActivities';
 import { useFootball } from '@/contexts/FootballContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useAdmin } from '@/contexts/AdminContext';
-import { useTeamPlayer } from '@/contexts/TeamPlayerContext';
+import { useTeamPlayer, type Player, type Team } from '@/contexts/TeamPlayerContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
@@ -93,6 +94,11 @@ type HomeRouteParams = {
   playerId?: string | string[];
   openAt?: string | string[];
 };
+
+type ActivityScopeOption =
+  | { kind: 'all'; id: 'all'; label: string; detail: string }
+  | { kind: 'player'; id: string; label: string; detail: string }
+  | { kind: 'team'; id: string; label: string; detail: string };
 
 const readLocalSearchParams = (
   typeof useLocalSearchParams === 'function' ? useLocalSearchParams : () => ({})
@@ -1074,6 +1080,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const params = readLocalSearchParams<HomeRouteParams>();
   const { user } = useAuthSession();
+  const { userRole } = useUserRole();
   const {
     activities,
     loading,
@@ -1090,13 +1097,17 @@ export default function HomeScreen() {
     ensureCurrentWeekStatsLoaded,
     updateIntensityByCategory,
   } = useFootball();
-  const { adminMode, adminTargetType, startAdminPlayer } = useAdmin();
-  const { selectedContext } = useTeamPlayer();
+  const { adminMode, adminTargetId, adminTargetType, startAdminPlayer, startAdminTeam, exitAdmin } = useAdmin();
+  const { selectedContext, players, teams, setSelectedContext, ensureRosterLoaded } = useTeamPlayer();
+  const isTrainerProfile = userRole === 'admin' || userRole === 'trainer';
   const routePlayerId = normalizeId(getRouteParam(params.playerId));
   const routeOpenAt = normalizeId(getRouteParam(params.openAt));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPreviousWeeks, setShowPreviousWeeks] = useState(0);
   const [isPreviousWeeksModalVisible, setIsPreviousWeeksModalVisible] = useState(false);
+  const [isActivityScopeModalVisible, setIsActivityScopeModalVisible] = useState(false);
+  const [isActivityScopeRosterLoading, setIsActivityScopeRosterLoading] = useState(false);
+  const [activityScopeError, setActivityScopeError] = useState<string | null>(null);
   const [expandedUpcomingWeeks, setExpandedUpcomingWeeks] = useState<Record<string, boolean>>({});
   const [expandedUpcomingDays, setExpandedUpcomingDays] = useState<Record<string, boolean>>({});
   const [isCurrentWeekTodayOnly, setIsCurrentWeekTodayOnly] = useState(true);
@@ -1113,12 +1124,60 @@ export default function HomeScreen() {
   const lastStatsRefreshStartedAtRef = useRef(0);
   const lastStatsRefreshCompletedAtRef = useRef(0);
   const lastRoutePlayerOpenKeyRef = useRef<string | null>(null);
+  const activityScopeButtonLabel = useMemo(() => {
+    if (adminMode === 'self') return 'All';
+    if (selectedContext?.name) return selectedContext.name;
+    if (adminTargetType === 'team') return 'Team';
+    if (adminTargetType === 'player') return 'Player';
+    return 'All';
+  }, [adminMode, adminTargetType, selectedContext?.name]);
+
+  const activityScopeOptions = useMemo<ActivityScopeOption[]>(() => {
+    const playerOptions = (Array.isArray(players) ? players : []).map((player: Player) => ({
+      kind: 'player' as const,
+      id: player.id,
+      label: player.full_name || player.email || 'Player',
+      detail: 'Player activities',
+    }));
+    const teamOptions = (Array.isArray(teams) ? teams : []).map((team: Team) => ({
+      kind: 'team' as const,
+      id: team.id,
+      label: team.name || 'Team',
+      detail: 'Team activities',
+    }));
+
+    return [
+      { kind: 'all', id: 'all', label: 'All activities', detail: 'Your activity overview' },
+      ...playerOptions,
+      ...teamOptions,
+    ];
+  }, [players, teams]);
+
+  const activityScopeStatusMessage = useMemo(() => {
+    if (isActivityScopeRosterLoading) return 'Loading players and teams...';
+    if (activityScopeError) return activityScopeError;
+    if (!activityScopeOptions.some((option) => option.kind !== 'all')) return 'No players or teams yet.';
+    return null;
+  }, [activityScopeError, activityScopeOptions, isActivityScopeRosterLoading]);
 
   useEffect(() => {
     if (loading || emittedHomeReadyRef.current) return;
     emittedHomeReadyRef.current = true;
     markHomeScreenReady();
   }, [loading]);
+
+  const loadActivityScopeRoster = useCallback(async () => {
+    setIsActivityScopeRosterLoading(true);
+    setActivityScopeError(null);
+
+    try {
+      await ensureRosterLoaded();
+    } catch {
+      setActivityScopeError('Could not load players and teams.');
+    } finally {
+      setIsActivityScopeRosterLoading(false);
+    }
+  }, [ensureRosterLoaded]);
 
   useEffect(() => {
     if (!routePlayerId) return;
@@ -1876,6 +1935,83 @@ export default function HomeScreen() {
     setIsPreviousWeeksModalVisible(false);
   }, []);
 
+  const handleOpenActivityScopeModal = useCallback(() => {
+    if (!isTrainerProfile) return;
+    setIsActivityScopeModalVisible(true);
+    void loadActivityScopeRoster();
+  }, [isTrainerProfile, loadActivityScopeRoster]);
+
+  const handleCloseActivityScopeModal = useCallback(() => {
+    setIsActivityScopeModalVisible(false);
+  }, []);
+
+  const isActivityScopeOptionSelected = useCallback(
+    (option: ActivityScopeOption) => {
+      if (option.kind === 'all') return adminMode === 'self';
+      return adminMode === option.kind && adminTargetType === option.kind && adminTargetId === option.id;
+    },
+    [adminMode, adminTargetId, adminTargetType]
+  );
+
+  const handleSelectActivityScope = useCallback(
+    (option: ActivityScopeOption) => {
+      if (option.kind === 'all') {
+        exitAdmin();
+        void setSelectedContext({ type: null, id: null, name: null });
+      } else if (option.kind === 'player') {
+        startAdminPlayer(option.id);
+        void setSelectedContext({ type: 'player', id: option.id, name: option.label });
+      } else {
+        startAdminTeam(option.id);
+        void setSelectedContext({ type: 'team', id: option.id, name: option.label });
+      }
+
+      setIsActivityScopeModalVisible(false);
+    },
+    [exitAdmin, setSelectedContext, startAdminPlayer, startAdminTeam]
+  );
+
+  const renderActivityScopeOption = useCallback(
+    ({ item }: { item: ActivityScopeOption }) => {
+      const selected = isActivityScopeOptionSelected(item);
+      return (
+        <Pressable
+          testID={`home.activityScopeFilter.option.${item.kind}.${item.id}`}
+          style={[
+            styles.activityScopeOption,
+            {
+              backgroundColor: selected ? colors.primary : isDark ? '#171717' : '#FFFFFF',
+              borderColor: selected ? colors.primary : isDark ? '#333' : '#E2E8E4',
+            },
+          ]}
+          onPress={() => handleSelectActivityScope(item)}
+        >
+          <View style={styles.activityScopeOptionTextBlock}>
+            <Text
+              style={[styles.activityScopeOptionLabel, { color: selected ? '#FFFFFF' : isDark ? '#F4F4F4' : colors.text }]}
+              numberOfLines={1}
+            >
+              {item.label}
+            </Text>
+            <Text
+              style={[
+                styles.activityScopeOptionDetail,
+                { color: selected ? 'rgba(255,255,255,0.8)' : isDark ? '#A8A8A8' : colors.textSecondary },
+              ]}
+              numberOfLines={1}
+            >
+              {item.detail}
+            </Text>
+          </View>
+          {selected ? (
+            <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={20} color="#FFFFFF" />
+          ) : null}
+        </Pressable>
+      );
+    },
+    [handleSelectActivityScope, isActivityScopeOptionSelected, isDark]
+  );
+
   const buildUpcomingDayToggleKey = useCallback((weekKey: string, dayKey: string) => {
     return `${weekKey}::${dayKey}`;
   }, []);
@@ -2160,12 +2296,14 @@ export default function HomeScreen() {
       });
     };
 
-    // Add control row for previous weeks (opened in modal)
-    if (safePreviousWeekSummaries.length > 0) {
+    // Add control row for previous weeks and trainer activity scope.
+    if (safePreviousWeekSummaries.length > 0 || isTrainerProfile) {
       data.push({
         type: 'loadMore',
         key: 'loadMore:previous',
         canLoadMore: showPreviousWeeks < safePreviousWeekSummaries.length,
+        canFilterActivities: isTrainerProfile,
+        hasPreviousWeeks: safePreviousWeekSummaries.length > 0,
         source: 'main',
       });
     }
@@ -2186,6 +2324,7 @@ export default function HomeScreen() {
   }, [
     currentWeekSummary,
     isCurrentWeekTodayOnly,
+    isTrainerProfile,
     previousWeekSummaries,
     showPreviousWeeks,
     upcomingWeekSummaries,
@@ -2779,6 +2918,8 @@ export default function HomeScreen() {
 
       case 'loadMore':
         const canLoadMore = item.canLoadMore === true;
+        const canFilterActivities = item.canFilterActivities === true;
+        const hasPreviousWeeks = item.hasPreviousWeeks === true;
         if (item.source === 'modal') {
           if (!canLoadMore) return null;
           return (
@@ -2816,23 +2957,54 @@ export default function HomeScreen() {
         return (
           <View style={styles.loadMoreContainer}>
             <View style={styles.loadMoreButtonRow}>
-              <Pressable
-                style={[
-                  styles.loadMoreButton,
-                  {
-                    backgroundColor: isDark ? '#2a2a2a' : colors.card,
-                    borderColor: isDark ? '#444' : colors.highlight,
-                  },
-                ]}
-                onPress={handleOpenPreviousWeeksModal}
-                accessibilityRole="button"
-                accessibilityLabel="Show previous weeks"
-                testID="home.previousWeeks.toggle"
-              >
-                <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
-                  Previous
-                </Text>
-              </Pressable>
+              {canFilterActivities ? (
+                <Pressable
+                  style={[
+                    styles.loadMoreButton,
+                    styles.activityScopeFilterButton,
+                    {
+                      backgroundColor: isDark ? '#2a2a2a' : colors.card,
+                      borderColor: isDark ? '#444' : colors.highlight,
+                    },
+                  ]}
+                  onPress={handleOpenActivityScopeModal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Filter activities by player or team"
+                  testID="home.activityScopeFilter.toggle"
+                >
+                  <IconSymbol
+                    ios_icon_name="line.3.horizontal.decrease.circle"
+                    android_material_icon_name="filter_list"
+                    size={14}
+                    color={isDark ? '#e3e3e3' : colors.text}
+                  />
+                  <Text
+                    style={[styles.loadMoreButtonText, styles.activityScopeFilterText, { color: isDark ? '#e3e3e3' : colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {activityScopeButtonLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {hasPreviousWeeks ? (
+                <Pressable
+                  style={[
+                    styles.loadMoreButton,
+                    {
+                      backgroundColor: isDark ? '#2a2a2a' : colors.card,
+                      borderColor: isDark ? '#444' : colors.highlight,
+                    },
+                  ]}
+                  onPress={handleOpenPreviousWeeksModal}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show previous weeks"
+                  testID="home.previousWeeks.toggle"
+                >
+                  <Text style={[styles.loadMoreButtonText, { color: isDark ? '#e3e3e3' : colors.text }]}>
+                    Previous
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         );
@@ -2856,6 +3028,8 @@ export default function HomeScreen() {
     router,
     handleLoadMorePrevious,
     handleOpenPreviousWeeksModal,
+    handleOpenActivityScopeModal,
+    activityScopeButtonLabel,
     handleOpenCreateModal,
     performanceMetrics,
     feedbackCompletionByActivityId,
@@ -2984,6 +3158,57 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : null}
+
+      <Modal
+        visible={isTrainerProfile && isActivityScopeModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseActivityScopeModal}
+      >
+        <Pressable style={styles.activityScopeBackdrop} onPress={handleCloseActivityScopeModal}>
+          <Pressable
+            style={[
+              styles.activityScopeModalCard,
+              {
+                backgroundColor: isDark ? '#111' : '#F8FBF8',
+                borderColor: isDark ? '#333' : '#DDEADF',
+                paddingBottom: Math.max(insets.bottom, 16),
+              },
+            ]}
+            onPress={() => undefined}
+          >
+            <View style={styles.activityScopeModalHeader}>
+              <Text style={[styles.activityScopeModalTitle, { color: isDark ? '#F4F4F4' : colors.text }]}>Activities</Text>
+              <Pressable
+                style={[styles.activityScopeCloseButton, { borderColor: isDark ? '#444' : '#D6D6D6' }]}
+                onPress={handleCloseActivityScopeModal}
+                accessibilityRole="button"
+                accessibilityLabel="Close activity filter"
+                testID="home.activityScopeFilter.close"
+              >
+                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={18} color={isDark ? '#E6F5EC' : colors.text} />
+              </Pressable>
+            </View>
+
+            <FlatList
+              data={activityScopeOptions}
+              keyExtractor={(item) => `${item.kind}:${item.id}`}
+              renderItem={renderActivityScopeOption}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.activityScopeListContent}
+              ListFooterComponent={
+                activityScopeStatusMessage ? (
+                  <View style={[styles.activityScopeState, { backgroundColor: isDark ? '#171717' : '#FFFFFF', borderColor: isDark ? '#333' : '#E2E8E4' }]}>
+                    <Text style={[styles.activityScopeStateText, { color: isDark ? '#A8A8A8' : colors.textSecondary }]}>
+                      {activityScopeStatusMessage}
+                    </Text>
+                  </View>
+                ) : null
+              }
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Create Activity Modal */}
       {showCreateModal ? (
@@ -3239,6 +3464,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     columnGap: 6,
   },
+  activityScopeFilterButton: {
+    maxWidth: 190,
+  },
+  activityScopeFilterText: {
+    maxWidth: 140,
+  },
   loadMoreButtonSecondary: {
     minWidth: 58,
     justifyContent: 'center',
@@ -3287,6 +3518,80 @@ const styles = StyleSheet.create({
   previousModalListContent: {
     paddingTop: 8,
     paddingBottom: 24,
+  },
+  activityScopeBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.34)',
+  },
+  activityScopeModalCard: {
+    maxHeight: '74%',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+  },
+  activityScopeModalHeader: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  activityScopeModalTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  activityScopeCloseButton: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityScopeListContent: {
+    rowGap: 8,
+    paddingBottom: 8,
+  },
+  activityScopeOption: {
+    minHeight: 58,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 10,
+  },
+  activityScopeOptionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  activityScopeOptionLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  activityScopeOptionDetail: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  activityScopeState: {
+    minHeight: 58,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    justifyContent: 'center',
+  },
+  activityScopeStateText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   emptyContainer: {
     paddingHorizontal: 16,
