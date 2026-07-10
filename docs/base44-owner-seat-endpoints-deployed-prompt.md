@@ -9,12 +9,14 @@ Functions for owner seats.
 Disse Supabase Edge Functions er deployet til projektet
 `lhpczofddvwcyrgotzha`:
 
-- `getOwnerSeatStatus`
-- `assertOwnerSeatAvailable`
-- `createOwnerAccount`
-- `upsertOwnerSeatAdjustment`
-- `listPlatformAdminOwnerAccounts`
-- `deleteOwnerAccount`
+| Endpoint | Remote status | Notes |
+| --- | --- | --- |
+| `getOwnerSeatStatus` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `assertOwnerSeatAvailable` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `createOwnerAccount` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `upsertOwnerSeatAdjustment` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `listPlatformAdminOwnerAccounts` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `deleteOwnerAccount` | ACTIVE | Protected; unauthenticated smoke returns `401`, not `404`. |
 
 Base URL:
 
@@ -297,6 +299,19 @@ Function:
 ```text
 deleteOwnerAccount
 ```
+
+Remote status per 2026-07-10:
+
+```text
+Endpoint: deleteOwnerAccount
+Status: ACTIVE
+URL: https://lhpczofddvwcyrgotzha.supabase.co/functions/v1/deleteOwnerAccount
+Unauthenticated smoke result: 401 UNAUTHORIZED_NO_AUTH_HEADER
+```
+
+If Base44 shows `Status: —` for this endpoint, treat that as a Base44
+configuration/display issue, not a missing backend endpoint. The endpoint exists
+on project `lhpczofddvwcyrgotzha`.
 
 Kun platform admins maa bruge denne. Brug den fra slette-dialogen i
 platform-admin owner account listen. Base44 maa ikke slette fra tabeller

@@ -349,6 +349,9 @@ describe('owner licensing backend helpers', () => {
     expect(ownerSeatBase44Prompt).toContain('Treat `data.ownerAccounts` as the full source of truth');
     expect(ownerSeatBase44Prompt).toContain('Refetch maa ikke merge med den gamle liste');
     expect(ownerSeatBase44Prompt).toContain('Fjern straks den slettede row fra lokal state');
+    expect(ownerSeatBase44Prompt).toContain('| `deleteOwnerAccount` | ACTIVE | Protected; unauthenticated smoke returns `401`, not `404`. |');
+    expect(ownerSeatBase44Prompt).toContain('URL: https://lhpczofddvwcyrgotzha.supabase.co/functions/v1/deleteOwnerAccount');
+    expect(ownerSeatBase44Prompt).toContain('If Base44 shows `Status: —`');
   });
 
   it('calls the platform owner account delete RPC', async () => {
