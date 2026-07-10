@@ -2,9 +2,10 @@ import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { DeviceEventEmitter } from 'react-native';
 
-import LibraryScreen from '../app/(tabs)/library';
+import LibraryScreen, { LibraryExperience } from '../app/(tabs)/library';
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockUseUserRole = jest.fn();
 const mockUseSubscriptionFeatures = jest.fn();
 const mockUseTeamPlayer = jest.fn();
@@ -15,7 +16,7 @@ const mockAuthGetUser = jest.fn();
 const mockResolveQuery = jest.fn();
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
 }));
 
 jest.mock('@react-navigation/native', () => ({
@@ -264,6 +265,31 @@ describe('Library screen gating and card state', () => {
     });
   });
 
+  it('redirects player and trainer library entry points to their Plan experience', async () => {
+    mockUseSubscriptionFeatures.mockReturnValue({
+      featureAccess: { library: true, calendarSync: true, trainerLinking: true },
+      isLoading: false,
+      subscriptionTier: 'player_premium',
+    });
+
+    mockUseUserRole.mockReturnValue({ userRole: 'player', loading: false, isTrainer: false, isAdmin: false });
+    const playerRender = render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/(tabs)/tasks');
+    });
+
+    playerRender.unmount();
+    mockReplace.mockClear();
+
+    mockUseUserRole.mockReturnValue({ userRole: 'trainer', loading: false, isTrainer: true, isAdmin: false });
+    render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/(tabs)/plan');
+    });
+  });
+
   it('shows paywall gate when player has no library access', async () => {
     setupSupabaseFixture({});
 
@@ -274,7 +300,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_basic',
     });
 
-    const { findByText, queryByText } = render(<LibraryScreen />);
+    const { findByText, queryByText } = render(<LibraryExperience />);
 
     expect(await findByText('The library requires Premium')).toBeTruthy();
     expect(queryByText(/Add to tasks/i)).toBeNull();
@@ -300,7 +326,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, queryByText } = render(<LibraryScreen />);
+    const { findByText, queryByText } = render(<LibraryExperience />);
 
     expect(await findByText(/Library/i)).toBeTruthy();
     expect(queryByText(/requires Premium/i)).toBeNull();
@@ -329,7 +355,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByTestId, getByText, queryByTestId } = render(<LibraryScreen />);
+    const { findByTestId, getByText, queryByTestId } = render(<LibraryExperience />);
 
     expect(await findByTestId('library.topRow.primary')).toBeTruthy();
     expect(await findByTestId('library.scrollHint.primary')).toBeTruthy();
@@ -389,7 +415,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByTestId, getByText, queryByTestId, queryByText } = render(<LibraryScreen />);
+    const { findByTestId, getByText, queryByTestId, queryByText } = render(<LibraryExperience />);
 
     expect(queryByTestId('library.topRow.secondary')).toBeNull();
 
@@ -431,7 +457,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByTestId } = render(<LibraryScreen />);
+    const { findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByTestId('library.folder.footballcoach'));
     expect(await findByTestId('library.topRow.secondary')).toBeTruthy();
@@ -484,7 +510,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
@@ -516,7 +542,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Personal/i));
 
@@ -545,7 +571,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Personal/i));
 
@@ -577,7 +603,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Personal/i));
     fireEvent.press(await findByTestId('library.addToTasksButton.ex-3'));
@@ -615,7 +641,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const firstRender = render(<LibraryScreen />);
+    const firstRender = render(<LibraryExperience />);
     fireEvent.press(await firstRender.findByText(/Personal/i));
     await waitFor(async () => {
       const addButton = await firstRender.findByTestId('library.addToTasksButton.ex-linked-1');
@@ -624,7 +650,7 @@ describe('Library screen gating and card state', () => {
     });
     firstRender.unmount();
 
-    const secondRender = render(<LibraryScreen />);
+    const secondRender = render(<LibraryExperience />);
     fireEvent.press(await secondRender.findByText(/Personal/i));
     await waitFor(async () => {
       const addButton = await secondRender.findByTestId('library.addToTasksButton.ex-linked-1');
@@ -665,7 +691,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'trainer_basic',
     });
 
-    const { findByText, findByTestId, queryByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId, queryByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Personal/i));
 
@@ -736,7 +762,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
@@ -789,7 +815,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
@@ -858,7 +884,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
@@ -911,7 +937,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));
@@ -978,7 +1004,7 @@ describe('Library screen gating and card state', () => {
       subscriptionTier: 'player_premium',
     });
 
-    const { findByText, findByTestId } = render(<LibraryScreen />);
+    const { findByText, findByTestId } = render(<LibraryExperience />);
 
     fireEvent.press(await findByText(/Exercises from coach/i));
     fireEvent.press(await findByText(/Coach One/i));

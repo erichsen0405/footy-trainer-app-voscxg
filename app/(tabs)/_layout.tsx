@@ -133,9 +133,9 @@ function FloatingTabsLayout({
     const taskTab: TabBarItem = {
       name: 'tasks',
       route: '/(tabs)/tasks',
-      icon: 'checklist',
-      materialIcon: 'checklist',
-      label: 'Tasks',
+      icon: isPlayer ? 'calendar.badge.clock' : 'checklist',
+      materialIcon: isPlayer ? 'event_note' : 'checklist',
+      label: isPlayer ? 'Plan' : 'Tasks',
     };
 
     const performanceTab: TabBarItem = {
@@ -151,7 +151,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/library',
       icon: 'book.fill',
       materialIcon: 'menu_book',
-      label: isTrainer ? 'Bibliotek' : 'Library',
+      label: 'Library',
     };
 
     const coachDashboardTab: TabBarItem = {
@@ -187,7 +187,7 @@ function FloatingTabsLayout({
     };
 
     if (isTrainer) {
-      return [coachDashboardTab, playerCrmTab, planTab, libraryTab];
+      return [coachDashboardTab, playerCrmTab, planTab];
     }
 
     const tabsForRole: TabBarItem[] = [homeTab, taskTab];
@@ -196,7 +196,10 @@ function FloatingTabsLayout({
       tabsForRole.push(performanceTab);
     }
 
-    tabsForRole.push(libraryTab, profileTab);
+    if (!isPlayer) {
+      tabsForRole.push(libraryTab);
+    }
+    tabsForRole.push(profileTab);
 
     return tabsForRole;
   }, [locked, userRole]);

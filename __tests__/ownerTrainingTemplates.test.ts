@@ -18,7 +18,9 @@ const functionPath = path.join(process.cwd(), 'supabase/functions/manageTraining
 const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/trainingTemplates.ts');
 const servicePath = path.join(process.cwd(), 'services/trainingTemplateService.ts');
 const planPath = path.join(process.cwd(), 'app/(tabs)/plan.tsx');
+const tasksPath = path.join(process.cwd(), 'app/(tabs)/tasks.tsx');
 const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
+const libraryPath = path.join(process.cwd(), 'app/(tabs)/library.tsx');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-training-templates-prompt.md');
 
 describe('owner training templates contract', () => {
@@ -30,7 +32,9 @@ describe('owner training templates contract', () => {
   const shared = fs.readFileSync(sharedPath, 'utf8');
   const service = fs.readFileSync(servicePath, 'utf8');
   const plan = fs.readFileSync(planPath, 'utf8');
+  const tasks = fs.readFileSync(tasksPath, 'utf8');
   const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
+  const library = fs.readFileSync(libraryPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
 
   it('creates owner-scoped training template storage with version snapshots', () => {
@@ -352,9 +356,15 @@ describe('owner training templates contract', () => {
     expect(tabLayout).toContain("label: 'Overblik'");
     expect(tabLayout).toContain("label: 'Spillere'");
     expect(tabLayout).toContain("label: 'Plan'");
-    expect(tabLayout).toContain("label: isTrainer ? 'Bibliotek' : 'Library'");
-    expect(tabLayout).toContain('return [coachDashboardTab, playerCrmTab, planTab, libraryTab]');
+    expect(tabLayout).toContain("label: isPlayer ? 'Plan' : 'Tasks'");
+    expect(tabLayout).toContain("label: 'Library'");
+    expect(tabLayout).toContain('return [coachDashboardTab, playerCrmTab, planTab]');
+    expect(tabLayout).not.toContain("label: isTrainer ? 'Bibliotek' : 'Library'");
+    expect(tabLayout).not.toContain('return [coachDashboardTab, playerCrmTab, planTab, libraryTab]');
     expect(tabLayout).toContain('<Stack.Screen name="plan" />');
+    expect(library).toContain("userRole === 'player' || userRole === 'trainer' || userRole === 'admin'");
+    expect(library).toContain("router.replace((userRole === 'player' ? '/(tabs)/tasks' : '/(tabs)/plan') as any)");
+    expect(library).toContain('export function LibraryExperience');
     expect(plan).toContain("value: 'templates', label: 'Skabeloner'");
     expect(plan).toContain('fetchOwnerTrainingTemplates');
     expect(plan).toContain('saveOwnerTrainingTemplate');
@@ -365,6 +375,13 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('Interval timer');
     expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
     expect(plan).toContain('type ItemPickerMode');
+    expect(plan).toContain("type PlanFilterPicker = 'status' | 'types' | null");
+    expect(plan).toContain('selectedTemplateTypes');
+    expect(plan).toContain('toggleTemplateTypeFilter');
+    expect(plan).toContain('PlanFilterSelect');
+    expect(plan).toContain('PlanFilterOption');
+    expect(plan).not.toContain('type TemplateTypeFilter');
+    expect(plan).not.toContain('FilterChip');
     expect(plan).toContain('ReusableItemPickerModal');
     expect(plan).toContain('TemplatePickerCard');
     expect(plan).toContain('LibraryPickerCard');
@@ -388,6 +405,13 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('plan.assignments.shortcuts');
     expect(plan).toContain("onPress={() => setActiveSection('tasks')}");
     expect(plan).toContain('plan.template.create.${type.value}');
+    expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
+    expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Opgaver' : 'Tasks'");
+    expect(tasks).toContain('Dine egne skabeloner og skabeloner delt fra din træner.');
+    expect(tasks).toContain('metaItems.join');
+    expect(tasks).toContain('taskMeta');
+    expect(tasks).toContain("videoUrls.length ? `${videoUrls.length} media`");
+    expect(tasks).toContain("feedbackEnabled ? 'Feedback'");
   });
 
   it('documents Base44 reuse and Supabase endpoint contract', () => {

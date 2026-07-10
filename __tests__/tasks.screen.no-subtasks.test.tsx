@@ -304,22 +304,20 @@ describe('Tasks redesigned template screen', () => {
     expect(getByText('Invalid media. Use a video, image, or PDF link.')).toBeTruthy();
   });
 
-  it('adds, removes and saves subtasks in order', async () => {
-    const { getAllByPlaceholderText, getAllByText, getByTestId } = render(<TasksScreen />);
+  it('does not show subtasks and saves task templates without subtasks', async () => {
+    const { getByTestId, queryByPlaceholderText, queryByTestId } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.header.newTaskButton'));
-    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med delopgaver');
-    fireEvent.changeText(getAllByPlaceholderText('Subtask')[0], 'Første');
-    fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
-    fireEvent.changeText(getAllByPlaceholderText('Subtask')[1], 'Anden');
-    fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
-    fireEvent.changeText(getAllByPlaceholderText('Subtask')[2], 'Tredje');
-    fireEvent.press(getAllByText('minus.circle.fill')[0]);
+    expect(queryByPlaceholderText('Subtask')).toBeNull();
+    expect(queryByTestId('tasks.modal.addSubtaskButton')).toBeNull();
+
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template uden delopgaver');
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
 
     await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
     const createArg = mockCreateTask.mock.calls[0][0];
-    expect(createArg.subtasks.map((subtask: any) => subtask.title)).toEqual(['Anden', 'Tredje']);
+    expect(createArg.subtasks).toEqual([]);
+    expect(createArg.task.subtasks).toEqual([]);
   });
 
   it('saves auto-add setting when creating a task template', async () => {

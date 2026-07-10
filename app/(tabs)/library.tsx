@@ -792,6 +792,21 @@ const resolveFootballCoachPosId = (categoryPath: string | null): string | null =
 };
 
 export default function LibraryScreen() {
+  const router = useRouter();
+  const { userRole, loading } = useUserRole() as any;
+  const shouldUsePlanLibrary = userRole === 'player' || userRole === 'trainer' || userRole === 'admin';
+
+  useEffect(() => {
+    if (loading || !shouldUsePlanLibrary) return;
+    router.replace((userRole === 'player' ? '/(tabs)/tasks' : '/(tabs)/plan') as any);
+  }, [loading, router, shouldUsePlanLibrary, userRole]);
+
+  if (loading || shouldUsePlanLibrary) return null;
+
+  return <LibraryExperience />;
+}
+
+export function LibraryExperience() {
   const roleInfo = useUserRole() as any;
   const roleRaw = roleInfo?.userRole ?? roleInfo?.role ?? null;
   const roleStr = typeof roleRaw === 'string' ? roleRaw.toLowerCase() : '';

@@ -52,7 +52,7 @@ import {
 
 type PlanSection = 'templates' | 'tasks' | 'programs' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
-type TemplateTypeFilter = 'all' | TrainingTemplateType;
+type PlanFilterPicker = 'status' | 'types' | null;
 type ItemSourceMode = 'new' | 'saved' | 'library';
 type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
 
@@ -445,7 +445,8 @@ export default function PlanScreen() {
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof fetchOwnerTrainingTemplates>> | null>(null);
   const [activeSection, setActiveSection] = useState<PlanSection>('templates');
   const [statusFilter, setStatusFilter] = useState<TemplateStatusFilter>('active');
-  const [typeFilter, setTypeFilter] = useState<TemplateTypeFilter>('all');
+  const [selectedTemplateTypes, setSelectedTemplateTypes] = useState<TrainingTemplateType[]>([]);
+  const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -526,10 +527,18 @@ export default function PlanScreen() {
   const templates = useMemo(() => {
     return (payload?.templates ?? []).filter((template) => {
       if (template.status !== statusFilter) return false;
-      if (typeFilter !== 'all' && template.templateType !== typeFilter) return false;
+      if (selectedTemplateTypes.length && !selectedTemplateTypes.includes(template.templateType)) return false;
       return true;
     });
-  }, [payload?.templates, statusFilter, typeFilter]);
+  }, [payload?.templates, selectedTemplateTypes, statusFilter]);
+  const selectedTypeLabel = selectedTemplateTypes.length
+    ? selectedTemplateTypes.map((value) => templateTypeLabel(value)).join(', ')
+    : 'Alle typer';
+  const toggleTemplateTypeFilter = useCallback((type: TrainingTemplateType) => {
+    setSelectedTemplateTypes((current) =>
+      current.includes(type) ? current.filter((value) => value !== type) : [...current, type]
+    );
+  }, []);
   const programTemplates = useMemo(
     () =>
       (payload?.templates ?? []).filter(
@@ -1073,20 +1082,73 @@ export default function PlanScreen() {
             </View>
 
             <View style={styles.filterBlock}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                <FilterChip label="Active" active={statusFilter === 'active'} onPress={() => setStatusFilter('active')} colors={colors} />
-                <FilterChip label="Archived" active={statusFilter === 'archived'} onPress={() => setStatusFilter('archived')} colors={colors} />
-                <FilterChip label="All types" active={typeFilter === 'all'} onPress={() => setTypeFilter('all')} colors={colors} />
-                {TEMPLATE_TYPES.map((type) => (
-                  <FilterChip
-                    key={type.value}
-                    label={type.label}
-                    active={typeFilter === type.value}
-                    onPress={() => setTypeFilter(type.value)}
+              <View style={styles.planFilterGrid}>
+                <PlanFilterSelect
+                  label="Status"
+                  value={statusFilter === 'active' ? 'Aktive' : 'Arkiverede'}
+                  icon="archivebox"
+                  materialIcon="archive"
+                  active={planFilterPicker === 'status'}
+                  colors={colors}
+                  onPress={() => setPlanFilterPicker((current) => (current === 'status' ? null : 'status'))}
+                />
+                <PlanFilterSelect
+                  label="Type"
+                  value={selectedTypeLabel}
+                  icon="line.3.horizontal.decrease.circle"
+                  materialIcon="filter_list"
+                  active={planFilterPicker === 'types' || selectedTemplateTypes.length > 0}
+                  colors={colors}
+                  onPress={() => setPlanFilterPicker((current) => (current === 'types' ? null : 'types'))}
+                />
+              </View>
+
+              {planFilterPicker === 'status' ? (
+                <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <PlanFilterOption
+                    label="Aktive"
+                    detail="Skabeloner der kan bruges nu"
+                    active={statusFilter === 'active'}
                     colors={colors}
+                    onPress={() => {
+                      setStatusFilter('active');
+                      setPlanFilterPicker(null);
+                    }}
                   />
-                ))}
-              </ScrollView>
+                  <PlanFilterOption
+                    label="Arkiverede"
+                    detail="Skabeloner der er gemt væk"
+                    active={statusFilter === 'archived'}
+                    colors={colors}
+                    onPress={() => {
+                      setStatusFilter('archived');
+                      setPlanFilterPicker(null);
+                    }}
+                  />
+                </View>
+              ) : null}
+
+              {planFilterPicker === 'types' ? (
+                <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <PlanFilterOption
+                    label="Alle typer"
+                    detail="Vis task, exercise, session og week"
+                    active={selectedTemplateTypes.length === 0}
+                    colors={colors}
+                    onPress={() => setSelectedTemplateTypes([])}
+                  />
+                  {TEMPLATE_TYPES.map((type) => (
+                    <PlanFilterOption
+                      key={type.value}
+                      label={type.label}
+                      detail={type.value === 'task' ? 'Opgaveskabeloner' : type.value === 'exercise' ? 'Interval- og øvelsesopgaver' : type.value === 'session' ? 'Samlede sessioner' : 'Ugeforløb'}
+                      active={selectedTemplateTypes.includes(type.value)}
+                      colors={colors}
+                      onPress={() => toggleTemplateTypeFilter(type.value)}
+                    />
+                  ))}
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.actionRow}>
@@ -1896,30 +1958,79 @@ function SummaryTile({
   );
 }
 
-function FilterChip({
+function PlanFilterSelect({
   label,
+  value,
+  icon,
+  materialIcon,
   active,
-  onPress,
   colors,
+  onPress,
 }: {
   label: string;
+  value: string;
+  icon: string;
+  materialIcon: string;
   active: boolean;
-  onPress: () => void;
   colors: ReturnType<typeof getColors>;
+  onPress: () => void;
 }) {
   return (
     <TouchableOpacity
       style={[
-        styles.filterChip,
+        styles.planFilterSelect,
         {
-          backgroundColor: active ? colors.primary : colors.card,
+          backgroundColor: active ? `${colors.primary}12` : colors.card,
           borderColor: active ? colors.primary : colors.border,
         },
       ]}
       onPress={onPress}
       activeOpacity={0.84}
     >
-      <Text style={[styles.filterChipText, { color: active ? '#FFFFFF' : colors.text }]}>{label}</Text>
+      <View style={[styles.planFilterSelectIcon, { backgroundColor: active ? `${colors.primary}18` : colors.background, borderColor: active ? colors.primary : colors.border }]}>
+        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={17} color={active ? colors.primary : colors.textSecondary} />
+      </View>
+      <View style={styles.planFilterSelectText}>
+        <Text style={[styles.planFilterSelectLabel, { color: colors.textSecondary }]}>{label}</Text>
+        <Text style={[styles.planFilterSelectValue, { color: colors.text }]} numberOfLines={1}>{value}</Text>
+      </View>
+      <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={16} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
+
+function PlanFilterOption({
+  label,
+  detail,
+  active,
+  colors,
+  onPress,
+}: {
+  label: string;
+  detail: string;
+  active: boolean;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.planFilterOption,
+        {
+          backgroundColor: active ? `${colors.primary}12` : colors.background,
+          borderColor: active ? colors.primary : colors.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.86}
+    >
+      <View style={styles.planFilterOptionText}>
+        <Text style={[styles.planFilterOptionLabel, { color: colors.text }]}>{label}</Text>
+        <Text style={[styles.planFilterOptionDetail, { color: colors.textSecondary }]}>{detail}</Text>
+      </View>
+      {active ? (
+        <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={19} color={colors.primary} />
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -2459,18 +2570,71 @@ const styles = StyleSheet.create({
   filterBlock: {
     marginBottom: 12,
   },
-  filterRow: {
-    columnGap: 8,
+  planFilterGrid: {
+    rowGap: 8,
   },
-  filterChip: {
+  planFilterSelect: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 9,
+  },
+  planFilterSelectIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  planFilterSelectText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planFilterSelectLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  planFilterSelectValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  planFilterPanel: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    rowGap: 8,
+  },
+  planFilterOption: {
+    minHeight: 54,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 11,
     paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
   },
-  filterChipText: {
+  planFilterOptionText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planFilterOptionLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  planFilterOptionDetail: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
+    marginTop: 2,
   },
   actionRow: {
     flexDirection: 'row',

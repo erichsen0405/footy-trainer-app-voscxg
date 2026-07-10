@@ -349,6 +349,24 @@ export const TaskCard = React.memo(
     const description = String((task as any)?.description ?? '').trim();
     const hasMultipleVideos = videoUrls.length > 1;
     const autoAddEnabled = !!((task as any)?.autoAddToActivities ?? (task as any)?.auto_add_to_activities);
+    const sourceFolder = getTaskSourceFolder(task);
+    const trainerNameFromSource = parseTrainerNameFromSource(sourceFolder);
+    const sourceLabel = isFootballCoachSource(sourceFolder)
+      ? 'FootballCoach'
+      : trainerNameFromSource
+        ? `Fra ${trainerNameFromSource}`
+        : sourceFolder.toLowerCase().includes('personal') || !sourceFolder
+          ? 'Min skabelon'
+          : sourceFolder;
+    const feedbackEnabled = !!(task as any)?.afterTrainingEnabled;
+    const reminderValue = normalizeReminderValue((task as any)?.reminder);
+    const metaItems = [
+      sourceLabel,
+      videoUrls.length ? `${videoUrls.length} media` : null,
+      categoryItems.length ? `${categoryItems.length} kategorier` : null,
+      feedbackEnabled ? 'Feedback' : null,
+      reminderValue !== null ? `${reminderValue} min reminder` : null,
+    ].filter(Boolean);
 
     return (
       <TouchableOpacity
@@ -366,9 +384,16 @@ export const TaskCard = React.memo(
             <View style={styles.taskIconWrap}>
               <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
             </View>
-            <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
-              {String((task as any)?.title ?? '')}
-            </Text>
+            <View style={styles.taskTitleWrap}>
+              <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
+                {String((task as any)?.title ?? '')}
+              </Text>
+              {metaItems.length ? (
+                <Text style={[styles.taskMeta, { color: isDark ? '#999' : colors.textSecondary }]} numberOfLines={1}>
+                  {metaItems.join(' · ')}
+                </Text>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.taskActions}>
@@ -1240,6 +1265,13 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
   const isTrainerProfile = userRole === 'trainer';
+  const isPlayerPlan = userRole === 'player' && !embedded;
+  const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Opgaver' : 'Tasks';
+  const screenSubtitleText = isPlayerPlan
+    ? `${templateTasks.length} skabeloner`
+    : embedded
+      ? `${templateTasks.length} opgaveskabeloner`
+      : `${templateTasks.length} templates`;
 
   const renderFolder = useCallback(
     ({ item }: { item: FolderItem }) => {
@@ -1262,6 +1294,25 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const ListHeaderComponent = useMemo(() => {
     return (
       <>
+        {isPlayerPlan || embedded ? (
+          <View style={[styles.planSectionSelector, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}>
+            <View style={[styles.planSectionIcon, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
+              <IconSymbol ios_icon_name="rectangle.3.group" android_material_icon_name="dashboard" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.planSectionTextBlock}>
+              <Text style={[styles.planSectionTitle, { color: textColor }]}>Skabeloner</Text>
+              <Text style={[styles.planSectionSubtitle, { color: textSecondaryColor }]} numberOfLines={2}>
+                {isPlayerPlan
+                  ? 'Dine egne skabeloner og skabeloner delt fra din træner.'
+                  : 'Opgave- og øvelsesskabeloner samlet i Plan.'}
+              </Text>
+            </View>
+            <View style={[styles.planSectionBadge, { borderColor: colors.primary }]}>
+              <Text style={[styles.planSectionBadgeText, { color: colors.primary }]}>{templateTasks.length}</Text>
+            </View>
+          </View>
+        ) : null}
+
         {adminMode === 'self' && userRole === 'player' && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.secondary} />
@@ -1464,6 +1515,8 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     searchQuery,
     cardBgColor,
     isTrainerProfile,
+    isPlayerPlan,
+    embedded,
     templateView,
     categoryFilterOpen,
     selectedCategoryFilter,
@@ -1471,6 +1524,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     uniqueCategories,
     toggleCategoryFilterOpen,
     selectCategoryFilter,
+    templateTasks.length,
   ]);
 
   const ListEmptyComponent = useMemo(() => {
@@ -1506,7 +1560,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         <View style={[styles.screen, { backgroundColor: bgColor }]}>
           <View style={[styles.topBar, embedded ? styles.embeddedTopBar : null]}>
             <Text style={[styles.screenTitle, embedded ? styles.embeddedScreenTitle : null, { color: textColor }]} testID="tasks.header.title">
-              {embedded ? 'Opgaver' : 'Tasks'}
+              {screenTitleText}
             </Text>
           </View>
           <View style={styles.loadingContainer}>
@@ -1533,10 +1587,10 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
               ellipsizeMode="tail"
               testID="tasks.header.title"
             >
-              {embedded ? 'Opgaver' : 'Tasks'}
+              {screenTitleText}
             </Text>
             <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-              {embedded ? `${templateTasks.length} opgaveskabeloner` : `${templateTasks.length} templates`}
+              {screenSubtitleText}
             </Text>
           </View>
           <TouchableOpacity
@@ -1546,7 +1600,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
             testID="tasks.header.newTaskButton"
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>{embedded ? 'Ny opgave' : 'New task'}</Text>
+            <Text style={styles.createButtonText}>{isPlayerPlan || embedded ? 'Ny skabelon' : 'New task'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -2143,6 +2197,51 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   createButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  planSectionSelector: {
+    minHeight: 72,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  planSectionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  planSectionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  planSectionSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  planSectionBadge: {
+    minWidth: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  planSectionBadgeText: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
   infoBox: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, borderRadius: 16 },
   infoText: { flex: 1, fontSize: 14, lineHeight: 20 },
   searchBarWrap: {
@@ -2258,6 +2357,7 @@ const styles = StyleSheet.create({
   taskTitleWrap: { flex: 1, minWidth: 0, gap: 5 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start' },
   taskTitle: { fontSize: 16, fontWeight: '800', flex: 1, lineHeight: 21 },
+  taskMeta: { fontSize: 11, fontWeight: '800' },
   taskDescription: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
   taskDescriptionIndented: { marginLeft: 46, marginTop: -4, marginBottom: 10 },
   taskActions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
