@@ -383,7 +383,10 @@ describe('owner training templates contract', () => {
     expect(plan).not.toContain('Subtasks');
     expect(plan).not.toContain('Task time');
     expect(plan).not.toContain("value: 'activity', label: 'Activity'");
-    expect(plan).toContain("router.push('/(tabs)/tasks'");
+    expect(plan).toContain('TaskLibrarySection');
+    expect(plan).toContain('plan.programs.list');
+    expect(plan).toContain('plan.assignments.shortcuts');
+    expect(plan).toContain("onPress={() => setActiveSection('tasks')}");
     expect(plan).toContain('plan.template.create.${type.value}');
   });
 

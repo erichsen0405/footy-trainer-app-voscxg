@@ -17,6 +17,7 @@ import {
   Switch,
   InteractionManager,
 } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useFootball } from '@/contexts/FootballContext';
@@ -76,14 +77,6 @@ const normalizeReminderValue = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-};
-
-const normalizeTaskDurationValue = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  const rounded = Math.round(parsed);
-  return rounded >= 0 ? rounded : null;
 };
 
 function isValidVideoUrl(url?: string | null): boolean {
@@ -147,8 +140,6 @@ const sanitizeTestIdSegment = (value: unknown): string =>
     .replace(/[^a-z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'unknown';
 
-const createLocalSubtaskId = () => `local-subtask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
 const isFootballCoachSource = (sourceFolder: string) =>
   sourceFolder.toLowerCase() === FOOTBALLCOACH_INSPIRATION.toLowerCase();
 
@@ -173,25 +164,6 @@ const getTaskTrainerName = (task: any): string => {
   const fromSource = parseTrainerNameFromSource(getTaskSourceFolder(task));
   return fromSource || 'Unknown coach';
 };
-
-const normalizeModalSubtasks = (subtasks: any[] | undefined | null) => {
-  const normalized = (subtasks ?? [])
-    .map((subtask) => ({
-      id: String(subtask?.id ?? '').trim() || createLocalSubtaskId(),
-      title: String(subtask?.title ?? ''),
-      completed: !!subtask?.completed,
-    }));
-  return normalized.length ? normalized : [{ id: createLocalSubtaskId(), title: '', completed: false }];
-};
-
-const normalizeSubtasksForSave = (subtasks: any[] | undefined | null) =>
-  (subtasks ?? [])
-    .map((subtask) => ({
-      id: String(subtask?.id ?? '').trim() || createLocalSubtaskId(),
-      title: String(subtask?.title ?? '').trim(),
-      completed: false,
-    }))
-    .filter((subtask) => subtask.title.length > 0);
 
 type FolderType = 'personal' | 'trainer' | 'footballcoach' | 'source';
 
@@ -470,15 +442,6 @@ export const TaskCard = React.memo(
           </View>
         )}
 
-        {!!(task as any)?.taskDurationEnabled && (
-          <View style={styles.reminderBadge}>
-            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color={colors.primary} />
-            <Text style={[styles.reminderText, { color: colors.primary }]}>
-              {String((task as any)?.taskDurationMinutes ?? 0)} min task time
-            </Text>
-          </View>
-        )}
-
         <View
           style={[
             styles.autoAddBadge,
@@ -616,7 +579,12 @@ const FolderItemComponent = React.memo(
   },
 );
 
-export default function TasksScreen() {
+type TaskLibrarySectionProps = {
+  embedded?: boolean;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+};
+
+export function TaskLibrarySection({ embedded = false, contentContainerStyle }: TaskLibrarySectionProps = {}) {
   const footballData = useFootball() as any;
   const adminData = useAdmin() as any;
   const { user } = useAuthSession();
@@ -795,10 +763,7 @@ export default function TasksScreen() {
       ? ({
           ...(task as any),
           reminder: normalizeReminderValue((task as any).reminder),
-          taskDurationEnabled: !!(task as any).taskDurationEnabled,
-          taskDurationMinutes: normalizeTaskDurationValue((task as any).taskDurationMinutes),
           autoAddToActivities: !!((task as any).autoAddToActivities ?? (task as any).auto_add_to_activities),
-          subtasks: normalizeModalSubtasks((task as any).subtasks),
         } as Task)
       : task;
 
@@ -854,38 +819,6 @@ export default function TasksScreen() {
     setVideoUrlInput(text);
   }, []);
 
-  const addSubtask = useCallback(() => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      const subtasks = normalizeModalSubtasks((prev as any).subtasks);
-      return {
-        ...(prev as any),
-        subtasks: [...subtasks, { id: createLocalSubtaskId(), title: '', completed: false }],
-      } as Task;
-    });
-  }, []);
-
-  const updateSubtask = useCallback((subtaskId: string, title: string) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      return {
-        ...(prev as any),
-        subtasks: normalizeModalSubtasks((prev as any).subtasks).map((subtask) =>
-          subtask.id === subtaskId ? { ...subtask, title } : subtask
-        ),
-      } as Task;
-    });
-  }, []);
-
-  const removeSubtask = useCallback((subtaskId: string) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      const subtasks = normalizeModalSubtasks((prev as any).subtasks);
-      const next = subtasks.filter((subtask) => subtask.id !== subtaskId);
-      return { ...(prev as any), subtasks: next.length ? next : subtasks } as Task;
-    });
-  }, []);
-
   const executeSaveTask = useCallback(async () => {
     if (!selectedTask) return;
 
@@ -900,7 +833,6 @@ export default function TasksScreen() {
     }
 
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
-    const normalizedSubtasks = normalizeSubtasksForSave((selectedTask as any).subtasks);
     const successMessage = isCreating ? 'Task template created' : 'Task template updated';
     const mediaForSave = videoUrlInput.trim()
       ? mergeTaskMedia(videoUrls, mediaNames, videoUrlInput, mediaNameInput)
@@ -915,7 +847,7 @@ export default function TasksScreen() {
         ...selectedTask,
         title: String((selectedTask as any).title ?? '').trim(),
         reminder: normalizedReminder,
-        subtasks: normalizedSubtasks,
+        subtasks: [],
         videoUrl: videoPayload.videoUrl,
         videoUrls: videoPayload.videoUrls,
         video_url: videoPayload.video_url,
@@ -928,8 +860,8 @@ export default function TasksScreen() {
         afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
         afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
         afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
-        taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
-        taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
+        taskDurationEnabled: false,
+        taskDurationMinutes: null,
         afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
         autoAddToActivities: !!(selectedTask as any).autoAddToActivities,
         auto_add_to_activities: !!(selectedTask as any).autoAddToActivities,
@@ -938,7 +870,7 @@ export default function TasksScreen() {
       if (isCreating) {
         await taskService.createTask({
           task: taskToSave,
-          subtasks: normalizedSubtasks,
+          subtasks: [],
           adminMode,
           adminTargetType,
           adminTargetId,
@@ -950,7 +882,7 @@ export default function TasksScreen() {
           ...selectedTask,
           title: String((selectedTask as any).title ?? '').trim(),
           reminder: normalizedReminder,
-          subtasks: normalizedSubtasks,
+          subtasks: [],
           videoUrl: videoPayload.videoUrl,
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
@@ -960,8 +892,8 @@ export default function TasksScreen() {
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
-          taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
-          taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
+          taskDurationEnabled: false,
+          taskDurationMinutes: null,
           afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
           autoAddToActivities: !!(selectedTask as any).autoAddToActivities,
           auto_add_to_activities: !!(selectedTask as any).autoAddToActivities,
@@ -1240,18 +1172,6 @@ export default function TasksScreen() {
     });
   }, []);
 
-  const handleTaskDurationToggle = useCallback((value: boolean) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      const current = normalizeTaskDurationValue((prev as any).taskDurationMinutes);
-      return {
-        ...(prev as any),
-        taskDurationEnabled: value,
-        taskDurationMinutes: value ? (current ?? 0) : null,
-      } as Task;
-    });
-  }, []);
-
   const handleAutoAddToggle = useCallback((value: boolean) => {
     setSelectedTask(prev =>
       prev
@@ -1273,7 +1193,7 @@ export default function TasksScreen() {
         completed: false,
         isTemplate: true,
         categoryIds: [],
-        subtasks: [{ id: createLocalSubtaskId(), title: '', completed: false }],
+        subtasks: [],
         videoUrl: undefined,
         videoUrls: [],
         afterTrainingEnabled: false,
@@ -1293,7 +1213,6 @@ export default function TasksScreen() {
 
   const reminderEnabled =
     !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
-  const taskDurationEnabled = !!selectedTask?.taskDurationEnabled;
 
   const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
   const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
@@ -1569,12 +1488,7 @@ export default function TasksScreen() {
     );
   }, [searchQuery, selectedCategoryFilterId, cardBgColor, textSecondaryColor, templateView]);
 
-  const ListFooterComponent = useMemo(() => <View style={{ height: 100 }} />, []);
-
-  const modalSubtasks = useMemo(
-    () => normalizeModalSubtasks((selectedTask as any)?.subtasks),
-    [selectedTask],
-  );
+  const ListFooterComponent = useMemo(() => <View style={{ height: embedded ? 132 : 100 }} />, [embedded]);
 
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
@@ -1590,8 +1504,10 @@ export default function TasksScreen() {
         presentation="none"
       >
         <View style={[styles.screen, { backgroundColor: bgColor }]}>
-          <View style={styles.topBar}>
-            <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">Tasks</Text>
+          <View style={[styles.topBar, embedded ? styles.embeddedTopBar : null]}>
+            <Text style={[styles.screenTitle, embedded ? styles.embeddedScreenTitle : null, { color: textColor }]} testID="tasks.header.title">
+              {embedded ? 'Opgaver' : 'Tasks'}
+            </Text>
           </View>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -1609,18 +1525,18 @@ export default function TasksScreen() {
       presentation="none"
     >
       <View style={[styles.screen, { backgroundColor: bgColor }]} testID="tasks.screen">
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, embedded ? styles.embeddedTopBar : null]}>
           <View style={styles.topBarTitleWrap}>
             <Text
-              style={[styles.screenTitle, { color: textColor }]}
+              style={[styles.screenTitle, embedded ? styles.embeddedScreenTitle : null, { color: textColor }]}
               numberOfLines={1}
               ellipsizeMode="tail"
               testID="tasks.header.title"
             >
-              Tasks
+              {embedded ? 'Opgaver' : 'Tasks'}
             </Text>
             <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-              {templateTasks.length} templates
+              {embedded ? `${templateTasks.length} opgaveskabeloner` : `${templateTasks.length} templates`}
             </Text>
           </View>
           <TouchableOpacity
@@ -1630,7 +1546,7 @@ export default function TasksScreen() {
             testID="tasks.header.newTaskButton"
           >
             <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>New task</Text>
+            <Text style={styles.createButtonText}>{embedded ? 'Ny opgave' : 'New task'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1639,7 +1555,7 @@ export default function TasksScreen() {
           data={folders}
           keyExtractor={(f) => f.id}
           renderItem={renderFolder}
-          contentContainerStyle={styles.contentContainer}
+          contentContainerStyle={[styles.contentContainer, embedded ? styles.embeddedContentContainer : null, contentContainerStyle]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           removeClippedSubviews={Platform.OS !== 'web'}
           initialNumToRender={8}
@@ -1809,47 +1725,6 @@ export default function TasksScreen() {
                     )}
                   </View>
 
-                  <View style={styles.subtasksSection}>
-                    <View style={styles.subtasksHeader}>
-                      <Text style={[styles.label, { color: textColor, marginBottom: 0 }]}>Subtasks</Text>
-                      <TouchableOpacity
-                        style={[styles.addSubtaskButton, { borderColor: colors.primary }]}
-                        onPress={addSubtask}
-                        disabled={isSaving}
-                        testID="tasks.modal.addSubtaskButton"
-                      >
-                        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color={colors.primary} />
-                        <Text style={[styles.addSubtaskButtonText, { color: colors.primary }]}>Add</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {modalSubtasks.map((subtask) => {
-                      const canRemove = modalSubtasks.length > 1;
-                      return (
-                        <View key={subtask.id} style={styles.subtaskRow}>
-                          <TextInput
-                            style={[styles.input, styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
-                            value={subtask.title}
-                            onChangeText={(value) => updateSubtask(subtask.id, value)}
-                            placeholder="Subtask"
-                            placeholderTextColor={textSecondaryColor}
-                            editable={!isSaving}
-                            testID={`tasks.modal.subtaskInput.${sanitizeTestIdSegment(subtask.id)}`}
-                          />
-                          {canRemove ? (
-                            <TouchableOpacity
-                              style={styles.removeSubtaskButton}
-                              onPress={() => removeSubtask(subtask.id)}
-                              disabled={isSaving}
-                              testID={`tasks.modal.removeSubtask.${sanitizeTestIdSegment(subtask.id)}`}
-                            >
-                              <IconSymbol ios_icon_name="minus.circle.fill" android_material_icon_name="remove_circle" size={24} color={colors.error} />
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </View>
-
                   <View
                     style={[
                       styles.reminderSectionCard,
@@ -2016,59 +1891,6 @@ export default function TasksScreen() {
                             />
                           </>
                         ) : null}
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.reminderSectionSpacing} />
-
-                  <View
-                    style={[
-                      styles.reminderSectionCard,
-                      {
-                        backgroundColor: bgColor,
-                        borderColor: isDark ? '#333' : '#dfe5f2',
-                      },
-                    ]}
-                  >
-                    <View style={styles.reminderSectionHeader}>
-                      <View style={styles.toggleTextWrapper}>
-                        <Text style={[styles.toggleLabel, { color: textColor }]}>Task time</Text>
-                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                          When switched on, the task time counts in the performance card instead of the activity time.
-                        </Text>
-                      </View>
-                      <Switch
-                        value={taskDurationEnabled}
-                        onValueChange={handleTaskDurationToggle}
-                        trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
-                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                        ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
-                        disabled={isSaving}
-                        testID="tasks.template.durationToggle"
-                      />
-                    </View>
-
-                    {taskDurationEnabled && (
-                      <View style={styles.reminderSectionBody}>
-                        <Text style={[styles.label, { color: textColor }]}>Duration (minutes)</Text>
-                        <TextInput
-                          style={[styles.input, { backgroundColor: bgColor, color: textColor, marginBottom: 0 }]}
-                          value={String(selectedTask?.taskDurationMinutes ?? 0)}
-                          onChangeText={(text) =>
-                            setSelectedTask(prev =>
-                              prev
-                                ? ({
-                                    ...prev,
-                                    taskDurationMinutes: normalizeTaskDurationValue(text) ?? 0,
-                                  } as Task)
-                                : prev
-                            )
-                          }
-                          keyboardType="number-pad"
-                          editable={!isSaving}
-                          testID="tasks.template.durationMinutesInput"
-                        />
                       </View>
                     )}
                   </View>
@@ -2273,10 +2095,15 @@ export default function TasksScreen() {
   );
 }
 
+export default function TasksScreen() {
+  return <TaskLibrarySection />;
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   contentContainer: { paddingHorizontal: 18, paddingBottom: 24 },
+  embeddedContentContainer: { paddingHorizontal: 16, paddingBottom: 132 },
   scopeFilterContainer: {
     marginBottom: 12,
   },
@@ -2289,11 +2116,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  embeddedTopBar: {
+    paddingTop: 2,
+    paddingHorizontal: 16,
+  },
   topBarTitleWrap: { flex: 1, minWidth: 0 },
   screenTitle: {
     fontSize: 34,
     lineHeight: 40,
     fontWeight: '800',
+  },
+  embeddedScreenTitle: {
+    fontSize: 23,
+    lineHeight: 29,
   },
   topBarRight: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
   headerSubtitle: { fontSize: 13, fontWeight: '800', marginTop: 2 },
@@ -2544,22 +2379,6 @@ const styles = StyleSheet.create({
   textArea: { height: 100, textAlignVertical: 'top' },
   errorText: { fontSize: 13, fontWeight: '600', marginTop: -10, marginBottom: 12 },
 
-
-  subtasksSection: { marginBottom: 18 },
-  subtasksHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  addSubtaskButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addSubtaskButtonText: { fontSize: 13, fontWeight: '800' },
-  subtaskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  subtaskInput: { flex: 1, marginBottom: 0 },
-  removeSubtaskButton: { padding: 4 },
 
   categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5 },

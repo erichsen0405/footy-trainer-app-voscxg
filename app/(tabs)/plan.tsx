@@ -20,6 +20,7 @@ import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { getColors } from '@/styles/commonStyles';
+import { TaskLibrarySection } from './tasks';
 import {
   TrainingTemplateExerciseTimer,
   TrainingTemplateItemInput,
@@ -529,6 +530,19 @@ export default function PlanScreen() {
       return true;
     });
   }, [payload?.templates, statusFilter, typeFilter]);
+  const programTemplates = useMemo(
+    () =>
+      (payload?.templates ?? []).filter(
+        (template) =>
+          template.status === 'active' &&
+          (template.templateType === 'session' || template.templateType === 'week')
+      ),
+    [payload?.templates]
+  );
+  const assignmentTemplates = useMemo(
+    () => (payload?.templates ?? []).filter((template) => template.status === 'active'),
+    [payload?.templates]
+  );
 
   const allowedItemTypes = useMemo(
     () => ITEM_TYPES.filter((type) => ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(type.value)),
@@ -943,99 +957,113 @@ export default function PlanScreen() {
     );
   }
 
-  return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]} testID="plan.screen">
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 16) + 10 }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <View style={styles.headerTitleRow}>
-            <View style={styles.headerCopy}>
-              <Text style={[styles.title, { color: colors.text }]}>Plan</Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                {activeWorkspace?.name ?? payload?.ownerAccount.name ?? 'Owner workspace'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
-              onPress={() => router.push('/(tabs)/profile' as any)}
-              activeOpacity={0.84}
-              accessibilityLabel="Open profile and settings"
-              testID="plan.profileButton"
-            >
-              <IconSymbol ios_icon_name="person.crop.circle" android_material_icon_name="account_circle" size={22} color={colors.text} />
-            </TouchableOpacity>
+  const renderPlanChrome = () => (
+    <>
+      <View style={styles.header}>
+        <View style={styles.headerTitleRow}>
+          <View style={styles.headerCopy}>
+            <Text style={[styles.title, { color: colors.text }]}>Plan</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+              {activeWorkspace?.name ?? payload?.ownerAccount.name ?? 'Owner workspace'}
+            </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onPress={() => router.push('/(tabs)/profile' as any)}
+            activeOpacity={0.84}
+            accessibilityLabel="Open profile and settings"
+            testID="plan.profileButton"
+          >
+            <IconSymbol ios_icon_name="person.crop.circle" android_material_icon_name="account_circle" size={22} color={colors.text} />
+          </TouchableOpacity>
         </View>
+      </View>
 
-        {context && context.workspaces.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.workspaceRow}>
-            {context.workspaces.map((workspace) => {
-              const active = workspace.ownerAccountId === activeOwnerAccountId;
-              return (
-                <TouchableOpacity
-                  key={workspace.ownerAccountId}
-                  style={[
-                    styles.workspaceChip,
-                    {
-                      borderColor: active ? colors.primary : colors.border,
-                      backgroundColor: active ? colors.primary : colors.card,
-                    },
-                  ]}
-                  onPress={() => setActiveOwnerAccountId(workspace.ownerAccountId)}
-                  activeOpacity={0.84}
-                >
-                  <Text style={[styles.workspaceText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-                    {workspace.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        ) : null}
-
-        <View style={styles.sectionSelector} testID="plan.sectionSelector">
-          {PLAN_SECTIONS.map((section) => {
-            const active = activeSection === section.value;
+      {context && context.workspaces.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.workspaceRow}>
+          {context.workspaces.map((workspace) => {
+            const active = workspace.ownerAccountId === activeOwnerAccountId;
             return (
               <TouchableOpacity
-                key={section.value}
+                key={workspace.ownerAccountId}
                 style={[
-                  styles.sectionButton,
+                  styles.workspaceChip,
                   {
-                    backgroundColor: active ? colors.primary : colors.card,
                     borderColor: active ? colors.primary : colors.border,
+                    backgroundColor: active ? colors.primary : colors.card,
                   },
                 ]}
-                onPress={() => setActiveSection(section.value)}
+                onPress={() => setActiveOwnerAccountId(workspace.ownerAccountId)}
                 activeOpacity={0.84}
-                testID={`plan.section.${section.value}`}
               >
-                <IconSymbol
-                  ios_icon_name={section.icon as any}
-                  android_material_icon_name={section.materialIcon as any}
-                  size={18}
-                  color={active ? '#FFFFFF' : colors.textSecondary}
-                />
-                <Text style={[styles.sectionButtonText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-                  {section.label}
+                <Text style={[styles.workspaceText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                  {workspace.name}
                 </Text>
               </TouchableOpacity>
             );
           })}
+        </ScrollView>
+      ) : null}
+
+      <View style={styles.sectionSelector} testID="plan.sectionSelector">
+        {PLAN_SECTIONS.map((section) => {
+          const active = activeSection === section.value;
+          return (
+            <TouchableOpacity
+              key={section.value}
+              style={[
+                styles.sectionButton,
+                {
+                  backgroundColor: active ? colors.primary : colors.card,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
+              onPress={() => setActiveSection(section.value)}
+              activeOpacity={0.84}
+              testID={`plan.section.${section.value}`}
+            >
+              <IconSymbol
+                ios_icon_name={section.icon as any}
+                android_material_icon_name={section.materialIcon as any}
+                size={18}
+                color={active ? '#FFFFFF' : colors.textSecondary}
+              />
+              <Text style={[styles.sectionButtonText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                {section.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {error ? (
+        <View style={[styles.notice, { borderColor: colors.error, backgroundColor: colors.card }]}>
+          <Text style={[styles.noticeTitle, { color: colors.error }]}>Could not load plan</Text>
+          <Text style={[styles.noticeText, { color: colors.textSecondary }]}>{error}</Text>
         </View>
+      ) : null}
+    </>
+  );
 
-        {error ? (
-          <View style={[styles.notice, { borderColor: colors.error, backgroundColor: colors.card }]}>
-            <Text style={[styles.noticeTitle, { color: colors.error }]}>Could not load plan</Text>
-            <Text style={[styles.noticeText, { color: colors.textSecondary }]}>{error}</Text>
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }]} testID="plan.screen">
+      {activeSection === 'tasks' ? (
+        <>
+          <View style={[styles.embeddedPlanChrome, { paddingTop: Math.max(insets.top, 16) + 10 }]}>
+            {renderPlanChrome()}
           </View>
-        ) : null}
+          <TaskLibrarySection embedded />
+        </>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, { paddingTop: Math.max(insets.top, 16) + 10 }]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {renderPlanChrome()}
 
-        {activeSection === 'templates' ? (
+          {activeSection === 'templates' ? (
           <>
             <View style={styles.summaryGrid}>
               <SummaryTile label="Active" value={String(payload?.summary.active ?? 0)} colors={colors} tone={colors.success} />
@@ -1101,39 +1129,99 @@ export default function PlanScreen() {
           </>
         ) : null}
 
-        {activeSection === 'tasks' ? (
-          <PlanShortcutCard
-            title="Task templates"
-            detail="Task library"
-            icon="checklist"
-            materialIcon="checklist"
-            colors={colors}
-            onPress={() => router.push('/(tabs)/tasks' as any)}
-          />
-        ) : null}
-
         {activeSection === 'programs' ? (
-          <PlanShortcutCard
-            title="Programmer"
-            detail="Program builder"
-            icon="list.bullet"
-            materialIcon="view_list"
-            colors={colors}
-            onPress={() => undefined}
-          />
+          <>
+            <PlanSectionHeader
+              title="Programmer"
+              detail={`${programTemplates.length} aktive sessioner og ugeforløb`}
+              icon="list.bullet.rectangle"
+              materialIcon="view_list"
+              colors={colors}
+            />
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                style={[styles.createButton, { backgroundColor: getTemplateTone('session', colors) }]}
+                onPress={() => openCreate('session')}
+                activeOpacity={0.88}
+                testID="plan.programs.create.session"
+              >
+                <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
+                <Text style={styles.createButtonText}>Session</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.createButton, { backgroundColor: getTemplateTone('week', colors) }]}
+                onPress={() => openCreate('week')}
+                activeOpacity={0.88}
+                testID="plan.programs.create.week"
+              >
+                <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
+                <Text style={styles.createButtonText}>Week</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.templateList} testID="plan.programs.list">
+              {programTemplates.length ? (
+                programTemplates.map((template) => (
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    colors={colors}
+                    onEdit={() => openEdit(template)}
+                    onDuplicate={() => duplicateTemplate(template)}
+                    onArchive={() => toggleArchive(template)}
+                    busy={saving}
+                  />
+                ))
+              ) : (
+                <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <IconSymbol ios_icon_name="list.bullet.rectangle" android_material_icon_name="view_list" size={34} color={colors.textSecondary} />
+                  <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
+                    Ingen aktive programmer endnu.
+                  </Text>
+                </View>
+              )}
+            </View>
+          </>
         ) : null}
 
         {activeSection === 'assignments' ? (
-          <PlanShortcutCard
-            title="Tildelinger"
-            detail="Bulk assignment"
-            icon="person.2.fill"
-            materialIcon="groups"
-            colors={colors}
-            onPress={() => undefined}
-          />
+          <>
+            <PlanSectionHeader
+              title="Tildelinger"
+              detail={`${assignmentTemplates.length} aktive skabeloner klar`}
+              icon="person.2.fill"
+              materialIcon="groups"
+              colors={colors}
+            />
+            <View style={styles.shortcutGrid} testID="plan.assignments.shortcuts">
+              <PlanShortcutCard
+                title="Opgaver"
+                detail={`${payload?.summary.task ?? 0} opgaveskabeloner`}
+                icon="checklist"
+                materialIcon="checklist"
+                colors={colors}
+                onPress={() => setActiveSection('tasks')}
+              />
+              <PlanShortcutCard
+                title="Programmer"
+                detail={`${programTemplates.length} sessioner og ugeforløb`}
+                icon="list.bullet.rectangle"
+                materialIcon="view_list"
+                colors={colors}
+                onPress={() => setActiveSection('programs')}
+              />
+              <PlanShortcutCard
+                title="Skabeloner"
+                detail={`${payload?.summary.active ?? 0} aktive skabeloner`}
+                icon="rectangle.3.group"
+                materialIcon="dashboard"
+                colors={colors}
+                onPress={() => setActiveSection('templates')}
+              />
+            </View>
+          </>
         ) : null}
       </ScrollView>
+      )}
 
       <Modal visible={draftVisible} animationType="slide" onRequestClose={() => !saving && setDraftVisible(false)}>
         <View style={[styles.modalScreen, { backgroundColor: colors.background }]}>
@@ -2183,6 +2271,32 @@ function ExerciseTimerEditor({
   );
 }
 
+function PlanSectionHeader({
+  title,
+  detail,
+  icon,
+  materialIcon,
+  colors,
+}: {
+  title: string;
+  detail: string;
+  icon: string;
+  materialIcon: string;
+  colors: ReturnType<typeof getColors>;
+}) {
+  return (
+    <View style={styles.inlineSectionHeader}>
+      <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={22} color={colors.primary} />
+      </View>
+      <View style={styles.shortcutBody}>
+        <Text style={[styles.shortcutTitle, { color: colors.text }]}>{title}</Text>
+        <Text style={[styles.shortcutDetail, { color: colors.textSecondary }]}>{detail}</Text>
+      </View>
+    </View>
+  );
+}
+
 function PlanShortcutCard({
   title,
   detail,
@@ -2226,6 +2340,10 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingBottom: 132,
+  },
+  embeddedPlanChrome: {
+    paddingHorizontal: 16,
+    paddingBottom: 0,
   },
   center: {
     flex: 1,
@@ -2357,6 +2475,13 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     columnGap: 8,
+    marginBottom: 14,
+  },
+  inlineSectionHeader: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 12,
     marginBottom: 14,
   },
   createButton: {
@@ -2504,6 +2629,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginTop: 3,
+  },
+  shortcutGrid: {
+    rowGap: 10,
   },
   modalScreen: {
     flex: 1,
