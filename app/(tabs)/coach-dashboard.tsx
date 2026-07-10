@@ -208,7 +208,7 @@ export default function CoachDashboardScreen() {
   const colors = getColors(colorScheme);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { startAdminPlayer } = useAdmin();
+  const { startAdminPlayer, exitAdmin } = useAdmin();
   const { userRole, loading: roleLoading } = useUserRole();
   const [context, setContext] = useState<OwnerPlayerCrmContext | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
@@ -451,6 +451,28 @@ export default function CoachDashboardScreen() {
     },
     [activeOwnerAccountId, router, startAdminPlayer]
   );
+
+  const openActivities = useCallback(() => {
+    exitAdmin();
+    router.push({
+      pathname: '/(tabs)/(home)',
+      params: activeOwnerAccountId ? { ownerAccountId: activeOwnerAccountId } : {},
+    } as any);
+  }, [activeOwnerAccountId, exitAdmin, router]);
+
+  const openTasks = useCallback(() => {
+    exitAdmin();
+    router.push('/(tabs)/tasks' as any);
+  }, [exitAdmin, router]);
+
+  const openProgress = useCallback(() => {
+    exitAdmin();
+    router.push('/(tabs)/performance' as any);
+  }, [exitAdmin, router]);
+
+  const openProfile = useCallback(() => {
+    router.push('/(tabs)/profile' as any);
+  }, [router]);
 
   const handleAlertPress = useCallback(
     (alert: OwnerCoachDashboardAlert) => {
@@ -788,7 +810,7 @@ export default function CoachDashboardScreen() {
               {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
               <TouchableOpacity
                 style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
-                onPress={() => router.push('/(tabs)/profile' as any)}
+                onPress={openProfile}
                 activeOpacity={0.84}
                 accessibilityLabel="Open profile and settings"
                 testID="coachDashboard.profileButton"
@@ -820,6 +842,41 @@ export default function CoachDashboardScreen() {
         {dashboard ? (
           <>
             {renderScopeSelector()}
+
+            <View style={styles.shortcutGrid} testID="coachDashboard.shortcuts">
+              <ShortcutButton
+                label="Aktiviteter"
+                icon="calendar"
+                materialIcon="event"
+                colors={colors}
+                onPress={openActivities}
+                testID="coachDashboard.shortcut.activities"
+              />
+              <ShortcutButton
+                label="Opgaver"
+                icon="checklist"
+                materialIcon="checklist"
+                colors={colors}
+                onPress={openTasks}
+                testID="coachDashboard.shortcut.tasks"
+              />
+              <ShortcutButton
+                label="Progress"
+                icon="chart.bar.fill"
+                materialIcon="bar_chart"
+                colors={colors}
+                onPress={openProgress}
+                testID="coachDashboard.shortcut.progress"
+              />
+              <ShortcutButton
+                label="Profil"
+                icon="person.crop.circle"
+                materialIcon="account_circle"
+                colors={colors}
+                onPress={openProfile}
+                testID="coachDashboard.shortcut.profile"
+              />
+            </View>
 
             <View style={styles.metricGrid}>
               {metricCards.map((metric) => (
@@ -996,6 +1053,38 @@ function EmptyInline({ text, colors }: { text: string; colors: ReturnType<typeof
     <View style={[styles.emptyInline, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Text style={[styles.emptyInlineText, { color: colors.textSecondary }]}>{text}</Text>
     </View>
+  );
+}
+
+function ShortcutButton({
+  label,
+  icon,
+  materialIcon,
+  colors,
+  onPress,
+  testID,
+}: {
+  label: string;
+  icon: string;
+  materialIcon: string;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.shortcutButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.84}
+      testID={testID}
+    >
+      <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}14`, borderColor: `${colors.primary}33` }]}>
+        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={18} color={colors.primary} />
+      </View>
+      <Text style={[styles.shortcutLabel, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -1231,6 +1320,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 2,
+  },
+  shortcutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 8,
+    marginBottom: 14,
+  },
+  shortcutButton: {
+    width: '48.8%',
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  shortcutIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '900',
   },
   filterBlock: {
     marginBottom: 14,

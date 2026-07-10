@@ -210,6 +210,14 @@ describe('owner player CRM contract', () => {
     expect(mobileCrm).toContain('resendOwnerPlayerGuardianInvite');
     expect(mobileCrm).toContain('revokeOwnerPlayerGuardianAccess');
     expect(mobileCrm.indexOf('<FilterChips')).toBeGreaterThan(mobileCrm.indexOf('styles.sectionHeader'));
+    expect(mobileCrm).toContain('useAdmin');
+    expect(mobileCrm).toContain("pathname: '/(tabs)/(home)'");
+    expect(mobileCrm).toContain("router.push('/(tabs)/tasks'");
+    expect(mobileCrm).toContain("router.push('/(tabs)/performance'");
+    expect(mobileCrm).toContain('PlayerCardAction');
+    expect(mobileCrm).toContain('.activities`');
+    expect(mobileCrm).toContain('.tasks`');
+    expect(mobileCrm).toContain('.progress`');
     expect(profile).toContain("router.push('/(tabs)/player-crm'");
     expect(profile).toContain('profile.openPlayerCrmButton');
     expect(profile).not.toContain('<PlayersList');

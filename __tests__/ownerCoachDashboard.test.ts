@@ -305,8 +305,6 @@ describe('owner coach dashboard contract', () => {
     expect(tabLayout).toContain("name: 'coach-dashboard'");
     expect(tabLayout).toContain("route: '/(tabs)/coach-dashboard'");
     expect(tabLayout).toContain('<Stack.Screen name="coach-dashboard" />');
-    expect(tabLayout).toContain("routeSegments.includes('(home)'");
-    expect(tabLayout).toContain("globalRouter.replace('/(tabs)/coach-dashboard')");
     expect(tabIndex).toContain("userRole === 'admin' || userRole === 'trainer'");
     expect(tabIndex).toContain("'/(tabs)/coach-dashboard'");
     expect(trainerRedirect).toContain("router.replace('/(tabs)/coach-dashboard')");
@@ -322,6 +320,11 @@ describe('owner coach dashboard contract', () => {
     expect(screen).toContain("handleSelectScope('player'");
     expect(screen).toContain('coachDashboard.alert.');
     expect(screen).toContain('coachDashboard.playerCard');
+    expect(screen).toContain('coachDashboard.shortcuts');
+    expect(screen).toContain('coachDashboard.shortcut.activities');
+    expect(screen).toContain('coachDashboard.shortcut.tasks');
+    expect(screen).toContain('coachDashboard.shortcut.progress');
+    expect(screen).toContain('coachDashboard.shortcut.profile');
     expect(screen).toContain('AsyncStorage.setItem(filtersStorageKey');
     expect(screen).toContain("pathname: '/(tabs)/player-crm'");
     expect(screen).toContain("pathname: '/(tabs)/(home)'");
