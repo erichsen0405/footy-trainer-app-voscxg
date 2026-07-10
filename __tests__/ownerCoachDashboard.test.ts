@@ -23,6 +23,8 @@ const playerCrmPath = path.join(process.cwd(), 'app/(tabs)/player-crm.tsx');
 const homePath = path.join(process.cwd(), 'app/(tabs)/(home)/index.tsx');
 const homeIosPath = path.join(process.cwd(), 'app/(tabs)/(home)/index.ios.tsx');
 const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
+const tabIndexPath = path.join(process.cwd(), 'app/(tabs)/index.tsx');
+const trainerRedirectPath = path.join(process.cwd(), 'app/(tabs)/trainer.ios.tsx');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-coach-dashboard-prompt.md');
 
 function createRpcClient(result: { data: unknown; error: { message?: string } | null }) {
@@ -209,6 +211,8 @@ describe('owner coach dashboard contract', () => {
   const home = fs.readFileSync(homePath, 'utf8');
   const homeIos = fs.readFileSync(homeIosPath, 'utf8');
   const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
+  const tabIndex = fs.readFileSync(tabIndexPath, 'utf8');
+  const trainerRedirect = fs.readFileSync(trainerRedirectPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
 
   it('creates an owner-scoped dashboard RPC using existing owner access and seat helpers', () => {
@@ -301,6 +305,11 @@ describe('owner coach dashboard contract', () => {
     expect(tabLayout).toContain("name: 'coach-dashboard'");
     expect(tabLayout).toContain("route: '/(tabs)/coach-dashboard'");
     expect(tabLayout).toContain('<Stack.Screen name="coach-dashboard" />');
+    expect(tabLayout).toContain("routeSegments.includes('(home)'");
+    expect(tabLayout).toContain("globalRouter.replace('/(tabs)/coach-dashboard')");
+    expect(tabIndex).toContain("userRole === 'admin' || userRole === 'trainer'");
+    expect(tabIndex).toContain("'/(tabs)/coach-dashboard'");
+    expect(trainerRedirect).toContain("router.replace('/(tabs)/coach-dashboard')");
     expect(screen).toContain('fetchOwnerCoachDashboard');
     expect(screen).toContain('coachDashboard.filters');
     expect(screen).toContain('coachDashboard.scopeFilter.toggle');

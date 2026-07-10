@@ -82,6 +82,20 @@ export default function TabLayout() {
     }
   }, [locked, router, segments, subscriptionFeaturesLoading]);
 
+  useEffect(() => {
+    if (Platform.OS === 'ios' && subscriptionFeaturesLoading) {
+      return;
+    }
+    if (locked) {
+      return;
+    }
+    const isTrainer = effectiveRole === 'admin' || effectiveRole === 'trainer';
+    const routeSegments = Array.isArray(segments) ? segments.map((segment) => String(segment)) : [];
+    if (isTrainer && routeSegments.includes('(home)')) {
+      globalRouter.replace('/(tabs)/coach-dashboard');
+    }
+  }, [effectiveRole, locked, segments, subscriptionFeaturesLoading]);
+
   return (
     <OnboardingGate>
       <FloatingTabsLayout

@@ -978,6 +978,11 @@ function PlayerCrmScreen() {
                   />
                 </View>
 
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Players</Text>
+                  <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{filteredPlayers.length}</Text>
+                </View>
+
                 <FilterChips
                   colors={colors}
                   statusFilter={statusFilter}
@@ -989,11 +994,6 @@ function PlayerCrmScreen() {
                   teamFilterId={teamFilterId}
                   setTeamFilterId={setTeamFilterId}
                 />
-
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Players</Text>
-                  <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{filteredPlayers.length}</Text>
-                </View>
 
                 {filteredPlayers.length === 0 ? (
                   <View style={[styles.emptyPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
