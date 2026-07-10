@@ -309,7 +309,9 @@ describe('owner coach dashboard contract', () => {
     expect(tabIndex).toContain("'/(tabs)/coach-dashboard'");
     expect(trainerRedirect).toContain("router.replace('/(tabs)/coach-dashboard')");
     expect(screen).toContain('fetchOwnerCoachDashboard');
-    expect(screen).toContain('coachDashboard.filters');
+    expect(screen).toContain('coachDashboard.playerFilters');
+    expect(screen).toContain('coachDashboard.playerFilters.tag');
+    expect(screen).toContain('filterPickerVisible');
     expect(screen).toContain('coachDashboard.scopeFilter.toggle');
     expect(screen).toContain("type DashboardScopeType = 'all' | 'team' | 'player'");
     expect(screen).toContain('getFilteredDashboardPlayers');
@@ -322,9 +324,9 @@ describe('owner coach dashboard contract', () => {
     expect(screen).toContain('coachDashboard.playerCard');
     expect(screen).toContain('coachDashboard.shortcuts');
     expect(screen).toContain('coachDashboard.shortcut.activities');
-    expect(screen).toContain('coachDashboard.shortcut.tasks');
     expect(screen).toContain('coachDashboard.shortcut.progress');
-    expect(screen).toContain('coachDashboard.shortcut.profile');
+    expect(screen).not.toContain('coachDashboard.shortcut.tasks');
+    expect(screen).not.toContain('coachDashboard.shortcut.profile');
     expect(screen).toContain('AsyncStorage.setItem(filtersStorageKey');
     expect(screen).toContain("pathname: '/(tabs)/player-crm'");
     expect(screen).toContain("pathname: '/(tabs)/(home)'");
@@ -332,7 +334,7 @@ describe('owner coach dashboard contract', () => {
     expect(screen).toContain('openPlayerActivities(alert.playerId)');
     expect(screen).toContain('ownerAccountId: activeOwnerAccountId');
     expect(screen).toContain('playerId, openAt: String(Date.now())');
-    expect(screen).toContain("router.push('/(tabs)/tasks'");
+    expect(screen).not.toContain("router.push('/(tabs)/tasks'");
     expect(screen).toContain("router.push('/(tabs)/performance'");
     expect(home).toContain('useLocalSearchParams');
     expect(home).toContain('routePlayerId');
