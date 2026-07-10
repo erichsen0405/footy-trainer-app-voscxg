@@ -12,11 +12,18 @@ import {
   parseUpsertOwnerSeatAdjustmentBody,
   upsertOwnerSeatAdjustmentAction,
 } from '../supabase/functions/_shared/ownerLicensing';
+import fs from 'fs';
+import path from 'path';
 
 const actorUserId = '11111111-1111-4111-8111-111111111111';
 const ownerAccountId = '22222222-2222-4222-8222-222222222222';
 const ownerUserId = '33333333-3333-4333-8333-333333333333';
 const adjustmentId = '44444444-4444-4444-8444-444444444444';
+const deleteVisibilityMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260710150000_platform_admin_owner_account_delete_visibility.sql'
+);
+const ownerSeatBase44PromptPath = path.join(process.cwd(), 'docs/base44-owner-seat-endpoints-deployed-prompt.md');
 
 function createRpcClient(result: { data: unknown; error: { message?: string } | null }) {
   return {
@@ -66,6 +73,9 @@ const ownerSeatStatusPayload = {
 };
 
 describe('owner licensing backend helpers', () => {
+  const deleteVisibilityMigration = fs.readFileSync(deleteVisibilityMigrationPath, 'utf8');
+  const ownerSeatBase44Prompt = fs.readFileSync(ownerSeatBase44PromptPath, 'utf8');
+
   it('normalizes owner seat status input', () => {
     expect(parseOwnerSeatStatusBody({ ownerAccountId })).toEqual({ ownerAccountId });
   });
@@ -330,6 +340,15 @@ describe('owner licensing backend helpers', () => {
     expect(client.rpc).toHaveBeenCalledWith('list_platform_admin_owner_accounts', {
       p_actor_user_id: actorUserId,
     });
+  });
+
+  it('hides deleted owner accounts from the platform admin web list', () => {
+    expect(deleteVisibilityMigration).toContain('create or replace function public.list_platform_admin_owner_accounts');
+    expect(deleteVisibilityMigration).toContain("where oa.status = 'active'");
+    expect(deleteVisibilityMigration).toContain('Returns active owner accounts');
+    expect(ownerSeatBase44Prompt).toContain('Treat `data.ownerAccounts` as the full source of truth');
+    expect(ownerSeatBase44Prompt).toContain('Refetch maa ikke merge med den gamle liste');
+    expect(ownerSeatBase44Prompt).toContain('Fjern straks den slettede row fra lokal state');
   });
 
   it('calls the platform owner account delete RPC', async () => {

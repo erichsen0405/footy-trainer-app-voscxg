@@ -276,10 +276,16 @@ Success response:
 UI/list rules:
 
 - Unwrap `response.data`.
+- Treat `data.ownerAccounts` as the full source of truth for the visible list.
+  Replace local state with that array on every fetch; do not merge it into an
+  existing array.
 - For coach workspace list, show rows where
   `ownerType === 'private_coach_business'`.
 - Do not filter out rows where `ownerUserId` is `null`.
 - Do not filter out rows where `coachAccountId` is `null`.
+- The endpoint only returns active owner accounts. If an owner account is deleted
+  or deactivated, it must not remain visible from local/cache state after the
+  next fetch.
 - Show player seats from `row.seatStatus.playerSeats`.
 - After `createOwnerAccount` succeeds, refetch this endpoint so the new owner
   appears without manual reload.
@@ -327,8 +333,13 @@ UI rules:
 
 - Efter success: vis normal success-toast, luk dialogen og refetch
   `listPlatformAdminOwnerAccounts`.
+- Fjern straks den slettede row fra lokal state med det `ownerAccountId`, som
+  `deleteOwnerAccount` returnerer, og erstat derefter listen med resultatet fra
+  `listPlatformAdminOwnerAccounts`.
 - Fjern den slettede row optimistisk kun hvis requesten returnerer
   `success: true`.
+- Refetch maa ikke merge med den gamle liste. Brug response-listen som ny liste,
+  ellers kan slettede rows blive haengende i Base44 state/cache.
 - Hvis requesten fejler: vis backend-fejlen og behold rowen i listen.
 - Kald aldrig `owner_accounts.delete()` eller andre direkte table deletes fra
   Base44/browseren.
