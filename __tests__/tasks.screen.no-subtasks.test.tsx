@@ -391,7 +391,7 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
-    expect(getByText('Media')).toBeTruthy();
+    expect(getAllByText('Media').length).toBeGreaterThan(0);
     expect(getByText('Choose image, video, or PDF')).toBeTruthy();
     expect(getByDisplayValue('Media 1')).toBeTruthy();
     expect(getAllByText('YouTube').length).toBeGreaterThan(0);

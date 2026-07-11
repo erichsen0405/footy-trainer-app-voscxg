@@ -186,7 +186,6 @@ export default function TasksScreen() {
         onPress={() => {}}
         onDuplicate={() => void handleDuplicateTask(item.id)}
         onDelete={() => void handleDeleteTask(item.id)}
-        onVideoPress={() => {}}
         getCategoryItems={getCategoryItems}
       />
     ),

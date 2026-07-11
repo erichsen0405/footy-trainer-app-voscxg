@@ -16,6 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
+import SwipeVideoPlayer from '@/components/SwipeVideoPlayer';
 import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useFootball } from '@/contexts/FootballContext';
@@ -316,6 +317,11 @@ function getTaskConfigMediaCount(value: unknown): number {
   return normalizeTaskVideoUrls(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url).length;
 }
 
+function getTaskConfigMediaUrls(value: unknown): string[] {
+  const record = asRecord(value);
+  return normalizeTaskVideoUrls(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url);
+}
+
 function getTemplateTaskConfig(template: TrainingTemplateSummary): Record<string, unknown> {
   return asRecord(asRecord(template.metadata).task);
 }
@@ -323,6 +329,21 @@ function getTemplateTaskConfig(template: TrainingTemplateSummary): Record<string
 function getTemplateTimer(template: TrainingTemplateSummary): TrainingTemplateExerciseTimer | null {
   const timer = asRecord(asRecord(template.metadata).timer);
   return typeof timer.activeSeconds === 'number' ? timer as unknown as TrainingTemplateExerciseTimer : null;
+}
+
+function getTemplateMediaUrls(template: TrainingTemplateSummary): string[] {
+  const urls = new Set<string>();
+  getTaskConfigMediaUrls(getTemplateTaskConfig(template)).forEach((url) => urls.add(url));
+  template.items.forEach((item) => {
+    const config = asRecord(item.config);
+    getTaskConfigMediaUrls(config.task).forEach((url) => urls.add(url));
+  });
+  return Array.from(urls);
+}
+
+function formatExerciseTimer(timer: TrainingTemplateExerciseTimer | null): string | null {
+  if (!timer) return null;
+  return `${timer.rounds} runder · ${timer.activeSeconds} sek aktiv · ${timer.restSeconds} sek pause`;
 }
 
 function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
@@ -419,6 +440,24 @@ function getTemplateTone(type: TrainingTemplateType, colors: ReturnType<typeof g
 
 function getTemplateSourceKind(template: TrainingTemplateSummary, actorUserId: string | null): Exclude<TemplateSourceFilter, 'all'> {
   return actorUserId && template.createdBy === actorUserId ? 'mine' : 'workspace';
+}
+
+function getTemplateFacts(
+  template: TrainingTemplateSummary,
+  sourceLabel?: string,
+  mediaUrls: string[] = getTemplateMediaUrls(template),
+  timer: TrainingTemplateExerciseTimer | null = getTemplateTimer(template),
+): { label: string; value: string }[] {
+  return [
+    { label: 'Type', value: templateTypeLabel(template.templateType) },
+    { label: 'Version', value: `v${template.versionNumber}` },
+    { label: 'Indhold', value: template.itemCount ? `${template.itemCount} items` : 'Selvstændig skabelon' },
+    { label: 'Kilde', value: sourceLabel ?? null },
+    { label: 'Mappe', value: template.folderName },
+    { label: 'Fokus', value: template.focusAreas.length ? template.focusAreas.slice(0, 3).join(', ') : null },
+    { label: 'Timer', value: formatExerciseTimer(timer) },
+    { label: 'Media', value: mediaUrls.length ? `${mediaUrls.length} ${mediaUrls.length === 1 ? 'fil' : 'filer'}` : null },
+  ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 }
 
 function buildTemplateSourceFilterOptions(
@@ -968,6 +1007,13 @@ export default function PlanScreen() {
     }
   }, [activeOwnerAccountId]);
 
+  const openAssignTemplate = useCallback((template: TrainingTemplateSummary) => {
+    Alert.alert(
+      'Tildel skabelon',
+      `Tildel-knappen er klar på kortet. Det endelige tildelingsflow for "${template.title}" kræver backend-koblingen, der materialiserer ${templateTypeLabel(template.templateType).toLowerCase()} til spillerkalenderen.`,
+    );
+  }, []);
+
   const updateDraftTaskConfig = useCallback((update: TaskConfigUpdate) => {
     setDraft((current) => ({
       ...current,
@@ -1223,6 +1269,7 @@ export default function PlanScreen() {
               onEdit={openEdit}
               onDuplicate={duplicateTemplate}
               onArchive={toggleArchive}
+              onAssign={openAssignTemplate}
               showStatusControls={templateViewSupportsArchive}
               busy={saving}
             />
@@ -1596,6 +1643,7 @@ function PlanTemplateLibraryView({
   onEdit,
   onDuplicate,
   onArchive,
+  onAssign,
   showStatusControls,
   busy,
 }: {
@@ -1615,6 +1663,7 @@ function PlanTemplateLibraryView({
   onEdit: (template: TrainingTemplateSummary) => void;
   onDuplicate: (template: TrainingTemplateSummary) => void;
   onArchive: (template: TrainingTemplateSummary) => void;
+  onAssign: (template: TrainingTemplateSummary) => void;
   showStatusControls: boolean;
   busy: boolean;
 }) {
@@ -1686,6 +1735,7 @@ function PlanTemplateLibraryView({
               onEdit={() => onEdit(template)}
               onDuplicate={() => onDuplicate(template)}
               onArchive={() => onArchive(template)}
+              onAssign={() => onAssign(template)}
               showStatusControls={showStatusControls}
               busy={busy}
             />
@@ -2165,6 +2215,7 @@ function TemplateCard({
   onEdit,
   onDuplicate,
   onArchive,
+  onAssign,
   showStatusControls,
   busy,
 }: {
@@ -2174,10 +2225,14 @@ function TemplateCard({
   onEdit: () => void;
   onDuplicate: () => void;
   onArchive: () => void;
+  onAssign: () => void;
   showStatusControls: boolean;
   busy: boolean;
 }) {
   const tone = getTemplateTone(template.templateType, colors);
+  const mediaUrls = getTemplateMediaUrls(template);
+  const timer = getTemplateTimer(template);
+  const templateFacts = getTemplateFacts(template, sourceLabel, mediaUrls, timer);
   return (
     <View style={[styles.templateCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID={`plan.template.${template.templateType}`}>
       <View style={styles.templateHeader}>
@@ -2194,7 +2249,7 @@ function TemplateCard({
             {template.title}
           </Text>
           <Text style={[styles.templateMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-            {templateTypeLabel(template.templateType)} · v{template.versionNumber} · {template.itemCount} items
+            {templateTypeLabel(template.templateType)} skabelon
           </Text>
         </View>
         {showStatusControls ? (
@@ -2206,21 +2261,49 @@ function TemplateCard({
         ) : null}
       </View>
 
-      {template.description ? (
-        <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={2}>
-          {template.description}
-        </Text>
+      {templateFacts.length ? (
+        <View style={styles.templateFactGrid} testID={`plan.template.facts.${template.templateType}`}>
+          {templateFacts.map((fact) => (
+            <View key={`${fact.label}-${fact.value}`} style={[styles.templateFactChip, { backgroundColor: colors.background }]}>
+              <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>{fact.label}</Text>
+              <Text style={[styles.templateFactValue, { color: colors.text }]} numberOfLines={1}>
+                {fact.value}
+              </Text>
+            </View>
+          ))}
+        </View>
       ) : null}
 
-      <View style={styles.templatePills}>
-        {sourceLabel ? <InfoPill text={sourceLabel} colors={colors} /> : null}
-        {template.folderName ? <InfoPill text={template.folderName} colors={colors} /> : null}
-        {template.focusAreas.slice(0, 3).map((focus) => (
-          <InfoPill key={focus} text={focus} colors={colors} />
-        ))}
-      </View>
+      {template.description ? (
+        <View style={styles.templateLabeledBlock}>
+          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Beskrivelse</Text>
+          <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={3}>
+            {template.description}
+          </Text>
+        </View>
+      ) : null}
+
+      {mediaUrls.length ? (
+        <View style={styles.templateMediaSection} testID={`plan.template.media.${template.templateType}`}>
+          <View style={styles.templateSectionHeader}>
+            <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Media</Text>
+            <Text style={[styles.templateSectionMeta, { color: colors.textSecondary }]}>
+              {mediaUrls.length} {mediaUrls.length === 1 ? 'fil' : 'filer'}
+            </Text>
+          </View>
+          <View style={styles.templateMediaPlayer}>
+            <SwipeVideoPlayer
+              urls={mediaUrls}
+              minHeight={180}
+              showHint={mediaUrls.length > 1}
+              testID={`plan.template.mediaPlayer.${template.templateType}`}
+            />
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.cardActions}>
+        <TemplateAction label="Tildel" icon="person.badge.plus" materialIcon="assignment_ind" colors={colors} onPress={onAssign} disabled={busy} />
         <TemplateAction label="Edit" icon="pencil" materialIcon="edit" colors={colors} onPress={onEdit} disabled={busy} />
         <TemplateAction label="Copy" icon="doc.on.doc" materialIcon="content_copy" colors={colors} onPress={onDuplicate} disabled={busy} />
         {showStatusControls ? (
@@ -2894,7 +2977,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
-    marginTop: 9,
+  },
+  templateLabeledBlock: {
+    marginTop: 10,
+    rowGap: 4,
+  },
+  templateFactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 10,
+  },
+  templateFactChip: {
+    minHeight: 42,
+    maxWidth: '100%',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  templateFactLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  templateFactValue: {
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  templateSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 7,
+  },
+  templateSectionMeta: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  templateMediaSection: {
+    marginTop: 12,
+  },
+  templateMediaPlayer: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#000',
   },
   templatePills: {
     flexDirection: 'row',

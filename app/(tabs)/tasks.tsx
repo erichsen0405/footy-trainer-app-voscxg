@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Image,
   useColorScheme,
   KeyboardAvoidingView,
   Platform,
@@ -93,30 +92,6 @@ function getVideoSourceLabel(url?: string | null): string {
   if (normalizedUrl.includes('youtu')) return 'YouTube';
   if (normalizedUrl.includes('/storage/v1/object/public/') || isDirectVideoUrl(normalizedUrl)) return 'Uploaded video';
   return 'Video';
-}
-
-function getYouTubeThumbnail(url: string): string | null {
-  try {
-    if (url.includes('youtu.be/')) {
-      return `https://img.youtube.com/vi/${url.split('youtu.be/')[1].split('?')[0]}/hqdefault.jpg`;
-    }
-
-    if (url.includes('watch?v=')) {
-      return `https://img.youtube.com/vi/${url.split('watch?v=')[1].split('&')[0]}/hqdefault.jpg`;
-    }
-
-    if (url.includes('/shorts/')) {
-      return `https://img.youtube.com/vi/${url.split('/shorts/')[1].split('?')[0]}/hqdefault.jpg`;
-    }
-
-    if (url.includes('/embed/')) {
-      return `https://img.youtube.com/vi/${url.split('/embed/')[1].split('?')[0]}/hqdefault.jpg`;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 const FOOTBALLCOACH_INSPIRATION = 'FootballCoach Inspiration';
@@ -383,9 +358,10 @@ export const TaskCard = React.memo(
     onDuplicate,
     onArchive = () => {},
     onDelete,
-    onVideoPress,
+    onAssign,
     getCategoryItems,
     isArchived = false,
+    canAssign = false,
   }: {
     task: Task;
     isDark: boolean;
@@ -393,18 +369,15 @@ export const TaskCard = React.memo(
     onDuplicate: () => void;
     onArchive?: () => void;
     onDelete: () => void;
-    onVideoPress: (urls: string[], initialIndex?: number) => void;
+    onAssign?: () => void;
     getCategoryItems: (categoryIds: string[]) => any[];
     isArchived?: boolean;
+    canAssign?: boolean;
   }) => {
     const videoUrls = getTaskModalVideoUrls(task);
-    const videoUrl = videoUrls[0] ?? null;
-    const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
-    const primaryMediaType = getTaskMediaType(videoUrl);
     const taskId = String((task as any)?.id ?? '');
     const categoryItems = getCategoryItems((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean));
     const description = String((task as any)?.description ?? '').trim();
-    const hasMultipleVideos = videoUrls.length > 1;
     const autoAddEnabled = !!((task as any)?.autoAddToActivities ?? (task as any)?.auto_add_to_activities);
     const sourceFolder = getTaskSourceFolder(task);
     const trainerNameFromSource = parseTrainerNameFromSource(sourceFolder);
@@ -417,105 +390,116 @@ export const TaskCard = React.memo(
           : sourceFolder;
     const feedbackEnabled = !!(task as any)?.afterTrainingEnabled;
     const reminderValue = normalizeReminderValue((task as any)?.reminder);
-    const metaItems = [
-      sourceLabel,
-      videoUrls.length ? `${videoUrls.length} media` : null,
-      categoryItems.length ? `${categoryItems.length} kategorier` : null,
-      feedbackEnabled ? 'Feedback' : null,
-      reminderValue !== null ? `${reminderValue} min reminder` : null,
-    ].filter(Boolean);
+    const taskFacts = [
+      { label: 'Kilde', value: sourceLabel },
+      { label: 'Media', value: videoUrls.length ? `${videoUrls.length} filer` : null },
+      { label: 'Kategorier', value: categoryItems.length ? `${categoryItems.length}` : null },
+      { label: 'Feedback', value: feedbackEnabled ? 'Aktiv' : null },
+      { label: 'Reminder', value: reminderValue !== null ? `${reminderValue} min før` : null },
+    ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 
     return (
-      <TouchableOpacity
+      <View
         style={[
           styles.taskCard,
           styles.taskCardShadow,
           { backgroundColor: isDark ? '#2a2a2a' : colors.card },
         ]}
-        onPress={onPress}
-        testID={`tasks.taskCard.${taskId}`}
-        activeOpacity={0.9}
       >
-        <View style={styles.taskHeader}>
-          <View style={styles.taskHeaderLeft}>
-            <View style={styles.taskIconWrap}>
-              <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.taskTitleWrap}>
-              <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
-                {String((task as any)?.title ?? '')}
-              </Text>
-              {metaItems.length ? (
-                <Text style={[styles.taskMeta, { color: isDark ? '#999' : colors.textSecondary }]} numberOfLines={1}>
-                  {metaItems.join(' · ')}
+        <TouchableOpacity onPress={onPress} testID={`tasks.taskCard.${taskId}`} activeOpacity={0.9}>
+          <View style={styles.taskHeader}>
+            <View style={styles.taskHeaderLeft}>
+              <View style={styles.taskIconWrap}>
+                <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.taskTitleWrap}>
+                <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
+                  {String((task as any)?.title ?? '')}
                 </Text>
-              ) : null}
+              </View>
+            </View>
+
+            <View style={styles.taskActions}>
+              <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
+                <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onPress} style={styles.actionButton}>
+                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onArchive}
+                style={styles.actionButton}
+                testID={`tasks.template.archiveButton.${taskId}`}
+              >
+                <IconSymbol
+                  ios_icon_name={isArchived ? 'arrow.uturn.backward.circle' : 'archivebox'}
+                  android_material_icon_name={isArchived ? 'unarchive' : 'archive'}
+                  size={20}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.task.delete.${taskId}`}>
+                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+              </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.taskActions}>
-            <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
-              <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onPress} style={styles.actionButton}>
-              <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onArchive}
-              style={styles.actionButton}
-              testID={`tasks.template.archiveButton.${taskId}`}
-            >
-              <IconSymbol
-                ios_icon_name={isArchived ? 'arrow.uturn.backward.circle' : 'archivebox'}
-                android_material_icon_name={isArchived ? 'unarchive' : 'archive'}
-                size={20}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.task.delete.${taskId}`}>
-              <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-            </TouchableOpacity>
-          </View>
-        </View>
+          {taskFacts.length ? (
+            <View style={styles.cardFactGrid} testID={`tasks.taskFacts.${sanitizeTestIdSegment(taskId)}`}>
+              {taskFacts.map((fact) => (
+                <View key={`${fact.label}-${fact.value}`} style={[styles.cardFactChip, { backgroundColor: isDark ? '#222' : colors.background }]}>
+                  <Text style={[styles.cardFactLabel, { color: isDark ? '#999' : colors.textSecondary }]}>{fact.label}</Text>
+                  <Text style={[styles.cardFactValue, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={1}>
+                    {fact.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
-        {description ? (
-          <Text
-            style={[styles.taskDescription, styles.taskDescriptionIndented, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
-            numberOfLines={2}
-          >
-            {description}
-          </Text>
+          {description ? (
+            <View style={styles.cardLabeledSection}>
+              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Beskrivelse</Text>
+              <Text
+                style={[styles.taskDescription, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
+                numberOfLines={3}
+              >
+                {description}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+
+        {videoUrls.length ? (
+          <View style={styles.cardMediaSection} testID={`tasks.taskInlineMedia.${sanitizeTestIdSegment(taskId)}`}>
+            <View style={styles.cardSectionHeader}>
+              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Media</Text>
+              <Text style={[styles.cardSectionMeta, { color: isDark ? '#999' : colors.textSecondary }]}>
+                {videoUrls.length} {videoUrls.length === 1 ? 'fil' : 'filer'}
+              </Text>
+            </View>
+            <View style={styles.cardMediaPlayer}>
+              <SwipeVideoPlayer
+                urls={videoUrls}
+                minHeight={180}
+                showHint={videoUrls.length > 1}
+                testID={`tasks.taskCard.media.${sanitizeTestIdSegment(taskId)}`}
+              />
+            </View>
+          </View>
         ) : null}
 
-        {videoUrl && isValidVideoUrl(videoUrl) && (
-          <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrls, 0)} activeOpacity={0.85}>
-            {ytThumb ? (
-              <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
-            ) : primaryMediaType === 'image' ? (
-              <Image source={{ uri: videoUrl }} style={styles.videoThumbnail} resizeMode="cover" />
-            ) : (
-              <View style={styles.videoThumbnailFallback}>
-                {primaryMediaType === 'pdf' ? (
-                  <IconSymbol ios_icon_name="doc.fill" android_material_icon_name="picture_as_pdf" size={36} color="#fff" />
-                ) : null}
-                <Text style={styles.videoThumbnailFallbackLabel}>{getVideoSourceLabel(videoUrl)}</Text>
-              </View>
-            )}
-            <View style={styles.videoOverlay}>
-              <IconSymbol
-                ios_icon_name={primaryMediaType === 'video' ? 'play.circle.fill' : primaryMediaType === 'image' ? 'photo.fill' : 'doc.fill'}
-                android_material_icon_name={primaryMediaType === 'video' ? 'play_circle' : primaryMediaType === 'image' ? 'image' : 'picture_as_pdf'}
-                size={56}
-                color="#fff"
-              />
-            </View>
-            {hasMultipleVideos ? (
-              <View style={styles.videoSwipeBadge}>
-                <Text style={styles.videoSwipeBadgeText}>{videoUrls.length} files - swipe</Text>
-              </View>
-            ) : null}
+        {canAssign && onAssign ? (
+          <TouchableOpacity
+            style={[styles.taskAssignButton, { backgroundColor: colors.primary }]}
+            onPress={onAssign}
+            activeOpacity={0.86}
+            testID={`tasks.task.assign.${sanitizeTestIdSegment(taskId)}`}
+          >
+            <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
+            <Text style={styles.taskAssignButtonText}>Tildel</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
 
         {(task as any)?.reminder != null && String((task as any).reminder).length > 0 && (
           <View style={styles.reminderBadge}>
@@ -586,7 +570,7 @@ export const TaskCard = React.memo(
             </View>
           </View>
         ) : null}
-      </TouchableOpacity>
+      </View>
     );
   },
 );
@@ -1361,6 +1345,14 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
 
   // Memoized render functions for FlatList
+  const canAssignTemplates = userRole === 'trainer' || userRole === 'admin';
+  const handleAssignTask = useCallback((task: Task) => {
+    Alert.alert(
+      'Tildel opgave',
+      `Tildel-knappen er klar på kortet. Det endelige tildelingsflow for "${String((task as any)?.title ?? 'opgaven')}" kræver backend-koblingen til Plan-skabeloner.`,
+    );
+  }, []);
+
   const renderTaskCard = useCallback(
     (task: Task) => (
       <TaskCard
@@ -1370,12 +1362,13 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         onDuplicate={() => handleDuplicateTask(String((task as any).id))}
         onArchive={() => void handleArchiveTask(task)}
         onDelete={() => handleDeleteTask(task)}
-        onVideoPress={openVideoModal}
+        onAssign={() => handleAssignTask(task)}
         getCategoryItems={getCategoryItems}
         isArchived={typeof (task as any)?.archivedAt === 'string' && String((task as any).archivedAt).trim().length > 0}
+        canAssign={canAssignTemplates}
       />
     ),
-    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, openVideoModal, getCategoryItems],
+    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, handleAssignTask, getCategoryItems, canAssignTemplates],
   );
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
@@ -2540,6 +2533,75 @@ const styles = StyleSheet.create({
   taskDescriptionIndented: { marginLeft: 46, marginTop: -4, marginBottom: 10 },
   taskActions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
   actionButton: { padding: 4 },
+  cardFactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  cardFactChip: {
+    minHeight: 42,
+    maxWidth: '100%',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  cardFactLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  cardFactValue: {
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  cardLabeledSection: {
+    marginBottom: 10,
+    gap: 4,
+  },
+  cardSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 7,
+  },
+  cardSectionLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  cardSectionMeta: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cardMediaSection: {
+    marginBottom: 12,
+  },
+  cardMediaPlayer: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  taskAssignButton: {
+    minHeight: 42,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginBottom: 10,
+  },
+  taskAssignButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
 
   videoThumbnailWrapper: { height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#000' },
   videoThumbnail: { width: '100%', height: '100%' },
