@@ -181,7 +181,7 @@ describe('Tasks redesigned template screen', () => {
     expect(getByText('FootballCoach Inspiration')).toBeTruthy();
   });
 
-  it('groups player self-mode templates by trainer name', () => {
+  it('shows player self-mode trainer templates in the flat plan list', () => {
     mockUseUserRole.mockReturnValue({ userRole: 'player', loading: false, isAdmin: false });
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
@@ -197,8 +197,9 @@ describe('Tasks redesigned template screen', () => {
 
     const { getByTestId, getByText } = render(<TasksScreen />);
 
-    expect(getByTestId('tasks.folder.trainer.trainer-1')).toBeTruthy();
-    expect(getByText('From coach: Coach Mads')).toBeTruthy();
+    expect(getByTestId('tasks.sourceFilter.coach')).toBeTruthy();
+    expect(getByTestId('tasks.taskCard.trainer-task-1')).toBeTruthy();
+    expect(getByText('Fra Coach Mads')).toBeTruthy();
   });
 
   it('shows selected admin context templates under personal tasks', () => {
