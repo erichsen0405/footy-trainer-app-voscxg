@@ -632,7 +632,7 @@ Failed activities:
                 size={24}
                 color="#fff"
               />
-              <Text style={styles.autoSyncButtonText}>Auto-synkroniser alle</Text>
+              <Text style={styles.autoSyncButtonText}>Auto-sync all</Text>
             </React.Fragment>
           )}
         </TouchableOpacity>

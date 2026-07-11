@@ -932,7 +932,7 @@ function PlayerCrmScreen() {
         <View style={styles.topBar}>
           <View style={styles.titleGroup}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Owner CRM</Text>
-            <Text style={[styles.title, { color: colors.text }]}>Spiller CRM</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Player CRM</Text>
           </View>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: colors.primary }]}
@@ -1402,7 +1402,7 @@ function PlayerCard({
 
       <View style={styles.playerCardActions}>
         <PlayerCardAction
-          label="Aktiviteter"
+          label="Activities"
           icon="calendar"
           materialIcon="event"
           colors={colors}
@@ -1410,7 +1410,7 @@ function PlayerCard({
           testID={`playerCrm.playerCard.${player.playerId}.activities`}
         />
         <PlayerCardAction
-          label="Opgaver"
+          label="Tasks"
           icon="checklist"
           materialIcon="checklist"
           colors={colors}

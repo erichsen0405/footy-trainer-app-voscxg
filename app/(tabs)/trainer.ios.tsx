@@ -6,7 +6,7 @@ export default function TrainerRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    // F11: Trainer-route er udfaset; trainerens startside er nu Overblik.
+    // F11: Trainer route is deprecated; the trainer start page is now Overview.
     router.replace('/(tabs)/coach-dashboard');
   }, [router]);
 

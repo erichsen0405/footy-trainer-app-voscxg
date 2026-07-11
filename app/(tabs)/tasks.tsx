@@ -51,7 +51,7 @@ import {
 } from '@/utils/taskVideos';
 import { isDirectVideoUrl } from '@/utils/videoUrlParser';
 
-// ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
+// Robust import: avoid Hermes crashes if the named export "colors" does not exist.
 import * as CommonStyles from '@/styles/commonStyles';
 
 const FALLBACK_COLORS = {
@@ -195,7 +195,7 @@ const DELETE_TEMPLATE_CONFIRM_TEXT = 'DELETE';
 const DELETE_TEMPLATE_WARNING_TEXT =
   'Deleting this task template will delete all previous and future tasks on related activities. If you want to keep history, select Archive instead.';
 
-// ✅ læs source-folder robust (snake_case eller camelCase)
+// Read source-folder robustly (snake_case or camelCase).
 function getTaskSourceFolder(task: any): string {
   return String(task?.source_folder ?? task?.sourceFolder ?? '').trim();
 }
@@ -241,9 +241,9 @@ function buildTaskSourceFilterOptions(
     counts[getTaskSourceKind(task, options)] += 1;
   });
 
-  const sourceOptions: TaskSourceFilterOption[] = [{ value: 'all', label: 'Alle', count: tasks.length }];
-  if (counts.mine > 0) sourceOptions.push({ value: 'mine', label: 'Mine', count: counts.mine });
-  if (counts.coach > 0) sourceOptions.push({ value: 'coach', label: 'Fra træner', count: counts.coach });
+  const sourceOptions: TaskSourceFilterOption[] = [{ value: 'all', label: 'All', count: tasks.length }];
+  if (counts.mine > 0) sourceOptions.push({ value: 'mine', label: 'My', count: counts.mine });
+  if (counts.coach > 0) sourceOptions.push({ value: 'coach', label: 'From coach', count: counts.coach });
   if (counts.workspace > 0) sourceOptions.push({ value: 'workspace', label: 'Workspace', count: counts.workspace });
   if (counts.library > 0) sourceOptions.push({ value: 'library', label: 'Library', count: counts.library });
   return sourceOptions;
@@ -425,12 +425,12 @@ export const TaskCard = React.memo(
     const sourceLabel = isFootballCoachSource(sourceFolder)
       ? 'FootballCoach'
       : trainerNameFromSource
-        ? `Fra ${trainerNameFromSource}`
+        ? `From ${trainerNameFromSource}`
         : sourceFolder.toLowerCase().includes('personal') || !sourceFolder
-          ? 'Min skabelon'
+          ? 'My template'
           : sourceFolder;
     const taskFacts = [
-      { label: 'Kilde', value: sourceLabel },
+      { label: 'Source', value: sourceLabel },
     ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 
     return (
@@ -494,7 +494,7 @@ export const TaskCard = React.memo(
 
           {focusTags.length ? (
             <View style={styles.cardTagSection} testID={`tasks.taskFocusTags.${sanitizeTestIdSegment(taskId)}`}>
-              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Fokus</Text>
+              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Focus</Text>
               <View style={styles.cardTagRow}>
                 {focusTags.map((tag) => (
                   <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
@@ -509,7 +509,7 @@ export const TaskCard = React.memo(
 
           {description ? (
             <View style={styles.cardLabeledSection}>
-              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Beskrivelse</Text>
+              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Description</Text>
               <Text
                 style={[styles.taskDescription, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
                 numberOfLines={3}
@@ -525,7 +525,7 @@ export const TaskCard = React.memo(
             <View style={styles.cardSectionHeader}>
               <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Media</Text>
               <Text style={[styles.cardSectionMeta, { color: isDark ? '#999' : colors.textSecondary }]}>
-                {videoUrls.length} {videoUrls.length === 1 ? 'fil' : 'filer'}
+                {videoUrls.length} {videoUrls.length === 1 ? 'file' : 'files'}
               </Text>
             </View>
             <View style={styles.cardMediaPlayer}>
@@ -547,7 +547,7 @@ export const TaskCard = React.memo(
             testID={`tasks.task.assign.${sanitizeTestIdSegment(taskId)}`}
           >
             <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
-            <Text style={styles.taskAssignButtonText}>Tildel</Text>
+            <Text style={styles.taskAssignButtonText}>Assign</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -707,9 +707,9 @@ function TaskFocusTagEditor({
     >
       <View style={styles.focusEditorHeader}>
         <View style={styles.focusEditorHeaderText}>
-          <Text style={[styles.toggleLabel, { color: textColor }]}>Fokus tags</Text>
+          <Text style={[styles.toggleLabel, { color: textColor }]}>Focus tags</Text>
           <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-            Brug tags til at gruppere opgaver efter teknisk, fysisk eller taktisk fokus.
+            Use tags to group tasks by technical, physical, or tactical focus.
           </Text>
         </View>
       </View>
@@ -737,7 +737,7 @@ function TaskFocusTagEditor({
           style={[styles.focusEditorInput, { backgroundColor: cardBgColor, color: textColor, borderColor: isDark ? '#444' : '#d0d7e3' }]}
           value={inputValue}
           onChangeText={onInputChange}
-          placeholder="Tilføj fokus tag"
+          placeholder="Add focus tag"
           placeholderTextColor={textSecondaryColor}
           editable={!disabled}
           autoCapitalize="sentences"
@@ -833,7 +833,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
 
   const listRef = useRef<FlatList<FolderItem> | null>(null);
 
-  // ✅ VIGTIGT: alle state hooks før callbacks/memos der bruger dem
+  // Important: all state hooks must come before callbacks/memos that use them.
   const [refreshing, setRefreshing] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -1507,8 +1507,8 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const canAssignTemplates = userRole === 'trainer' || userRole === 'admin';
   const handleAssignTask = useCallback((task: Task) => {
     Alert.alert(
-      'Tildel opgave',
-      `Tildel-knappen er klar på kortet. Det endelige tildelingsflow for "${String((task as any)?.title ?? 'opgaven')}" kræver backend-koblingen til Plan-skabeloner.`,
+      'Assign task',
+      `The Assign button is ready on the card. The final assignment flow for "${String((task as any)?.title ?? 'the task')}" requires the backend link to Plan templates.`,
     );
   }, []);
 
@@ -1538,11 +1538,11 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const isTrainerProfile = userRole === 'trainer';
   const isPlayerPlan = userRole === 'player' && !embedded;
   const showFlatTemplateList = embedded || isPlayerPlan;
-  const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Opgaver' : 'Tasks';
+  const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Tasks' : 'Tasks';
   const screenSubtitleText = isPlayerPlan
-    ? `${templateTasks.length} skabeloner`
+    ? `${templateTasks.length} templates`
     : embedded
-      ? `${templateTasks.length} opgaveskabeloner`
+      ? `${templateTasks.length} task templates`
       : `${templateTasks.length} templates`;
 
   const renderFolder = useCallback(
@@ -1576,11 +1576,11 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
               <IconSymbol ios_icon_name="rectangle.3.group" android_material_icon_name="dashboard" size={18} color={colors.primary} />
             </View>
             <View style={styles.planSectionTextBlock}>
-              <Text style={[styles.planSectionTitle, { color: textColor }]}>Skabeloner</Text>
+              <Text style={[styles.planSectionTitle, { color: textColor }]}>Templates</Text>
               <Text style={[styles.planSectionSubtitle, { color: textSecondaryColor }]} numberOfLines={2}>
                 {isPlayerPlan
-                  ? 'Dine egne skabeloner og skabeloner delt fra din træner.'
-                  : 'Opgave- og øvelsesskabeloner samlet i Plan.'}
+                  ? 'Your own templates and templates shared by your coach.'
+                  : 'Task and exercise templates collected in Plan.'}
               </Text>
             </View>
             <View style={[styles.planSectionBadge, { borderColor: colors.primary }]}>
@@ -1678,7 +1678,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
                   ]}
                   numberOfLines={1}
                 >
-                  {effectiveSelectedFocusTags.length ? effectiveSelectedFocusTags.join(', ') : 'Fokus tags'}
+                  {effectiveSelectedFocusTags.length ? effectiveSelectedFocusTags.join(', ') : 'Focus tags'}
                 </Text>
                 <IconSymbol
                   ios_icon_name={focusTagFilterOpen ? 'chevron.up' : 'chevron.down'}
@@ -1759,7 +1759,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
             >
               {selectedCategoryFilter
                 ? `${String((selectedCategoryFilter as any).emoji ?? '').trim()} ${String((selectedCategoryFilter as any).name ?? '')}`.trim()
-                : 'Kategori'}
+                : 'Category'}
             </Text>
             <IconSymbol
               ios_icon_name={categoryFilterOpen ? 'chevron.up' : 'chevron.down'}
@@ -1830,7 +1830,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
 
         <View style={styles.sectionDivider}>
           <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>
-            {showFlatTemplateList ? 'Opgaver' : 'Folders'}
+            {showFlatTemplateList ? 'Tasks' : 'Folders'}
           </Text>
           <LinearGradient
             colors={[withAlpha(colors.highlight, 0), withAlpha(colors.highlight, 0.92), withAlpha(colors.primary, 0.35)]}
@@ -1980,7 +1980,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
               testID="tasks.header.newTaskButton"
             >
               <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-              <Text style={styles.createButtonText}>{isPlayerPlan ? 'Ny skabelon' : 'New task'}</Text>
+              <Text style={styles.createButtonText}>{isPlayerPlan ? 'New template' : 'New task'}</Text>
             </TouchableOpacity>
           </View>
         ) : null}

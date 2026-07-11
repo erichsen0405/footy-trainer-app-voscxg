@@ -2208,7 +2208,7 @@ export function LibraryExperience() {
                 </>
               ) : (
                 <>
-                  <Text style={[styles.stateTitle, { color: theme.text }]}>Denne mappe er tom</Text>
+                  <Text style={[styles.stateTitle, { color: theme.text }]}>This folder is empty</Text>
                   <Text style={[styles.stateMessage, { color: theme.textSecondary }]}>There are no exercises in this folder yet.</Text>
                   {canCreateExercise ? (
                     <TouchableOpacity
@@ -2477,7 +2477,7 @@ const styles = StyleSheet.create({
   },
   exerciseTop: { flexDirection: 'row', alignItems: 'stretch', gap: 0, minHeight: 190 },
   exerciseTopCompact: { minHeight: 156 },
-  // Keep left column above the hero image so the "Sværhedsgrad" text can sit on top of the fade.
+  // Keep left column above the hero image so the difficulty text can sit on top of the fade.
   exerciseLeft: { flex: 1, minWidth: 0, paddingTop: 14, paddingBottom: 14, paddingRight: 14, gap: 10, position: 'relative', zIndex: 2 },
   exerciseLeftCompact: { paddingTop: 12, paddingBottom: 12, gap: 8 },
   exerciseRightColumn: { width: '50%', alignItems: 'stretch', position: 'relative', zIndex: 1 },

@@ -123,7 +123,7 @@ const TEMPLATE_TYPES: {
   icon: string;
   materialIcon: string;
 }[] = [
-  { value: 'task', label: 'Opgave', icon: 'checklist', materialIcon: 'checklist' },
+  { value: 'task', label: 'Task', icon: 'checklist', materialIcon: 'checklist' },
   { value: 'exercise', label: 'Exercise', icon: 'timer', materialIcon: 'timer' },
   { value: 'session', label: 'Session', icon: 'calendar', materialIcon: 'event' },
   { value: 'week', label: 'Week', icon: 'calendar.badge.clock', materialIcon: 'event_note' },
@@ -138,29 +138,29 @@ const CREATE_TEMPLATE_OPTIONS: {
 }[] = [
   {
     value: 'task',
-    title: 'Opgave',
-    detail: 'En enkelt opgave med video, billeder, feedback og reminderfelter.',
+    title: 'Task',
+    detail: 'A single task with video, images, feedback, and reminder fields.',
     icon: 'checklist',
     materialIcon: 'checklist',
   },
   {
     value: 'exercise',
     title: 'Exercise',
-    detail: 'En opgave med intervaltimer, aktiv tid, pause og antal runder.',
+    detail: 'A task with an interval timer, work time, rest time, and rounds.',
     icon: 'timer',
     materialIcon: 'timer',
   },
   {
     value: 'session',
     title: 'Session',
-    detail: 'En aktivitet samme dag, sammensat af opgaver og exercises.',
+    detail: 'A same-day activity built from tasks and exercises.',
     icon: 'calendar',
     materialIcon: 'event',
   },
   {
     value: 'week',
     title: 'Week',
-    detail: 'Et ugeforløb med gemte sessioner fordelt på dage.',
+    detail: 'A weekly plan with saved sessions distributed across days.',
     icon: 'calendar.badge.clock',
     materialIcon: 'event_note',
   },
@@ -174,11 +174,11 @@ const PLAN_VIEW_TARGETS: {
   materialIcon: string;
   templateType?: TrainingTemplateType;
 }[] = [
-  { value: 'tasks', label: 'Opgaver', detail: 'Opgavebibliotek og task templates', icon: 'checklist', materialIcon: 'checklist' },
-  { value: 'exercise', label: 'Exercise', detail: 'Exercise-skabeloner med timer', icon: 'timer', materialIcon: 'timer', templateType: 'exercise' },
-  { value: 'session', label: 'Session', detail: 'Session-skabeloner', icon: 'calendar', materialIcon: 'event', templateType: 'session' },
-  { value: 'week', label: 'Week', detail: 'Ugeforløb bygget af sessioner', icon: 'calendar.badge.clock', materialIcon: 'event_note', templateType: 'week' },
-  { value: 'assignments', label: 'Tildelinger', detail: 'Samlet overblik over tildelinger', icon: 'person.2.fill', materialIcon: 'groups' },
+  { value: 'tasks', label: 'Tasks', detail: 'Task library and task templates', icon: 'checklist', materialIcon: 'checklist' },
+  { value: 'exercise', label: 'Exercise', detail: 'Exercise templates with timers', icon: 'timer', materialIcon: 'timer', templateType: 'exercise' },
+  { value: 'session', label: 'Session', detail: 'Session templates', icon: 'calendar', materialIcon: 'event', templateType: 'session' },
+  { value: 'week', label: 'Week', detail: 'Weekly plans built from sessions', icon: 'calendar.badge.clock', materialIcon: 'event_note', templateType: 'week' },
+  { value: 'assignments', label: 'Assignments', detail: 'A complete overview of assignments', icon: 'person.2.fill', materialIcon: 'groups' },
 ];
 
 const ITEM_TYPES: {
@@ -370,7 +370,7 @@ function getTemplateMediaUrls(template: TrainingTemplateSummary): string[] {
 
 function formatExerciseTimer(timer: TrainingTemplateExerciseTimer | null): string | null {
   if (!timer) return null;
-  return `${timer.rounds} runder · ${timer.activeSeconds} sek aktiv · ${timer.restSeconds} sek pause`;
+  return `${timer.rounds} rounds · ${timer.activeSeconds}s work · ${timer.restSeconds}s rest`;
 }
 
 function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
@@ -475,7 +475,7 @@ function getTemplateFacts(
   timer: TrainingTemplateExerciseTimer | null = getTemplateTimer(template),
 ): { label: string; value: string }[] {
   return [
-    { label: 'Kilde', value: sourceLabel ?? null },
+    { label: 'Source', value: sourceLabel ?? null },
     { label: 'Timer', value: formatExerciseTimer(timer) },
   ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 }
@@ -502,8 +502,8 @@ function buildTemplateSourceFilterOptions(
 ): PlanSourceFilterOption[] {
   const mine = templates.filter((template) => getTemplateSourceKind(template, actorUserId) === 'mine').length;
   const workspace = templates.length - mine;
-  const options: PlanSourceFilterOption[] = [{ value: 'all', label: 'Alle', count: templates.length }];
-  if (mine > 0) options.push({ value: 'mine', label: 'Mine', count: mine });
+  const options: PlanSourceFilterOption[] = [{ value: 'all', label: 'All', count: templates.length }];
+  if (mine > 0) options.push({ value: 'mine', label: 'My', count: mine });
   if (workspace > 0) options.push({ value: 'workspace', label: 'Workspace', count: workspace });
   return options;
 }
@@ -681,7 +681,7 @@ export default function PlanScreen() {
     ['task', 'exercise'].includes(selectedTemplateTypes[0]);
   const selectedTypeLabel = selectedTemplateTypes.length
     ? selectedTemplateTypes.map((value) => templateTypeLabel(value)).join(', ')
-    : 'Alle typer';
+    : 'All types';
   const assignmentTemplates = useMemo(
     () => (payload?.templates ?? []).filter((template) => template.status === 'active'),
     [payload?.templates]
@@ -1099,8 +1099,8 @@ export default function PlanScreen() {
 
   const openAssignTemplate = useCallback((template: TrainingTemplateSummary) => {
     Alert.alert(
-      'Tildel skabelon',
-      `Tildel-knappen er klar på kortet. Det endelige tildelingsflow for "${template.title}" kræver backend-koblingen, der materialiserer ${templateTypeLabel(template.templateType).toLowerCase()} til spillerkalenderen.`,
+      'Assign template',
+      `The Assign button is ready on the card. The final assignment flow for "${template.title}" requires the backend link that materializes this ${templateTypeLabel(template.templateType).toLowerCase()} into the player calendar.`,
     );
   }, []);
 
@@ -1178,24 +1178,24 @@ export default function PlanScreen() {
 
   const activePlanViewLabel =
     activeSection === 'tasks'
-      ? 'Opgaver'
+      ? 'Tasks'
       : activeSection === 'assignments'
-        ? 'Tildelinger'
+        ? 'Assignments'
         : selectedTemplateTypes.length
           ? selectedTypeLabel
-          : 'Alle typer';
+          : 'All types';
   const currentTemplateViewTitle =
     activeSection === 'assignments'
-      ? 'Tildelinger'
+      ? 'Assignments'
       : selectedTemplateTypes.length === 1
         ? templateTypeLabel(selectedTemplateTypes[0])
-        : 'Skabeloner';
+        : 'Templates';
   const currentTemplateViewDetail =
     activeSection === 'assignments'
-      ? 'Skabeloner klar til tildeling'
+      ? 'Templates ready to assign'
       : selectedTemplateTypes.length === 1
-        ? `${templateTypeLabel(selectedTemplateTypes[0])} skabeloner`
-        : 'Alle skabeloner';
+        ? `${templateTypeLabel(selectedTemplateTypes[0])} templates`
+        : 'All templates';
 
   if (roleLoading || loading) {
     return (
@@ -1266,12 +1266,12 @@ export default function PlanScreen() {
         style={[styles.primaryCreateCard, { backgroundColor: colors.primary }]}
         onPress={() => setCreatePickerVisible(true)}
         activeOpacity={0.86}
-        accessibilityLabel="Opret skabelon"
+        accessibilityLabel="Create template"
         testID="plan.create.open"
       >
         <View style={styles.primaryCreateCopy}>
-          <Text style={styles.primaryCreateTitle}>Opret</Text>
-          <Text style={styles.primaryCreateDetail}>Task, exercise, session eller week</Text>
+          <Text style={styles.primaryCreateTitle}>Create</Text>
+          <Text style={styles.primaryCreateDetail}>Task, exercise, session, or week</Text>
         </View>
         <View style={styles.primaryCreateIcon}>
           <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={22} color={colors.primary} />
@@ -1280,7 +1280,7 @@ export default function PlanScreen() {
 
       <View style={styles.sectionBlock}>
         <PlanFilterSelect
-          label="Visning"
+          label="View"
           value={activePlanViewLabel}
           icon="line.3.horizontal.decrease.circle"
           materialIcon="filter_list"
@@ -1844,7 +1844,7 @@ function PlanTemplateLibraryView({
             <TemplateCard
               key={template.id}
               template={template}
-              sourceLabel={getTemplateSourceKind(template, actorUserId) === 'mine' ? 'Mine' : 'Workspace'}
+              sourceLabel={getTemplateSourceKind(template, actorUserId) === 'mine' ? 'My template' : 'Workspace'}
               colors={colors}
               onEdit={() => onEdit(template)}
               onDuplicate={() => onDuplicate(template)}
@@ -1931,7 +1931,7 @@ function PlanFocusTagDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const selectedKeys = new Set(selectedTags.map(normalizeFocusTagKey));
-  const label = selectedTags.length ? selectedTags.join(', ') : 'Alle fokus tags';
+  const label = selectedTags.length ? selectedTags.join(', ') : 'All focus tags';
 
   return (
     <View style={styles.planFocusFilterWrap} testID="plan.templates.focusTagFilter">
@@ -1942,7 +1942,7 @@ function PlanFocusTagDropdown({
         testID="plan.templates.focusTagFilter.button"
       >
         <View style={styles.planFocusFilterCopy}>
-          <Text style={[styles.planFilterSelectLabel, { color: colors.textSecondary }]}>Fokus tags</Text>
+          <Text style={[styles.planFilterSelectLabel, { color: colors.textSecondary }]}>Focus tags</Text>
           <Text style={[styles.planFilterSelectValue, { color: colors.text }]} numberOfLines={1}>
             {label}
           </Text>
@@ -1959,7 +1959,7 @@ function PlanFocusTagDropdown({
               activeOpacity={0.84}
               testID="plan.templates.focusTagFilter.clear"
             >
-              <Text style={[styles.planFocusClearText, { color: colors.text }]}>Ryd fokus tags</Text>
+              <Text style={[styles.planFocusClearText, { color: colors.text }]}>Clear focus tags</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -2013,8 +2013,8 @@ function CreateTemplatePickerModal({
         <View style={[styles.createSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
           <View style={styles.pickerHeader}>
             <View style={styles.headerCopy}>
-              <Text style={[styles.pickerTitle, { color: colors.text }]}>Opret skabelon</Text>
-              <Text style={[styles.pickerSubtitle, { color: colors.textSecondary }]}>Vælg type</Text>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Create template</Text>
+              <Text style={[styles.pickerSubtitle, { color: colors.textSecondary }]}>Choose type</Text>
             </View>
             <TouchableOpacity
               style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
@@ -2508,7 +2508,7 @@ function TemplateCard({
 
       {focusTags.length ? (
         <View style={styles.templateTagSection} testID={`plan.template.focusTags.${template.templateType}`}>
-          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Fokus</Text>
+          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Focus</Text>
           <View style={styles.templateTagRow}>
             {focusTags.map((tag) => (
               <View key={tag} style={[styles.templateTagChip, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
@@ -2523,7 +2523,7 @@ function TemplateCard({
 
       {template.description ? (
         <View style={styles.templateLabeledBlock}>
-          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Beskrivelse</Text>
+          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Description</Text>
           <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={3}>
             {template.description}
           </Text>
@@ -2535,7 +2535,7 @@ function TemplateCard({
           <View style={styles.templateSectionHeader}>
             <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Media</Text>
             <Text style={[styles.templateSectionMeta, { color: colors.textSecondary }]}>
-              {mediaUrls.length} {mediaUrls.length === 1 ? 'fil' : 'filer'}
+              {mediaUrls.length} {mediaUrls.length === 1 ? 'file' : 'files'}
             </Text>
           </View>
           <View style={styles.templateMediaPlayer}>
@@ -2557,7 +2557,7 @@ function TemplateCard({
         testID={`plan.template.assign.${template.templateType}`}
       >
         <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
-        <Text style={styles.templateAssignButtonText}>Tildel</Text>
+        <Text style={styles.templateAssignButtonText}>Assign</Text>
       </TouchableOpacity>
     </View>
   );
@@ -2596,7 +2596,7 @@ function FocusTagEditor({
 
   return (
     <View style={styles.inputGroup} testID="plan.template.focusTagEditor">
-      <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Fokus tags</Text>
+      <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Focus tags</Text>
       <View style={styles.focusTagSelectedRow}>
         {selectedTags.length ? (
           selectedTags.map((tag) => (
@@ -2614,7 +2614,7 @@ function FocusTagEditor({
             </TouchableOpacity>
           ))
         ) : (
-          <Text style={[styles.focusTagEmptyText, { color: colors.textSecondary }]}>Ingen fokus tags valgt</Text>
+          <Text style={[styles.focusTagEmptyText, { color: colors.textSecondary }]}>No focus tags selected</Text>
         )}
       </View>
 
@@ -2641,7 +2641,7 @@ function FocusTagEditor({
           style={[styles.focusTagInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
           value={inputValue}
           onChangeText={onInputChange}
-          placeholder="Tilføj nyt tag"
+          placeholder="Add new tag"
           placeholderTextColor={colors.textSecondary}
           returnKeyType="done"
           onSubmitEditing={() => canAdd && onAddTag(inputValue)}
@@ -2920,7 +2920,7 @@ function ExerciseTimerEditor({
       <Text style={[styles.taskFieldsSubtitle, { color: colors.textSecondary }]}>Interval timer</Text>
       <View style={styles.timerInputRow}>
         <View style={styles.timerInputGroup}>
-          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Aktiv tid</Text>
+          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Work time</Text>
           <TextInput
             style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
             value={timer.activeSeconds}
@@ -2929,10 +2929,10 @@ function ExerciseTimerEditor({
             placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
           />
-          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Sekunder med arbejde</Text>
+          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Seconds of active work</Text>
         </View>
         <View style={styles.timerInputGroup}>
-          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Pause</Text>
+          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Rest</Text>
           <TextInput
             style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
             value={timer.restSeconds}
@@ -2941,10 +2941,10 @@ function ExerciseTimerEditor({
             placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
           />
-          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Sekunder mellem runder</Text>
+          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Seconds between rounds</Text>
         </View>
         <View style={styles.timerInputGroup}>
-          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Runder</Text>
+          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Rounds</Text>
           <TextInput
             style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
             value={timer.rounds}
@@ -2953,7 +2953,7 @@ function ExerciseTimerEditor({
             placeholderTextColor={colors.textSecondary}
             keyboardType="number-pad"
           />
-          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Antal gentagelser</Text>
+          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Number of rounds</Text>
         </View>
       </View>
     </View>

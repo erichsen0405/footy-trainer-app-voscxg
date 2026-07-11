@@ -86,7 +86,7 @@ const getPlanFeatures = (productId: string, maxPlayers: number): PlanFeature[] =
   if (planType === 'player_basic') return [capacityFeature, ...playerBasicFeatures, trialFeature(), cancelFeature()];
   if (planType === 'player_premium') return [capacityFeature, ...playerPremiumFeatures, trialFeature(), cancelFeature()];
   if (planType.startsWith('trainer')) return [capacityFeature, ...trainerFeatures, trialFeature(), cancelFeature()];
-  return [capacityFeature, { label: 'Fuld adgang til alle funktioner', status: 'included' }, trialFeature(), cancelFeature()];
+  return [capacityFeature, { label: 'Full access to all features', status: 'included' }, trialFeature(), cancelFeature()];
 };
 
 const getPlanName = (product: { productId?: string | null }) => {
@@ -737,7 +737,7 @@ export default function AppleSubscriptionManager({
                 size={16}
                 color="#fff"
               />
-              <Text style={styles.currentBadgeText}>Dit aktive abonnement</Text>
+              <Text style={styles.currentBadgeText}>Your active subscription</Text>
             </View>
           )}
           <View style={styles.planHeader}>
@@ -806,7 +806,7 @@ export default function AppleSubscriptionManager({
               onPress={() => handleSelectPlan(item.productId)}
               disabled={blockInteractions || disabledByComplimentary}
               testID="paywall.primaryCtaButton"
-              accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
+              accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Switch to this plan'}
             >
               {purchasing ? (
                 <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -817,7 +817,7 @@ export default function AppleSubscriptionManager({
                     { color: isPopular ? '#fff' : colors.primary },
                   ]}
                 >
-                  {isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
+                  {isSignupFlow ? 'Choose this plan' : 'Switch to this plan'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -830,7 +830,7 @@ export default function AppleSubscriptionManager({
                 size={20}
                 color="#fff"
               />
-              <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
+              <Text style={styles.currentPlanIndicatorText}>Your active plan</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -900,17 +900,17 @@ export default function AppleSubscriptionManager({
               color="#fff"
             />
             <View style={styles.currentPlanInfo}>
-              <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
+              <Text style={styles.currentPlanLabel}>Your active subscription:</Text>
               <Text style={styles.currentPlanName}>
                 {complimentaryDisplayName ?? getPlanName({ productId: activePlanProductIdSafe })}
               </Text>
               <Text style={styles.currentPlanDateSecondary}>
-                {isClubAccessPlan ? 'Klub-adgang' : 'Unlimited (partner-adgang)'}
+                {isClubAccessPlan ? 'Club access' : 'Unlimited (partner access)'}
               </Text>
             </View>
             <View style={styles.currentPlanBadge}>
               <Text style={styles.currentPlanBadgeText}>
-                {isClubAccessPlan ? 'Klub-adgang' : 'Unlimited'}
+                {isClubAccessPlan ? 'Club access' : 'Unlimited'}
               </Text>
             </View>
           </View>
@@ -933,14 +933,14 @@ export default function AppleSubscriptionManager({
               color="#fff"
             />
             <View style={styles.currentPlanInfo}>
-              <Text style={styles.currentPlanLabel}>Dit aktive abonnement:</Text>
+              <Text style={styles.currentPlanLabel}>Your active subscription:</Text>
               <Text style={styles.currentPlanName}>
                 {getPlanName({ productId: subscriptionProductId })}
               </Text>
               {renderPendingDowngrade()}
             </View>
             <View style={styles.currentPlanBadge}>
-              <Text style={styles.currentPlanBadgeText}>Aktiv</Text>
+              <Text style={styles.currentPlanBadgeText}>Active</Text>
             </View>
           </View>
           {isOrangeBoxExpanded && (

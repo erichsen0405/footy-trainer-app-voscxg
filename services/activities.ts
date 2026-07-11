@@ -39,9 +39,9 @@ export interface DatabaseActivityCategory {
 }
 
 /**
- * Hent aktiviteter for en bruger
+ * Fetch activities for a user
  * - Abort-safe
- * - Sorteret efter dato (nyeste først)
+ * - Sorted by date (newest first)
  */
 export async function getActivities(
   userId: string,
@@ -99,7 +99,7 @@ export async function getCategories(
 }
 
 /**
- * Opret aktivitet
+ * Create activity
  */
 export async function createActivity(payload: {
   title: string;
@@ -120,7 +120,7 @@ export async function createActivity(payload: {
 }
 
 /**
- * Slet aktivitet
+ * Delete activity
  */
 export async function deleteActivity(
   activityId: string,

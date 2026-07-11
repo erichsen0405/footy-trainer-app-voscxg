@@ -62,7 +62,7 @@ describe('CreateActivityModal intensity scope', () => {
     expect(queryByTestId('activity.create.intensityOption.1')).toBeNull();
   });
 
-  it('submits category scope when user chooses "Ja, tilføj til alle"', async () => {
+  it('submits category scope when user chooses "Yes, add to all"', async () => {
     const onCreateActivity = jest.fn().mockResolvedValue(undefined);
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 

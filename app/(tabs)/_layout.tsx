@@ -159,7 +159,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/coach-dashboard',
       icon: 'chart.bar.fill',
       materialIcon: 'dashboard',
-      label: 'Overblik',
+      label: 'Overview',
     };
 
     const playerCrmTab: TabBarItem = {
@@ -167,7 +167,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/player-crm',
       icon: 'person.2.fill',
       materialIcon: 'groups',
-      label: 'Spillere',
+      label: 'Players',
     };
 
     const planTab: TabBarItem = {

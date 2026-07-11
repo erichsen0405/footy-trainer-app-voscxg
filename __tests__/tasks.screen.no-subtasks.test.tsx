@@ -199,7 +199,7 @@ describe('Tasks redesigned template screen', () => {
 
     expect(getByTestId('tasks.sourceFilter.coach')).toBeTruthy();
     expect(getByTestId('tasks.taskCard.trainer-task-1')).toBeTruthy();
-    expect(getByText('Fra Coach Mads')).toBeTruthy();
+    expect(getByText('From Coach Mads')).toBeTruthy();
   });
 
   it('shows selected admin context templates under personal tasks', () => {
@@ -246,7 +246,7 @@ describe('Tasks redesigned template screen', () => {
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByText('Pasning')).toBeTruthy();
-    expect(queryByText('Alle aktiviteter')).toBeNull();
+    expect(queryByText('All activities')).toBeNull();
     expect(queryByText('Sprint')).toBeNull();
   });
 

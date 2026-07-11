@@ -88,14 +88,14 @@ export default function CheckEmailScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Tjek din e-mail</Text>
-      <Text style={styles.text}>Vi har sendt en mail til {email || 'din e-mail'}.</Text>
+      <Text style={styles.title}>Check your email</Text>
+      <Text style={styles.text}>We sent an email to {email || 'your email'}.</Text>
 
       <TextInput
         value={email}
         onChangeText={setEmail}
         style={styles.input}
-        placeholder="din@email.dk"
+        placeholder="your@email.com"
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="email-address"

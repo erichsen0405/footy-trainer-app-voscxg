@@ -1032,7 +1032,7 @@ export default function ProfileScreen() {
                       style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                       value={editName}
                       onChangeText={setEditName}
-                      placeholder="Dit navn"
+                      placeholder="Your name"
                       placeholderTextColor={textSecondaryColor}
                     />
 
@@ -1073,16 +1073,16 @@ export default function ProfileScreen() {
 	                          })}
 	                        </View>
 
-	                        <Text style={[styles.label, { color: textColor }]}>Klub</Text>
+	                        <Text style={[styles.label, { color: textColor }]}>Club</Text>
 	                        <TextInput
 	                          style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
 	                          value={editClubName}
 	                          onChangeText={setEditClubName}
-	                          placeholder="Klubnavn"
+	                          placeholder="Club name"
 	                          placeholderTextColor={textSecondaryColor}
 	                        />
 
-	                        <Text style={[styles.label, { color: textColor }]}>Niveau</Text>
+	                        <Text style={[styles.label, { color: textColor }]}>Level</Text>
 	                        <TextInput
 	                          style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
 	                          value={editPlayingLevel}
@@ -1443,7 +1443,7 @@ export default function ProfileScreen() {
                     style={[styles.input, { backgroundColor: bgColor, color: textColor }]}
                     value={email}
                     onChangeText={setEmail}
-                    placeholder="din@email.dk"
+                    placeholder="your@email.com"
                     placeholderTextColor={textSecondaryColor}
                     autoCapitalize="none"
                     autoComplete="email"

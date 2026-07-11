@@ -373,11 +373,11 @@ export function CreateActivityTaskModal({
         .maybeSingle();
 
       if (templateError) {
-        throw new Error(`Kunne ikke indlæse skabelonen: ${templateError.message}`);
+        throw new Error(`Could not load the template: ${templateError.message}`);
       }
 
       if (!templateRow) {
-        throw new Error('Den linkede skabelon kunne ikke findes.');
+        throw new Error('The linked template could not be found.');
       }
 
       const { data: templateSubtasks, error: subtasksError } = await supabase
@@ -387,7 +387,7 @@ export function CreateActivityTaskModal({
         .order('sort_order', { ascending: true });
 
       if (subtasksError) {
-        throw new Error(`Kunne ikke indlæse delopgaver fra skabelonen: ${subtasksError.message}`);
+        throw new Error(`Could not load subtasks from the template: ${subtasksError.message}`);
       }
 
       const videoPayload = buildTaskVideoPayload([
@@ -439,7 +439,7 @@ export function CreateActivityTaskModal({
         applyTemplateSnapshotToForm(snapshot);
       } catch (error: any) {
         setTemplateSyncEnabled(false);
-      Alert.alert('Skabelon-sync', error?.message || 'Kunne ikke opdatere fra den linkede skabelon.');
+        Alert.alert('Template sync', error?.message || 'Could not update from the linked template.');
       } finally {
         setIsTemplateSnapshotLoading(false);
       }
@@ -1180,7 +1180,7 @@ export function CreateActivityTaskModal({
     }
 
     if (isTemplateSnapshotLoading) {
-      Alert.alert('Vent venligst', 'Den linkede skabelon indlæses stadig.');
+      Alert.alert('Please wait', 'The linked template is still loading.');
       return;
     }
 
@@ -1311,7 +1311,7 @@ export function CreateActivityTaskModal({
         }
 
         if (updateResponse.error) {
-          throw new Error(`Database fejl: ${updateResponse.error.message}`);
+          throw new Error(`Database error: ${updateResponse.error.message}`);
         }
 
         return Array.isArray(updateResponse.data) && updateResponse.data.length > 0;
@@ -1345,7 +1345,7 @@ export function CreateActivityTaskModal({
         }
 
         if (insertResponse.error) {
-          throw new Error(`Database fejl: ${insertResponse.error.message}`);
+          throw new Error(`Database error: ${insertResponse.error.message}`);
         }
 
         if (!insertResponse.data) {
@@ -1644,12 +1644,12 @@ export function CreateActivityTaskModal({
               >
                 <View style={styles.templateSyncTextWrap}>
                   <Text style={styles.templateSyncTitle}>
-                    {templateSyncEnabled ? 'Følger skabelonen' : 'Løsrevet fra skabelonen'}
+                    {templateSyncEnabled ? 'Following template' : 'Detached from template'}
                   </Text>
                   <Text style={styles.templateSyncHelper}>
                     {templateSyncEnabled
-                      ? `Linket til ${linkedTemplateTitle ?? 'skabelonen'}. Slå fra for at redigere lokalt.`
-                      : 'Lokale ændringer bliver kun på denne aktivitet. Slå til for at hente skabelonen igen.'}
+                      ? `Linked to ${linkedTemplateTitle ?? 'the template'}. Turn off to edit locally.`
+                      : 'Local changes only stay on this activity. Turn on to pull the template again.'}
                   </Text>
                 </View>
                 <Switch

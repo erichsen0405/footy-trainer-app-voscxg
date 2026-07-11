@@ -618,7 +618,7 @@ export const taskService = {
   },
 
   /* ======================================================
-     UPDATE (bruges af aktiviteter – ikke Tasks-skærmen)
+     UPDATE (used by activities, not the Tasks screen)
      ====================================================== */
   async updateTask(
     taskId: string,

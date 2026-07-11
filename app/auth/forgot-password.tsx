@@ -55,14 +55,14 @@ export default function ForgotPasswordScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Glemt adgangskode</Text>
+      <Text style={styles.title}>Forgot password</Text>
       <Text style={styles.text}>Enter your email and we'll send you a password reset link.</Text>
 
       <TextInput
         value={email}
         onChangeText={setEmail}
         style={styles.input}
-        placeholder="din@email.dk"
+        placeholder="your@email.com"
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="email-address"

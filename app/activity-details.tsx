@@ -1368,7 +1368,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
 
       return {
         id: String(externalOnlyAny.id),
-        title: externalOnlyAny.title ?? 'Ekstern aktivitet',
+        title: externalOnlyAny.title ?? 'External activity',
         date: new Date(externalOnlyAny.start_date),
         time: externalOnlyAny.start_time,
         endTime: externalOnlyAny.end_time ?? undefined,
@@ -2866,18 +2866,18 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
     if (activity.isExternal) {
       Alert.alert(
-        'Kan ikke duplikere',
+        'Cannot duplicate',
         'This activity is from an external calendar and cannot be duplicated. Only manual activities can be duplicated.',
       );
       return;
     }
 
     Alert.alert(
-      'Duplikér aktivitet',
+      'Duplicate activity',
       `Are you sure you want to duplicate "${activity.title}"? A copy will be created with the same date, time, location, and tasks.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Duplikér', onPress: () => setPendingAction({ type: 'duplicate' }) },
+        { text: 'Duplicate', onPress: () => setPendingAction({ type: 'duplicate' }) },
       ],
     );
   }, [activity, canManageAssignedActivity]);
@@ -3332,14 +3332,14 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     const isLinkedTemplateTask = isRemoteTemplateLinkedTask(task);
     const syncEnabled = getTaskTemplateSyncEnabled(task);
     Alert.alert(
-      isLinkedTemplateTask ? 'Opgave linket til skabelon' : 'Rediger opgave',
+      isLinkedTemplateTask ? 'Task linked to template' : 'Edit task',
       isLinkedTemplateTask && syncEnabled
-        ? 'Denne opgave modtager ændringer fra skabelonen. Slå skabelon-sync fra i editoren for at redigere lokalt.'
-        : 'Denne opgave kan redigeres lokalt på aktiviteten uden at ændre opgaveskabelonen.',
+        ? 'This task receives updates from the template. Turn off template sync in the editor to edit it locally.'
+        : 'This task can be edited locally on the activity without changing the task template.',
       [
-        { text: 'Annuller', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Fortsæt',
+          text: 'Continue',
           onPress: () => {
             setEditingActivityTask(task);
             setShowCreateTaskModal(true);
@@ -3633,7 +3633,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     }
 
     if (template?.afterTrainingEnabled === true) {
-      parts.push('Feedback: Ja');
+      parts.push('Feedback: Yes');
     }
 
     const durationEnabled =
@@ -3809,7 +3809,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const mailStatus = result.delivery?.mail?.status;
       const pushStatus = result.delivery?.push?.status;
       if (mailStatus === 'sent' && pushStatus === 'sent') {
-        Alert.alert('Feedback sendt', 'Spilleren har modtaget feedbacken.');
+        Alert.alert('Feedback sent', 'The player has received the feedback.');
       } else {
         Alert.alert(
           'Feedback gemt',
@@ -3959,7 +3959,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               size={18}
               color={colors.primary}
             />
-            <Text style={[styles.switchLabel, { color: textColor }]}>Aktivér intensitet</Text>
+            <Text style={[styles.switchLabel, { color: textColor }]}>Enable intensity</Text>
           </View>
           <Switch
             value={editIntensityEnabled}
@@ -4149,7 +4149,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                   ]}
                   numberOfLines={1}
                 >
-                  {taskReceivesTemplateUpdates ? 'Følger skabelon' : 'Løsrevet fra skabelon'}
+                  {taskReceivesTemplateUpdates ? 'Following template' : 'Detached from template'}
                 </Text>
               </View>
             ) : null}
@@ -4237,7 +4237,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               },
             ]}
           >
-            <Text style={{ color: infoTextColor, fontWeight: '700' }}>Ekstern aktivitet</Text>
+            <Text style={{ color: infoTextColor, fontWeight: '700' }}>External activity</Text>
             <Text style={{ color: textSecondaryColor, marginTop: 6 }}>
               You can change the category and intensity of external activities.
             </Text>
@@ -4384,11 +4384,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
 
             {!activity.seriesId && (
               <View style={[styles.section, { backgroundColor: cardBgColor }]}>
-                <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Gentagelse</Text>
+                <Text style={[styles.sectionTitle, { color: sectionTitleColor }]}>Recurrence</Text>
                 <View style={[styles.recurringToggle, { backgroundColor: fieldBackgroundColor, paddingHorizontal: 16 }]}>
                   <View style={styles.recurringToggleLeft}>
                     <IconSymbol ios_icon_name="repeat" android_material_icon_name="repeat" size={18} color={colors.primary} />
-                    <Text style={[styles.recurringToggleText, { color: textColor }]}>Gentag aktivitet</Text>
+                    <Text style={[styles.recurringToggleText, { color: textColor }]}>Repeat activity</Text>
                   </View>
                   <Switch
                     value={convertToRecurring}
@@ -5407,7 +5407,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               activeOpacity={0.85}
               testID="activity.details.intensityScopeModal.single"
             >
-              <Text style={[styles.intensityScopeModalSecondaryText, { color: textColor }]}>Nej, kun denne</Text>
+              <Text style={[styles.intensityScopeModalSecondaryText, { color: textColor }]}>No, only this one</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -5432,7 +5432,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
           <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
             <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Select assignment template</Text>
             <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
-              Opretter én opgave på denne aktivitet.
+              Creates one task on this activity.
             </Text>
 
             <View
@@ -5459,12 +5459,12 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               </View>
               <View style={styles.templateSyncTextWrap}>
                 <Text style={[styles.templateSyncTitle, { color: textColor }]}>
-                  {templateTaskSyncEnabled ? 'Følger skabelonen' : 'Løsrevet fra skabelonen'}
+                  {templateTaskSyncEnabled ? 'Following template' : 'Detached from template'}
                 </Text>
                 <Text style={[styles.templateSyncSubtitle, { color: textSecondaryColor }]}>
                   {templateTaskSyncEnabled
-                    ? 'Fremtidige ændringer i skabelonen opdaterer opgaven på aktiviteten.'
-                    : 'Denne opgave beholder sit nuværende indhold på aktiviteten.'}
+                    ? 'Future changes to the template update the task on this activity.'
+                    : 'This task keeps its current content on the activity.'}
                 </Text>
               </View>
               <Switch

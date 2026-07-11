@@ -288,7 +288,7 @@ function resolveCelebrationMessage(celebration: ActiveCelebration): CelebrationM
 
   return {
     title: 'Task completed',
-    subtitle: 'Godt arbejde.',
+    subtitle: 'Good work.',
   };
 }
 

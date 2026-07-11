@@ -547,10 +547,10 @@ export default function CoachDashboardScreen() {
   const getFilterPickerTitle = (picker: DashboardFilterPicker | null): string => {
     if (picker === 'attention') return 'Attention';
     if (picker === 'status') return 'Status';
-    if (picker === 'team') return 'Hold';
+    if (picker === 'team') return 'Team';
     if (picker === 'tag') return 'Tags';
     if (picker === 'position') return 'Position';
-    if (picker === 'level') return 'Niveau';
+    if (picker === 'level') return 'Level';
     return 'Filter';
   };
 
@@ -563,8 +563,8 @@ export default function CoachDashboardScreen() {
         ? [
             {
               id: 'all',
-              label: 'Alle spillere',
-              detail: 'Vis hele spillerlisten',
+              label: 'All players',
+              detail: 'Show the full player list',
               active: !filters.alertOnly,
               onPress: () => {
                 setFilters((current) => ({ ...current, alertOnly: false }));
@@ -573,8 +573,8 @@ export default function CoachDashboardScreen() {
             },
             {
               id: 'alerts',
-              label: 'Kun alerts',
-              detail: 'Spillere der kræver opmærksomhed',
+              label: 'Alerts only',
+              detail: 'Players needing attention',
               active: filters.alertOnly,
               onPress: () => {
                 setFilters((current) => ({ ...current, alertOnly: true }));
@@ -586,8 +586,8 @@ export default function CoachDashboardScreen() {
           ? [
               {
                 id: 'all',
-                label: 'Alle statusser',
-                detail: 'Ingen statusfiltrering',
+                label: 'All statuses',
+                detail: 'No status filter',
                 active: !filters.status,
                 onPress: () => {
                   setFilters((current) => ({ ...current, status: null }));
@@ -609,8 +609,8 @@ export default function CoachDashboardScreen() {
             ? [
                 {
                   id: 'all',
-                  label: 'Alle hold',
-                  detail: 'Ingen holdfiltrering',
+                  label: 'All teams',
+                  detail: 'No team filter',
                   active: !filters.teamId,
                   onPress: () => {
                     setFilters((current) => ({ ...current, teamId: null }));
@@ -620,7 +620,7 @@ export default function CoachDashboardScreen() {
                 ...dashboard.filters.teams.map((team) => ({
                   id: team.id,
                   label: team.name,
-                  detail: `${team.memberCount} spillere`,
+                  detail: `${team.memberCount} players`,
                   active: filters.teamId === team.id,
                   onPress: () => {
                     setFilters((current) => ({ ...current, teamId: team.id }));
@@ -632,8 +632,8 @@ export default function CoachDashboardScreen() {
               ? [
                   {
                     id: 'all',
-                    label: 'Alle tags',
-                    detail: 'Ingen tagfiltrering',
+                    label: 'All tags',
+                    detail: 'No tag filter',
                     active: !filters.tagId,
                     onPress: () => {
                       setFilters((current) => ({ ...current, tagId: null }));
@@ -643,7 +643,7 @@ export default function CoachDashboardScreen() {
                   ...dashboard.filters.tags.map((tag) => ({
                     id: tag.id,
                     label: tag.name,
-                    detail: 'Spillertag',
+                    detail: 'Player tag',
                     active: filters.tagId === tag.id,
                     onPress: () => {
                       setFilters((current) => ({ ...current, tagId: tag.id }));
@@ -655,8 +655,8 @@ export default function CoachDashboardScreen() {
                 ? [
                     {
                       id: 'all',
-                      label: 'Alle positioner',
-                      detail: 'Ingen positionsfiltrering',
+                      label: 'All positions',
+                      detail: 'No position filter',
                       active: !filters.position,
                       onPress: () => {
                         setFilters((current) => ({ ...current, position: null }));
@@ -677,8 +677,8 @@ export default function CoachDashboardScreen() {
                 : [
                     {
                       id: 'all',
-                      label: 'Alle niveauer',
-                      detail: 'Ingen niveaufilter',
+                      label: 'All levels',
+                      detail: 'No level filter',
                       active: !filters.level,
                       onPress: () => {
                         setFilters((current) => ({ ...current, level: null }));
@@ -688,7 +688,7 @@ export default function CoachDashboardScreen() {
                     ...dashboard.filters.levels.map((level) => ({
                       id: level,
                       label: level,
-                      detail: 'Niveau',
+                      detail: 'Level',
                       active: filters.level === level,
                       onPress: () => {
                         setFilters((current) => ({ ...current, level }));
@@ -711,7 +711,7 @@ export default function CoachDashboardScreen() {
               <View>
                 <Text style={[styles.scopeSheetTitle, { color: colors.text }]}>{getFilterPickerTitle(filterPickerVisible)}</Text>
                 <Text style={[styles.scopeSheetSubtitle, { color: colors.textSecondary }]}>
-                  Vælg hvordan spillerlisten skal filtreres.
+                  Choose how the player list should be filtered.
                 </Text>
               </View>
               <TouchableOpacity
@@ -745,24 +745,24 @@ export default function CoachDashboardScreen() {
     if (!dashboard) return null;
     const statusValue = filters.status
       ? dashboard.filters.statuses.find((status) => status.value === filters.status)?.label ?? statusLabel(filters.status)
-      : 'Alle statusser';
+      : 'All statuses';
     const teamValue = filters.teamId
-      ? dashboard.filters.teams.find((team) => team.id === filters.teamId)?.name ?? 'Valgt hold'
-      : 'Alle hold';
+      ? dashboard.filters.teams.find((team) => team.id === filters.teamId)?.name ?? 'Selected team'
+      : 'All teams';
     const tagValue = filters.tagId
-      ? dashboard.filters.tags.find((tag) => tag.id === filters.tagId)?.name ?? 'Valgt tag'
-      : 'Alle tags';
-    const positionValue = filters.position ?? 'Alle positioner';
-    const levelValue = filters.level ?? 'Alle niveauer';
+      ? dashboard.filters.tags.find((tag) => tag.id === filters.tagId)?.name ?? 'Selected tag'
+      : 'All tags';
+    const positionValue = filters.position ?? 'All positions';
+    const levelValue = filters.level ?? 'All levels';
     const activeCount = countActivePlayerFilters(filters);
 
     return (
       <View style={styles.filterBlock} testID="coachDashboard.playerFilters">
         <View style={styles.playerFilterHeader}>
           <View style={styles.playerFilterTitleBlock}>
-            <Text style={[styles.playerFilterTitle, { color: colors.text }]}>Spillerfilter</Text>
+            <Text style={[styles.playerFilterTitle, { color: colors.text }]}>Player filters</Text>
             <Text style={[styles.playerFilterSubtitle, { color: colors.textSecondary }]}>
-              Brug filtrene på listen nedenfor.
+              Use the filters below.
             </Text>
           </View>
           <View style={[styles.playerFilterCountBadge, { borderColor: activeCount ? colors.primary : colors.border }]}>
@@ -775,7 +775,7 @@ export default function CoachDashboardScreen() {
         <View style={styles.filterSelectGrid}>
           <FilterSelectButton
             label="Attention"
-            value={filters.alertOnly ? 'Kun alerts' : 'Alle spillere'}
+            value={filters.alertOnly ? 'Alerts only' : 'All players'}
             icon="bell.fill"
             materialIcon="notifications"
             active={filters.alertOnly}
@@ -794,7 +794,7 @@ export default function CoachDashboardScreen() {
             testID="coachDashboard.playerFilters.status"
           />
           <FilterSelectButton
-            label="Hold"
+            label="Team"
             value={teamValue}
             icon="person.3.fill"
             materialIcon="groups"
@@ -824,7 +824,7 @@ export default function CoachDashboardScreen() {
             testID="coachDashboard.playerFilters.position"
           />
           <FilterSelectButton
-            label="Niveau"
+            label="Level"
             value={levelValue}
             icon="chart.line.uptrend.xyaxis"
             materialIcon="trending_up"
@@ -851,7 +851,7 @@ export default function CoachDashboardScreen() {
             disabled={!hasActiveFilters(filters)}
           >
             <IconSymbol ios_icon_name="tray.and.arrow.down.fill" android_material_icon_name="save" size={16} color={colors.text} />
-            <Text style={[styles.smallActionText, { color: colors.text }]}>Gem</Text>
+            <Text style={[styles.smallActionText, { color: colors.text }]}>Save</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.smallActionButton, { borderColor: colors.border, opacity: hasActiveFilters(filters) ? 1 : 0.48 }]}
@@ -1027,7 +1027,7 @@ export default function CoachDashboardScreen() {
       >
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
-            <Text style={[styles.title, { color: colors.text }]}>Overblik</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Overview</Text>
             <View style={styles.headerActions}>
               {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
               <TouchableOpacity
@@ -1067,7 +1067,7 @@ export default function CoachDashboardScreen() {
 
             <View style={styles.shortcutGrid} testID="coachDashboard.shortcuts">
               <ShortcutButton
-                label="Aktiviteter"
+                label="Activities"
                 icon="calendar"
                 materialIcon="event"
                 colors={colors}
@@ -1437,7 +1437,7 @@ function PlayerCard({
       </Text>
 
       <View style={styles.playerActions}>
-        <IconAction icon="calendar" materialIcon="event" label="Aktiviteter" onPress={onOpenActivities} colors={colors} />
+        <IconAction icon="calendar" materialIcon="event" label="Activities" onPress={onOpenActivities} colors={colors} />
         <IconAction icon="chart.bar.fill" materialIcon="bar_chart" label="Progress" onPress={onOpenProgress} colors={colors} />
       </View>
     </View>

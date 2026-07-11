@@ -201,7 +201,7 @@ describe('owner player CRM contract', () => {
 
   it('moves mobile player/team management into the dedicated CRM tab', () => {
     expect(tabLayout).toContain("name: 'player-crm'");
-    expect(tabLayout).toContain("label: 'Spillere'");
+    expect(tabLayout).toContain("label: 'Players'");
     expect(tabLayout).toContain('<Stack.Screen name="player-crm" />');
     expect(mobileCrm).toContain('TeamManagement');
     expect(mobileCrm).toContain('CreatePlayerModal');

@@ -230,7 +230,7 @@ export default function TeamPlayerSelector() {
                   </View>
                   <View style={styles.optionInfo}>
                     <Text style={styles.optionName}>{trainerProfile.name}</Text>
-                    <Text style={styles.optionDetail}>Administrer dine egne data</Text>
+                    <Text style={styles.optionDetail}>Manage your own data</Text>
                   </View>
                   {!selectedContext.type && (
                     <IconSymbol

@@ -49,7 +49,7 @@ describe('taskModalContent', () => {
     expect(
       shouldHydrateTaskForModal({
         task_template_id: 'template-1',
-        description: 'Beskrivelse',
+        description: 'Description',
         video_url: 'focus/run.mp4',
       })
     ).toBe(false);
@@ -59,8 +59,8 @@ describe('taskModalContent', () => {
     mockMaybeSingle.mockResolvedValue({
       data: {
         id: 'template-1',
-        title: 'Teknik',
-        description: 'Se videoen og øv teknikken',
+        title: 'Technique',
+        description: 'Watch the video and practice the technique',
         video_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         video_urls: [
           'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
@@ -73,14 +73,14 @@ describe('taskModalContent', () => {
 
     const hydrated = await hydrateTaskForModal({
       id: 'task-1',
-      title: 'Teknik',
+      title: 'Technique',
       description: '',
       task_template_id: 'template-1',
       video_url: null,
     });
 
     expect(mockFrom).toHaveBeenCalledWith('task_templates');
-    expect(hydrated.description).toBe('Se videoen og øv teknikken');
+    expect(hydrated.description).toBe('Watch the video and practice the technique');
     expect(hydrated.video_url).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     expect((hydrated as any).videoUrl).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     expect((hydrated as any).videoUrls).toEqual([

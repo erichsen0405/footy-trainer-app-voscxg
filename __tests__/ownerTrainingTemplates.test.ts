@@ -362,8 +362,8 @@ describe('owner training templates contract', () => {
   });
 
   it('adds Plan as the trainer home for templates and simplifies the trainer tab bar', () => {
-    expect(tabLayout).toContain("label: 'Overblik'");
-    expect(tabLayout).toContain("label: 'Spillere'");
+    expect(tabLayout).toContain("label: 'Overview'");
+    expect(tabLayout).toContain("label: 'Players'");
     expect(tabLayout).toContain("label: 'Plan'");
     expect(tabLayout).toContain("label: isPlayer ? 'Plan' : 'Tasks'");
     expect(tabLayout).toContain("label: 'Library'");
@@ -383,8 +383,8 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('CREATE_TEMPLATE_OPTIONS');
     expect(plan).toContain('plan.create.type.${option.value}');
     expect(plan).toContain("ios_icon_name=\"info.circle\"");
-    expect(plan).not.toContain("value: 'templates', label: 'Skabeloner'");
-    expect(plan).not.toContain("value: 'programs', label: 'Programmer'");
+    expect(plan).not.toContain("value: 'templates'");
+    expect(plan).not.toContain("value: 'programs'");
     expect(plan).toContain('fetchOwnerTrainingTemplates');
     expect(plan).toContain('saveOwnerTrainingTemplate');
     expect(plan).toContain('duplicateOwnerTrainingTemplate');
@@ -393,9 +393,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("const [activeSection, setActiveSection] = useState<PlanSection>('tasks')");
     expect(plan).toContain("value: 'exercise', label: 'Exercise'");
     expect(plan).toContain('Interval timer');
-    expect(plan).toContain('Sekunder med arbejde');
-    expect(plan).toContain('Sekunder mellem runder');
-    expect(plan).toContain('Antal gentagelser');
+    expect(plan).toContain('Seconds of active work');
+    expect(plan).toContain('Seconds between rounds');
+    expect(plan).toContain('Number of rounds');
     expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
     expect(plan).toContain('type ItemPickerMode');
     expect(plan).toContain("type PlanFilterPicker = 'view' | null");
@@ -403,7 +403,7 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('PlanFilterSelect');
     expect(plan).toContain('PlanFilterOption');
     expect(plan).toContain('plan.viewDropdown');
-    expect(plan).toContain("label=\"Visning\"");
+    expect(plan).toContain("label=\"View\"");
     expect(plan).toContain('PlanTemplateLibraryView');
     expect(plan).toContain('plan.templates.libraryView');
     expect(plan).toContain('plan.templates.searchInput');
@@ -460,8 +460,8 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('plan.template.assign.${template.templateType}');
     expect(plan).toContain('plan.template.duplicate.${template.templateType}');
     expect(plan).toContain('plan.template.edit.${template.templateType}');
-    expect(plan).not.toContain('TemplateAction label="Tildel"');
-    expect(plan).toContain('Beskrivelse');
+    expect(plan).not.toContain('TemplateAction label="Assign"');
+    expect(plan).toContain('Description');
     expect(plan).toContain('FocusTagEditor');
     expect(plan).toContain('plan.templates.focusTagFilter');
     expect(plan).toContain('normalizeFocusTags(template.focusAreas)');
@@ -470,7 +470,7 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('templateTagChip');
     expect(plan).toContain('minHeight={124}');
     expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
-    expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Opgaver' : 'Tasks'");
+    expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Tasks' : 'Tasks'");
     expect(tasks).toContain('isTrainerProfile && !embedded');
     expect(tasks).toContain('{!embedded ? (');
     expect(tasks).not.toContain('isPlayerPlan || embedded ? (');
@@ -478,19 +478,19 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain('TaskSourceSelector');
     expect(tasks).toContain('tasks.sourceFilter');
     expect(tasks).toContain("selected={effectiveTaskSourceFilter}");
-    expect(tasks).toContain("showFlatTemplateList ? 'Opgaver' : 'Folders'");
+    expect(tasks).toContain("showFlatTemplateList ? 'Tasks' : 'Folders'");
     expect(tasks).toContain('tasks.categoryFilter.button');
-    expect(tasks).toContain(": 'Kategori'");
-    expect(tasks).toContain('Dine egne skabeloner og skabeloner delt fra din træner.');
+    expect(tasks).toContain(": 'Category'");
+    expect(tasks).toContain('Your own templates and templates shared by your coach.');
     expect(tasks).toContain('taskFacts');
-    expect(tasks).toContain("label: 'Kilde', value: sourceLabel");
+    expect(tasks).toContain("label: 'Source', value: sourceLabel");
     expect(tasks).toContain('tasks.taskFocusTags');
     expect(tasks).toContain('tasks.focusTagFilter.button');
     expect(tasks).toContain('TaskFocusTagEditor');
     expect(tasks).toContain('tasks.modal.focusTagEditor');
     expect(tasks).toContain('focusAreas: focusTags');
     expect(tasks).toContain('focus_areas: focusTags');
-    expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Aktiv'");
+    expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Active'");
     expect(tasks).not.toContain('tasks.template.autoAddBadge');
     expect(tasks).toContain('tasks.taskCard.media');
     expect(tasks).toContain('tasks.task.assign');
