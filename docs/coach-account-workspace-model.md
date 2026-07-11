@@ -70,18 +70,22 @@ checks should use the sum of active roles from `owner_membership_roles`.
 
 The migration should be incremental:
 
-1. Create one default `coach_accounts` row for each existing trainer/admin user
-   that needs B2B coach features.
-2. Create an active `owner` row in `coach_memberships` for that user.
-3. Keep existing `admin_player_relationships`, `teams`, `team_members`,
+1. Preserve existing `coach_accounts` rows and repair memberships for those
+   rows where needed.
+2. Do not auto-create new default `coach_accounts` rows from legacy/default
+   helper flows. New private coach workspaces are provisioned only by Apple
+   trainer subscription sync or platform-admin creation.
+3. Create an active `owner` row in `coach_memberships` only for existing or
+   explicitly provisioned coach accounts.
+4. Keep existing `admin_player_relationships`, `teams`, `team_members`,
    activity assignment RPCs and trainer feedback flows working as-is.
-4. #313 adds `owner_account_id` as the new shared top-level scope for clubs and
+5. #313 adds `owner_account_id` as the new shared top-level scope for clubs and
    private coach businesses.
-5. #281 adds owner-aware subscription plans, owner subscriptions, super admin
+6. #281 adds owner-aware subscription plans, owner subscriptions, super admin
    seat adjustments and effective seat RPCs on `owner_account_id`.
-6. Later issues should add `owner_account_id` to new B2B tables such as CRM,
+7. Later issues should add `owner_account_id` to new B2B tables such as CRM,
    programs, goals, reports, reminders, chat, tests, booking and payments.
-7. Existing player activity/task history should not be moved or rewritten until
+8. Existing player activity/task history should not be moved or rewritten until
    a dedicated migration issue explicitly handles that scope.
 
 This lets `Player -> Activities -> Tasks` continue to work while the new
@@ -101,11 +105,17 @@ The foundation adds security-definer helpers:
 RLS rules allow:
 
 - active members to read their coach account and memberships,
-- authenticated users to create a coach account they own,
+- authenticated users to read/use existing coach accounts they are members of,
 - owners/admins to update account settings and memberships,
 - owner membership to remain tied to the immutable account owner.
 
-The service role can still perform controlled backfills and platform migrations.
+Authenticated clients must not insert new `coach_accounts` directly. New
+personal coach workspaces are created only through the guarded Apple trainer
+subscription sync or the guarded platform-admin provisioning flow.
+
+The service role can still perform controlled backfills and platform migrations,
+but automatic workspace creation is restricted to the explicit Apple trainer
+subscription and platform-admin provisioning flows.
 
 ## Next Issues
 

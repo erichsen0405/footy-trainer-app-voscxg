@@ -27,6 +27,14 @@ const deleteNoReprovisionMigrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20260711110000_delete_owner_account_prevent_legacy_reprovision.sql'
 );
+const restrictedProvisioningMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260711113000_restrict_owner_workspace_auto_creation.sql'
+);
+const provisioningGuardDefaultMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260711120500_fix_owner_workspace_provision_guard_default.sql'
+);
 const ownerSeatBase44PromptPath = path.join(process.cwd(), 'docs/base44-owner-seat-endpoints-deployed-prompt.md');
 const ownerDeleteBase44PromptPath = path.join(process.cwd(), 'docs/base44-delete-owner-account-fix-prompt.md');
 
@@ -80,6 +88,8 @@ const ownerSeatStatusPayload = {
 describe('owner licensing backend helpers', () => {
   const deleteVisibilityMigration = fs.readFileSync(deleteVisibilityMigrationPath, 'utf8');
   const deleteNoReprovisionMigration = fs.readFileSync(deleteNoReprovisionMigrationPath, 'utf8');
+  const restrictedProvisioningMigration = fs.readFileSync(restrictedProvisioningMigrationPath, 'utf8');
+  const provisioningGuardDefaultMigration = fs.readFileSync(provisioningGuardDefaultMigrationPath, 'utf8');
   const ownerSeatBase44Prompt = fs.readFileSync(ownerSeatBase44PromptPath, 'utf8');
   const ownerDeleteBase44Prompt = fs.readFileSync(ownerDeleteBase44PromptPath, 'utf8');
 
@@ -389,6 +399,34 @@ describe('owner licensing backend helpers', () => {
     );
     expect(deleteNoReprovisionMigration).toContain('delete from public.coach_accounts');
     expect(deleteNoReprovisionMigration).toContain('without legacy auto-reprovisioning');
+  });
+
+  it('restricts owner and coach workspace provisioning to explicit allowed flows', () => {
+    expect(restrictedProvisioningMigration).toContain('public.owner_workspace_provision_allowed()');
+    expect(restrictedProvisioningMigration).toContain('it no longer auto-creates workspaces');
+    expect(restrictedProvisioningMigration).toContain('it no longer auto-creates migration workspaces');
+    expect(restrictedProvisioningMigration).toContain('if not public.owner_workspace_provision_allowed() then');
+    expect(restrictedProvisioningMigration).toContain('return null;');
+    expect(restrictedProvisioningMigration).toContain(
+      'drop policy if exists "Authenticated users can create owned coach accounts" on public.coach_accounts'
+    );
+    expect(restrictedProvisioningMigration).toContain('revoke insert on public.coach_accounts from authenticated');
+    expect(restrictedProvisioningMigration).toContain('Direct authenticated inserts are disabled');
+    expect(restrictedProvisioningMigration).toContain('if v_owner_account_id is null then');
+    expect(restrictedProvisioningMigration).toContain('create or replace function public.sync_private_coach_owner_subscription');
+    expect(restrictedProvisioningMigration).toContain(
+      "perform set_config('app.allow_owner_workspace_provision', 'on', true);"
+    );
+    expect(restrictedProvisioningMigration).toContain('create or replace function public.create_owner_account_as_platform_admin');
+    expect(restrictedProvisioningMigration).toContain('the only non-Apple path allowed to create owner/coach workspaces');
+    expect(restrictedProvisioningMigration).toContain('it must not auto-create owner accounts');
+  });
+
+  it('keeps the owner workspace provisioning guard fail-closed', () => {
+    expect(provisioningGuardDefaultMigration).toContain(
+      "coalesce(current_setting('app.allow_owner_workspace_provision', true), '') = 'on'"
+    );
+    expect(provisioningGuardDefaultMigration).toContain('defaults to false');
   });
 
   it('documents Base44 dashboard seat status fallback handling', () => {
