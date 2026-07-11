@@ -51,6 +51,12 @@ import {
 } from '@/services/trainerFeedbackService';
 import { activityAssignmentsService } from '@/services/activityAssignments';
 import { fetchTaskTemplateVisibilityStateForTasks } from '@/services/taskTemplateVisibilityState';
+import {
+  fetchOwnerTrainingTemplates,
+  fetchOwnerTrainingTemplatesContext,
+  type TrainingTemplateExerciseTimer,
+  type TrainingTemplateSummary,
+} from '@/services/trainingTemplateService';
 import { parseTemplateIdFromMarker } from '@/utils/afterTrainingMarkers';
 import { filterVisibleTasksForActivity, type TemplateVisibilityById } from '@/utils/taskTemplateVisibility';
 import { resolveActivityIntensityEnabled } from '@/utils/activityIntensity';
@@ -230,6 +236,12 @@ type FeedbackTask = Task & {
   isFeedbackTask?: boolean;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
+  trainingTemplateId?: string | null;
+  training_template_id?: string | null;
+  trainingTemplateType?: string | null;
+  training_template_type?: string | null;
+  exerciseTimer?: TrainingTemplateExerciseTimer | null;
+  exercise_timer?: TrainingTemplateExerciseTimer | null;
   taskTemplateId?: string | null;
   templateSyncEnabled?: boolean | null;
   template_sync_enabled?: boolean | null;
@@ -393,6 +405,9 @@ const INTERNAL_SELECT_WITH_VIDEO = `
     is_feedback_task,
     task_template_id,
     feedback_template_id,
+    training_template_id,
+    training_template_type,
+    exercise_timer,
     template_sync_enabled,
     video_urls,
     media_names,
@@ -483,6 +498,9 @@ const EXTERNAL_META_SELECT_WITH_VIDEO = `
     task_template_id,
     feedback_template_id,
     is_feedback_task,
+    training_template_id,
+    training_template_type,
+    exercise_timer,
     title,
     description,
     completed,
@@ -638,6 +656,9 @@ const ACTIVITY_TASKS_SELECT_WITH_LOCAL_OPTIONS = `
   is_feedback_task,
   task_template_id,
   feedback_template_id,
+  training_template_id,
+  training_template_type,
+  exercise_timer,
   template_sync_enabled,
   video_urls,
   media_names,
@@ -740,6 +761,81 @@ function getTaskTemplateSyncEnabled(task: any): boolean {
   return raw !== false;
 }
 
+function normalizeExerciseTimerValue(value: unknown): TrainingTemplateExerciseTimer | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const activeSeconds = Number(record.activeSeconds ?? record.active_seconds ?? record.workSeconds ?? record.work_seconds);
+  const restSeconds = Number(record.restSeconds ?? record.rest_seconds ?? record.pauseSeconds ?? record.pause_seconds);
+  const rounds = Number(record.rounds ?? record.repetitions);
+  if (!Number.isFinite(activeSeconds) || !Number.isFinite(restSeconds) || !Number.isFinite(rounds)) return null;
+  return {
+    activeSeconds: Math.max(1, Math.min(3600, Math.round(activeSeconds))),
+    restSeconds: Math.max(0, Math.min(1800, Math.round(restSeconds))),
+    rounds: Math.max(1, Math.min(100, Math.round(rounds))),
+  };
+}
+
+function getTaskExerciseTimer(task: any): TrainingTemplateExerciseTimer | null {
+  return normalizeExerciseTimerValue(task?.exerciseTimer ?? task?.exercise_timer);
+}
+
+function isExerciseTemplateTask(task: any): boolean {
+  const type = String(task?.trainingTemplateType ?? task?.training_template_type ?? '').toLowerCase();
+  return type === 'exercise';
+}
+
+function formatExerciseTimerLine(timer: TrainingTemplateExerciseTimer | null): string | null {
+  if (!timer) return null;
+  return `${timer.rounds} rounds · ${timer.activeSeconds}s work · ${timer.restSeconds}s rest`;
+}
+
+function getTrainingTemplateTaskConfig(template: TrainingTemplateSummary): Record<string, any> {
+  const metadata = template.metadata && typeof template.metadata === 'object'
+    ? template.metadata as Record<string, unknown>
+    : {};
+  const task = metadata.task && typeof metadata.task === 'object'
+    ? metadata.task as Record<string, any>
+    : {};
+  return task;
+}
+
+function getTrainingTemplateExerciseTimer(template: TrainingTemplateSummary): TrainingTemplateExerciseTimer | null {
+  const metadata = template.metadata && typeof template.metadata === 'object'
+    ? template.metadata as Record<string, unknown>
+    : {};
+  return normalizeExerciseTimerValue(metadata.timer);
+}
+
+function getTrainingTemplateVideoUrls(template: TrainingTemplateSummary): string[] {
+  const config = getTrainingTemplateTaskConfig(template);
+  const candidates = [
+    config.videoUrls,
+    config.video_urls,
+    config.videoUrl,
+    config.video_url,
+  ];
+  const urls: string[] = [];
+  candidates.forEach((candidate) => {
+    if (Array.isArray(candidate)) {
+      candidate.forEach((url) => {
+        if (typeof url === 'string' && url.trim()) urls.push(url.trim());
+      });
+      return;
+    }
+    if (typeof candidate === 'string' && candidate.trim()) urls.push(candidate.trim());
+  });
+  return Array.from(new Set(urls));
+}
+
+function getTrainingTemplateMediaNames(template: TrainingTemplateSummary): string[] {
+  const config = getTrainingTemplateTaskConfig(template);
+  const raw = config.mediaNames ?? config.media_names;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((name) => (typeof name === 'string' ? name.trim() : ''))
+    .filter(Boolean);
+}
+
 function isRemoteTemplateLinkedTask(task: any): boolean {
   const templateId = normalizeId(task?.taskTemplateId ?? task?.task_template_id);
   if (!templateId) return false;
@@ -827,9 +923,18 @@ async function fetchActivityTasksByActivityId(activityId: string): Promise<any[]
       isMissingColumn(error, 'task_duration_enabled') ||
       isMissingColumn(error, 'task_duration_minutes');
     const isMissingTemplateSync = isMissingColumn(error, 'template_sync_enabled');
+    const isMissingTrainingTemplate =
+      isMissingColumn(error, 'training_template_id') ||
+      isMissingColumn(error, 'training_template_type') ||
+      isMissingColumn(error, 'exercise_timer');
     const isMissingVideo = isMissingColumn(error, 'video_url') || isMissingColumn(error, 'video_urls');
     const isMissingMediaNames = isMissingColumn(error, 'media_names');
-    const shouldRetry = isMissingLocalOption || isMissingVideo || isMissingMediaNames || isMissingTemplateSync;
+    const shouldRetry =
+      isMissingLocalOption ||
+      isMissingVideo ||
+      isMissingMediaNames ||
+      isMissingTemplateSync ||
+      isMissingTrainingTemplate;
     if (!shouldRetry) {
       break;
     }
@@ -902,7 +1007,15 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
       eqColumn: 'id',
       eqValue: activityId,
       optionalColumnName: 'video_url',
-      optionalColumnNames: ['video_url', 'video_urls', 'media_names', 'template_sync_enabled'],
+      optionalColumnNames: [
+        'video_url',
+        'video_urls',
+        'media_names',
+        'template_sync_enabled',
+        'training_template_id',
+        'training_template_type',
+        'exercise_timer',
+      ],
       context: `activities.id=${activityId}`,
     });
 
@@ -925,6 +1038,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
         const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
         const taskTemplateTitle = getTaskTemplateTitle(task);
+        const exerciseTimer = getTaskExerciseTimer(task);
         const mapped: any = {
           id: task.id,
           created_at: task.created_at ?? null,
@@ -950,6 +1064,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
             typeof task.task_duration_minutes === 'number'
               ? task.task_duration_minutes
               : null,
+          trainingTemplateId: task.training_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          trainingTemplateType: task.training_template_type ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exerciseTimer,
+          exercise_timer: exerciseTimer,
           subtasks: [],
           videoUrl: videoPayload.videoUrl ?? undefined,
           videoUrls: videoPayload.videoUrls,
@@ -1062,8 +1182,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         isMissingColumn(withVideo.error, 'task_duration_minutes') ||
         isMissingColumn(withVideo.error, 'is_feedback_task');
       const isMissingTemplateSync = isMissingColumn(withVideo.error, 'template_sync_enabled');
+      const isMissingTrainingTemplate =
+        isMissingColumn(withVideo.error, 'training_template_id') ||
+        isMissingColumn(withVideo.error, 'training_template_type') ||
+        isMissingColumn(withVideo.error, 'exercise_timer');
 
-      if (!(isMissingVideo || isMissingLocalOption || isMissingTemplateSync)) {
+      if (!(isMissingVideo || isMissingLocalOption || isMissingTemplateSync || isMissingTrainingTemplate)) {
         return { data: null, error: withVideo.error, usedFallback: false };
       }
 
@@ -1165,6 +1289,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
         const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
         const taskTemplateTitle = getTaskTemplateTitle(task);
+        const exerciseTimer = getTaskExerciseTimer(task);
         const mapped: any = {
           id: task.id,
           created_at: task.created_at ?? null,
@@ -1190,6 +1315,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
             typeof task.task_duration_minutes === 'number'
               ? task.task_duration_minutes
               : null,
+          trainingTemplateId: task.training_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          trainingTemplateType: task.training_template_type ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exerciseTimer,
+          exercise_timer: exerciseTimer,
           subtasks: [],
           videoUrl: videoPayload.videoUrl ?? undefined,
           videoUrls: videoPayload.videoUrls,
@@ -1301,6 +1432,7 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
         const templateSyncEnabled = getTaskTemplateSyncEnabled(task);
         const taskTemplateSourceFolder = getTaskTemplateSourceFolder(task);
         const taskTemplateTitle = getTaskTemplateTitle(task);
+        const exerciseTimer = getTaskExerciseTimer(task);
         const mapped: any = {
           id: task.id,
           created_at: task.created_at ?? null,
@@ -1326,6 +1458,12 @@ export async function fetchActivityFromDatabase(activityId: string): Promise<Act
             typeof task.task_duration_minutes === 'number'
               ? task.task_duration_minutes
               : null,
+          trainingTemplateId: task.training_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          trainingTemplateType: task.training_template_type ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exerciseTimer,
+          exercise_timer: exerciseTimer,
           subtasks: [],
           videoUrl: videoPayload.videoUrl ?? undefined,
           videoUrls: videoPayload.videoUrls,
@@ -1978,7 +2116,11 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   const [assignActivityModalVisible, setAssignActivityModalVisible] = useState(false);
   const [isTemplateTaskSaving, setIsTemplateTaskSaving] = useState(false);
   const [templateTaskSearch, setTemplateTaskSearch] = useState('');
+  const [templatePickerMode, setTemplatePickerMode] = useState<'task' | 'exercise'>('task');
   const [templateTaskSyncEnabled, setTemplateTaskSyncEnabled] = useState(true);
+  const [trainingTemplates, setTrainingTemplates] = useState<TrainingTemplateSummary[]>([]);
+  const [isTrainingTemplatesLoading, setIsTrainingTemplatesLoading] = useState(false);
+  const [trainingTemplatesError, setTrainingTemplatesError] = useState<string | null>(null);
   const [isDuplicating, setIsDuplicating] = useState(false);
   const [tasksState, setTasksState] = useState<FeedbackTask[]>((activity.tasks as FeedbackTask[]) || []);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -2134,6 +2276,48 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     [activityPlayerScopeId, activityTeamScopeId, isPlayerProfile],
   );
   const canManageAssignedActivity = !isTrainerAssignedActivityForPlayer;
+
+  useEffect(() => {
+    if (!canManageAssignedActivity || (!isTrainerProfile && !isAdmin)) {
+      setTrainingTemplates([]);
+      setTrainingTemplatesError(null);
+      setIsTrainingTemplatesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsTrainingTemplatesLoading(true);
+    setTrainingTemplatesError(null);
+
+    void (async () => {
+      try {
+        const context = await fetchOwnerTrainingTemplatesContext();
+        if (cancelled) return;
+        const ownerAccountId = context.defaultOwnerAccountId ?? context.workspaces[0]?.ownerAccountId ?? null;
+
+        if (!ownerAccountId) {
+          setTrainingTemplates([]);
+          return;
+        }
+
+        const payload = await fetchOwnerTrainingTemplates(ownerAccountId);
+        if (cancelled) return;
+        setTrainingTemplates(payload.templates ?? []);
+      } catch (error: any) {
+        if (!cancelled) {
+          setTrainingTemplates([]);
+          setTrainingTemplatesError(error?.message || 'Could not load exercise templates.');
+        }
+      } finally {
+        if (!cancelled) setIsTrainingTemplatesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageAssignedActivity, isAdmin, isTrainerProfile]);
+
   const assignableActivity = useMemo(() => {
     const externalEventRowId = normalizeId(
       (activity as any)?.externalEventRowId ??
@@ -3411,19 +3595,20 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
   }, [activity.id, pendingFeedbackTaskId, pendingNormalTaskId, refreshData, tasksState]);
 
   const handleAddTask = useCallback(() => {
-    Alert.alert('Add task', 'Choose how you want to create the task.', [
+    Alert.alert('Add item', 'Choose how you want to add content to this activity.', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Create manually',
+        text: 'Create task manually',
         onPress: () => {
           setEditingActivityTask(null);
           setShowCreateTaskModal(true);
         },
       },
       {
-        text: 'Create from template',
+        text: 'Choose template',
         onPress: () => {
           setTemplateTaskSearch('');
+          setTemplatePickerMode('task');
           setTemplateTaskSyncEnabled(true);
           setShowTemplateTaskModal(true);
         },
@@ -3489,10 +3674,35 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     });
   }, [taskTemplates, templateTaskSearch]);
 
+  const filteredExerciseTemplates = useMemo(() => {
+    const query = templateTaskSearch.trim().toLowerCase();
+    const activeTemplates = trainingTemplates
+      .filter((template) => template.templateType === 'exercise' && template.status !== 'archived')
+      .sort((a, b) => a.title.localeCompare(b.title, 'en-US', { sensitivity: 'base' }));
+
+    if (!query.length) return activeTemplates;
+
+    return activeTemplates.filter((template) => {
+      const config = getTrainingTemplateTaskConfig(template);
+      return [
+        template.title,
+        template.description,
+        config.title,
+        config.description,
+        ...(template.focusAreas ?? []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [templateTaskSearch, trainingTemplates]);
+
   const handleTemplateTaskModalClose = useCallback(() => {
     if (isTemplateTaskSaving) return;
     setShowTemplateTaskModal(false);
     setTemplateTaskSearch('');
+    setTemplatePickerMode('task');
     setTemplateTaskSyncEnabled(true);
   }, [isTemplateTaskSaving]);
 
@@ -3626,6 +3836,122 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
     [activity.id, activity.isExternal, currentUserId, isTemplateTaskSaving, refreshActivityTasks, templateTaskSyncEnabled],
   );
 
+  const handleCreateExerciseFromTemplate = useCallback(
+    async (template: TrainingTemplateSummary) => {
+      if (isTemplateTaskSaving) return;
+      if (!currentUserId) {
+        Alert.alert('Error', 'User not authenticated.');
+        return;
+      }
+
+      setIsTemplateTaskSaving(true);
+      try {
+        const config = getTrainingTemplateTaskConfig(template);
+        const timer = getTrainingTemplateExerciseTimer(template);
+        const title = String(config.title ?? template.title ?? '').trim() || 'Exercise';
+        const description = String(config.description ?? template.description ?? '');
+        const videoPayload = buildTaskVideoPayload(getTrainingTemplateVideoUrls(template));
+        const mediaNamePayload = buildTaskMediaNamePayload(
+          getTrainingTemplateMediaNames(template),
+          videoPayload.videoUrls,
+        );
+        const clampMinutes = (value: unknown): number => {
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed)) return 0;
+          const rounded = Math.round(parsed);
+          if (rounded < 0) return 0;
+          if (rounded > 600) return 600;
+          return rounded;
+        };
+        const afterTrainingEnabled =
+          config.afterTrainingEnabled === true || config.after_training_enabled === true;
+        const taskDurationEnabled =
+          config.taskDurationEnabled === true || config.task_duration_enabled === true;
+        const reminderValue =
+          typeof config.reminderMinutes === 'number'
+            ? clampMinutes(config.reminderMinutes)
+            : typeof config.reminder_minutes === 'number'
+              ? clampMinutes(config.reminder_minutes)
+              : null;
+
+        const basePayload: Record<string, any> = {
+          title,
+          description,
+          completed: false,
+          reminder_minutes: reminderValue,
+          video_urls: videoPayload.video_urls,
+          media_names: mediaNamePayload.media_names,
+          task_template_id: null,
+          training_template_id: template.id,
+          training_template_type: 'exercise',
+          exercise_timer: timer,
+          template_sync_enabled: false,
+          after_training_enabled: afterTrainingEnabled,
+          after_training_delay_minutes: afterTrainingEnabled
+            ? clampMinutes(config.afterTrainingDelayMinutes ?? config.after_training_delay_minutes ?? 0)
+            : null,
+          task_duration_enabled: taskDurationEnabled,
+          task_duration_minutes: taskDurationEnabled
+            ? clampMinutes(config.taskDurationMinutes ?? config.task_duration_minutes ?? 0)
+            : null,
+        };
+
+        const table = activity.isExternal ? 'external_event_tasks' : 'activity_tasks';
+        let workingPayload = { ...basePayload };
+        let insertResponse: { data: any; error: any } = { data: null, error: null };
+
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const payload = activity.isExternal
+            ? { local_meta_id: activity.id, ...workingPayload }
+            : { activity_id: activity.id, ...workingPayload };
+          insertResponse = await supabase.from(table).insert(payload as any).select('id').single();
+          if (!insertResponse.error) break;
+
+          const error = insertResponse.error;
+          let changed = false;
+          [
+            'training_template_id',
+            'training_template_type',
+            'exercise_timer',
+            'template_sync_enabled',
+            'video_urls',
+            'media_names',
+            'after_training_enabled',
+            'after_training_delay_minutes',
+            'task_duration_enabled',
+            'task_duration_minutes',
+          ].forEach((column) => {
+            if (Object.prototype.hasOwnProperty.call(workingPayload, column) && isMissingColumn(error, column)) {
+              delete workingPayload[column];
+              changed = true;
+            }
+          });
+
+          if (!changed) break;
+        }
+
+        if (insertResponse.error) {
+          if (insertResponse.error.code === '23505') {
+            Alert.alert('Already added', 'This exercise has already been added to the activity.');
+            return;
+          }
+          throw insertResponse.error;
+        }
+
+        setShowTemplateTaskModal(false);
+        setTemplateTaskSearch('');
+        setTemplatePickerMode('task');
+        setTemplateTaskSyncEnabled(true);
+        await refreshActivityTasks();
+      } catch (error: any) {
+        Alert.alert('Error', error?.message || 'Could not create exercise from template.');
+      } finally {
+        setIsTemplateTaskSaving(false);
+      }
+    },
+    [activity.id, activity.isExternal, currentUserId, isTemplateTaskSaving, refreshActivityTasks],
+  );
+
   const formatTemplateTaskMeta = useCallback((template: Task): string => {
     const parts: string[] = [];
     if (typeof template?.reminder === 'number' && Number.isFinite(template.reminder)) {
@@ -3643,6 +3969,21 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       parts.push(`Duration: ${Math.max(0, Math.round(rawDuration))} min`);
     }
 
+    return parts.join(' · ');
+  }, []);
+
+  const formatExerciseTemplateMeta = useCallback((template: TrainingTemplateSummary): string => {
+    const parts: string[] = [];
+    const timerLine = formatExerciseTimerLine(getTrainingTemplateExerciseTimer(template));
+    if (timerLine) parts.push(timerLine);
+    const config = getTrainingTemplateTaskConfig(template);
+    if (config.afterTrainingEnabled === true || config.after_training_enabled === true) {
+      parts.push('Feedback: Yes');
+    }
+    const mediaCount = getTrainingTemplateVideoUrls(template).length;
+    if (mediaCount > 0) {
+      parts.push(`${mediaCount} ${mediaCount === 1 ? 'media file' : 'media files'}`);
+    }
     return parts.join(' · ');
   }, []);
 
@@ -4053,6 +4394,9 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       const canManageTask = !isFeedbackTaskLocal && canManageAssignedActivity;
       const isTemplateLinkedTask = !isFeedbackTaskLocal && isRemoteTemplateLinkedTask(task);
       const taskReceivesTemplateUpdates = getTaskTemplateSyncEnabled(task);
+      const exerciseTimer = getTaskExerciseTimer(task);
+      const exerciseTimerText = formatExerciseTimerLine(exerciseTimer);
+      const isExerciseTask = !isFeedbackTaskLocal && isExerciseTemplateTask(task);
 
       const isFeedbackCompleted = isFeedbackTaskLocal ? isFeedbackAnswered(feedback, config) : false;
 
@@ -4120,6 +4464,24 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
             >
               {translateLegacyDisplayText(task.title)}
             </Text>
+
+            {isExerciseTask ? (
+              <View
+                style={[
+                  styles.templateStatusPill,
+                  {
+                    backgroundColor: isDark ? '#172033' : '#eef6ff',
+                    borderColor: isDark ? '#334155' : '#bfdbfe',
+                  },
+                ]}
+                testID={`activity.details.task.exerciseTimer.${String(task.id)}`}
+              >
+                <IconSymbol ios_icon_name="timer" android_material_icon_name="timer" size={13} color={colors.primary} />
+                <Text style={[styles.templateStatusText, { color: colors.primary }]} numberOfLines={1}>
+                  {exerciseTimerText ? `Exercise · ${exerciseTimerText}` : 'Exercise'}
+                </Text>
+              </View>
+            ) : null}
 
             {isTemplateLinkedTask ? (
               <View
@@ -4863,7 +5225,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
         {isEditing ? editingContent : detailsContent}
 
         <View style={styles.v2TasksHeaderRow}>
-          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Tasks</Text>
+          <Text style={[styles.v2SectionTitle, styles.v2SectionTitleInRow]}>Tasks & exercises</Text>
             {!isEditing && (
               <TouchableOpacity
                 style={[styles.addTaskHeaderButton, { backgroundColor: primaryColor }]}
@@ -4872,7 +5234,7 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                 testID="activity.addTaskButton"
               >
               <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={20} color="#fff" />
-              <Text style={styles.addTaskHeaderButtonText}>Add task</Text>
+              <Text style={styles.addTaskHeaderButtonText}>Add item</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -5430,52 +5792,101 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
       >
         <View style={styles.intensityScopeModalBackdrop}>
           <View style={[styles.templateTaskModalCard, { backgroundColor: cardBgColor }]}>
-            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Select assignment template</Text>
+            <Text style={[styles.templateTaskModalTitle, { color: textColor }]}>Select template</Text>
             <Text style={[styles.templateTaskModalSubtitle, { color: textSecondaryColor }]}>
-              Creates one task on this activity.
+              Add a task or exercise directly to this activity.
             </Text>
 
-            <View
-              style={[
-                styles.templateSyncCard,
-                {
-                  backgroundColor: templateTaskSyncEnabled
-                    ? (isDark ? '#0f2b22' : '#ecfdf5')
-                    : (isDark ? '#30220d' : '#fff7ed'),
-                  borderColor: templateTaskSyncEnabled
-                    ? (isDark ? '#1f7a55' : '#86efac')
-                    : (isDark ? '#9a5a14' : '#fed7aa'),
-                },
-              ]}
-              testID="activity.templateTask.syncCard"
-            >
-              <View style={styles.templateSyncIconWrap}>
-                <IconSymbol
-                  ios_icon_name={templateTaskSyncEnabled ? 'arrow.triangle.2.circlepath' : 'link.badge.plus'}
-                  android_material_icon_name={templateTaskSyncEnabled ? 'sync' : 'link_off'}
-                  size={20}
-                  color={templateTaskSyncEnabled ? '#16A34A' : '#F59E0B'}
+            <View style={[styles.templateTypeSwitch, { backgroundColor: fieldBackgroundColor }]}>
+              {[
+                { value: 'task' as const, label: 'Tasks' },
+                { value: 'exercise' as const, label: 'Exercises' },
+              ].map((option) => {
+                const active = templatePickerMode === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.templateTypeSwitchButton,
+                      active && { backgroundColor: colors.primary },
+                    ]}
+                    onPress={() => setTemplatePickerMode(option.value)}
+                    activeOpacity={0.85}
+                    disabled={isTemplateTaskSaving}
+                    testID={`activity.templatePicker.mode.${option.value}`}
+                  >
+                    <Text style={[styles.templateTypeSwitchText, { color: active ? '#fff' : textColor }]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {templatePickerMode === 'task' ? (
+              <View
+                style={[
+                  styles.templateSyncCard,
+                  {
+                    backgroundColor: templateTaskSyncEnabled
+                      ? (isDark ? '#0f2b22' : '#ecfdf5')
+                      : (isDark ? '#30220d' : '#fff7ed'),
+                    borderColor: templateTaskSyncEnabled
+                      ? (isDark ? '#1f7a55' : '#86efac')
+                      : (isDark ? '#9a5a14' : '#fed7aa'),
+                  },
+                ]}
+                testID="activity.templateTask.syncCard"
+              >
+                <View style={styles.templateSyncIconWrap}>
+                  <IconSymbol
+                    ios_icon_name={templateTaskSyncEnabled ? 'arrow.triangle.2.circlepath' : 'link.badge.plus'}
+                    android_material_icon_name={templateTaskSyncEnabled ? 'sync' : 'link_off'}
+                    size={20}
+                    color={templateTaskSyncEnabled ? '#16A34A' : '#F59E0B'}
+                  />
+                </View>
+                <View style={styles.templateSyncTextWrap}>
+                  <Text style={[styles.templateSyncTitle, { color: textColor }]}>
+                    {templateTaskSyncEnabled ? 'Following template' : 'Detached from template'}
+                  </Text>
+                  <Text style={[styles.templateSyncSubtitle, { color: textSecondaryColor }]}>
+                    {templateTaskSyncEnabled
+                      ? 'Future changes to the template update the task on this activity.'
+                      : 'This task keeps its current content on the activity.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={templateTaskSyncEnabled}
+                  onValueChange={setTemplateTaskSyncEnabled}
+                  disabled={isTemplateTaskSaving}
+                  trackColor={{ false: '#F59E0B', true: colors.primary }}
+                  thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                  testID="activity.templateTask.syncSwitch"
                 />
               </View>
-              <View style={styles.templateSyncTextWrap}>
-                <Text style={[styles.templateSyncTitle, { color: textColor }]}>
-                  {templateTaskSyncEnabled ? 'Following template' : 'Detached from template'}
-                </Text>
-                <Text style={[styles.templateSyncSubtitle, { color: textSecondaryColor }]}>
-                  {templateTaskSyncEnabled
-                    ? 'Future changes to the template update the task on this activity.'
-                    : 'This task keeps its current content on the activity.'}
-                </Text>
+            ) : (
+              <View
+                style={[
+                  styles.templateSyncCard,
+                  {
+                    backgroundColor: isDark ? '#1f2937' : '#eef6ff',
+                    borderColor: isDark ? '#334155' : '#bfdbfe',
+                  },
+                ]}
+                testID="activity.templateExercise.infoCard"
+              >
+                <View style={styles.templateSyncIconWrap}>
+                  <IconSymbol ios_icon_name="timer" android_material_icon_name="timer" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.templateSyncTextWrap}>
+                  <Text style={[styles.templateSyncTitle, { color: textColor }]}>Exercise instance</Text>
+                  <Text style={[styles.templateSyncSubtitle, { color: textSecondaryColor }]}>
+                    Adds the exercise fields and interval timer to this activity.
+                  </Text>
+                </View>
               </View>
-              <Switch
-                value={templateTaskSyncEnabled}
-                onValueChange={setTemplateTaskSyncEnabled}
-                disabled={isTemplateTaskSaving}
-                trackColor={{ false: '#F59E0B', true: colors.primary }}
-                thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                testID="activity.templateTask.syncSwitch"
-              />
-            </View>
+            )}
 
             <TextInput
               style={[
@@ -5484,16 +5895,16 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
               ]}
               value={templateTaskSearch}
               onChangeText={setTemplateTaskSearch}
-              placeholder="Search tasks..."
+              placeholder={templatePickerMode === 'task' ? 'Search tasks...' : 'Search exercises...'}
               placeholderTextColor={textSecondaryColor}
               editable={!isTemplateTaskSaving}
             />
 
-            {filteredTemplateTasks.length === 0 ? (
+            {templatePickerMode === 'task' && filteredTemplateTasks.length === 0 ? (
               <Text style={[styles.templateTaskEmptyText, { color: textSecondaryColor }]}>
                 No tasks found.
               </Text>
-            ) : (
+            ) : templatePickerMode === 'task' ? (
               <FlatList
                 data={filteredTemplateTasks}
                 keyExtractor={(item) => String(item.id)}
@@ -5507,6 +5918,49 @@ export function ActivityDetailsContent(props: ActivityDetailsContentProps) {
                       onPress={() => handleCreateTaskFromTemplate(item)}
                       activeOpacity={0.75}
                       disabled={isTemplateTaskSaving}
+                    >
+                      <Text style={[styles.templateTaskRowTitle, { color: textColor }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {!!meta && (
+                        <Text style={[styles.templateTaskRowMeta, { color: textSecondaryColor }]} numberOfLines={1}>
+                          {meta}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            ) : isTrainingTemplatesLoading ? (
+              <View style={styles.templateTaskLoadingRow}>
+                <ActivityIndicator color={colors.primary} size="small" />
+                <Text style={[styles.templateTaskEmptyText, { color: textSecondaryColor }]}>
+                  Loading exercise templates...
+                </Text>
+              </View>
+            ) : trainingTemplatesError ? (
+              <Text style={[styles.templateTaskEmptyText, { color: colors.error }]}>
+                {trainingTemplatesError}
+              </Text>
+            ) : filteredExerciseTemplates.length === 0 ? (
+              <Text style={[styles.templateTaskEmptyText, { color: textSecondaryColor }]}>
+                No exercises found.
+              </Text>
+            ) : (
+              <FlatList
+                data={filteredExerciseTemplates}
+                keyExtractor={(item) => String(item.id)}
+                style={styles.templateTaskList}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => {
+                  const meta = formatExerciseTemplateMeta(item);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.templateTaskRow, { borderColor: fieldBorderColor }]}
+                      onPress={() => handleCreateExerciseFromTemplate(item)}
+                      activeOpacity={0.75}
+                      disabled={isTemplateTaskSaving}
+                      testID={`activity.templateExercise.row.${item.id}`}
                     >
                       <Text style={[styles.templateTaskRowTitle, { color: textColor }]} numberOfLines={1}>
                         {item.title}
@@ -6673,6 +7127,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+  templateTypeSwitch: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 12,
+  },
+  templateTypeSwitchButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  templateTypeSwitchText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
   templateSyncCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6735,6 +7207,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     paddingVertical: 12,
+  },
+  templateTaskLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   trainerFeedbackPicker: {
     borderWidth: 1,

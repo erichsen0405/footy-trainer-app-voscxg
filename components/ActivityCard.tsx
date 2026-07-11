@@ -217,6 +217,40 @@ const coerceMinutes = (val: any): number | null => {
   return Math.round(num as number);
 };
 
+type ExerciseTimerValue = {
+  activeSeconds: number;
+  restSeconds: number;
+  rounds: number;
+};
+
+function normalizeExerciseTimerValue(value: unknown): ExerciseTimerValue | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const activeSeconds = Number(record.activeSeconds ?? record.active_seconds ?? record.workSeconds ?? record.work_seconds);
+  const restSeconds = Number(record.restSeconds ?? record.rest_seconds ?? record.pauseSeconds ?? record.pause_seconds);
+  const rounds = Number(record.rounds ?? record.repetitions);
+  if (!Number.isFinite(activeSeconds) || !Number.isFinite(restSeconds) || !Number.isFinite(rounds)) return null;
+  return {
+    activeSeconds: Math.max(1, Math.min(3600, Math.round(activeSeconds))),
+    restSeconds: Math.max(0, Math.min(1800, Math.round(restSeconds))),
+    rounds: Math.max(1, Math.min(100, Math.round(rounds))),
+  };
+}
+
+function getTaskExerciseTimer(task: any): ExerciseTimerValue | null {
+  return normalizeExerciseTimerValue(task?.exerciseTimer ?? task?.exercise_timer);
+}
+
+function isExerciseTemplateTask(task: any): boolean {
+  const type = String(task?.trainingTemplateType ?? task?.training_template_type ?? '').toLowerCase();
+  return type === 'exercise';
+}
+
+function formatExerciseTimerLine(timer: ExerciseTimerValue | null): string | null {
+  if (!timer) return null;
+  return `${timer.rounds} rounds · ${timer.activeSeconds}s work · ${timer.restSeconds}s rest`;
+}
+
 const normalizeFeedbackTitle = (value?: string | null): string => {
   if (typeof value !== 'string') return '';
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
@@ -992,6 +1026,8 @@ export default function ActivityCard({
                 const taskDurationEnabled =
                   task?.task_duration_enabled === true || task?.taskDurationEnabled === true;
                 const taskDurationMinutes = getTaskDurationMinutes(task);
+                const exerciseTemplateTask = !feedbackTask && isExerciseTemplateTask(task);
+                const exerciseTimerText = formatExerciseTimerLine(getTaskExerciseTimer(task));
 
                 return (
                   <React.Fragment key={item.key}>
@@ -1064,6 +1100,20 @@ export default function ActivityCard({
                             />
                             <Text style={styles.reminderText}>
                               {formatReminderTime(effectiveReminder!)}
+                            </Text>
+                          </View>
+                        )}
+
+                        {exerciseTemplateTask && (
+                          <View style={styles.reminderBadge}>
+                            <IconSymbol
+                              ios_icon_name="timer"
+                              android_material_icon_name="timer"
+                              size={10}
+                              color="rgba(255, 255, 255, 0.8)"
+                            />
+                            <Text style={styles.reminderText}>
+                              {exerciseTimerText ? `Exercise: ${exerciseTimerText}` : 'Exercise'}
                             </Text>
                           </View>
                         )}
