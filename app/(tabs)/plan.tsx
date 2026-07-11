@@ -50,11 +50,12 @@ import {
   replaceTaskMediaName,
 } from '@/utils/taskVideos';
 
-type PlanSection = 'templates' | 'tasks' | 'programs' | 'assignments';
+type PlanSection = 'templates' | 'tasks' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
 type PlanFilterPicker = 'status' | 'types' | null;
 type ItemSourceMode = 'new' | 'saved' | 'library';
 type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
+type PlanViewTarget = 'tasks' | 'exercise' | 'session' | 'week' | 'assignments';
 
 type DraftItem = TrainingTemplateItemInput & {
   localId: string;
@@ -101,21 +102,60 @@ const TEMPLATE_TYPES: {
   icon: string;
   materialIcon: string;
 }[] = [
-  { value: 'task', label: 'Task', icon: 'checklist', materialIcon: 'checklist' },
+  { value: 'task', label: 'Opgave', icon: 'checklist', materialIcon: 'checklist' },
   { value: 'exercise', label: 'Exercise', icon: 'timer', materialIcon: 'timer' },
   { value: 'session', label: 'Session', icon: 'calendar', materialIcon: 'event' },
   { value: 'week', label: 'Week', icon: 'calendar.badge.clock', materialIcon: 'event_note' },
 ];
 
-const PLAN_SECTIONS: {
-  value: PlanSection;
-  label: string;
+const CREATE_TEMPLATE_OPTIONS: {
+  value: TrainingTemplateType;
+  title: string;
+  detail: string;
   icon: string;
   materialIcon: string;
 }[] = [
-  { value: 'templates', label: 'Skabeloner', icon: 'rectangle.3.group', materialIcon: 'dashboard' },
+  {
+    value: 'task',
+    title: 'Opgave',
+    detail: 'En enkelt opgave med video, billeder, feedback og reminderfelter.',
+    icon: 'checklist',
+    materialIcon: 'checklist',
+  },
+  {
+    value: 'exercise',
+    title: 'Exercise',
+    detail: 'En opgave med intervaltimer, aktiv tid, pause og antal runder.',
+    icon: 'timer',
+    materialIcon: 'timer',
+  },
+  {
+    value: 'session',
+    title: 'Session',
+    detail: 'En aktivitet samme dag, sammensat af opgaver og exercises.',
+    icon: 'calendar',
+    materialIcon: 'event',
+  },
+  {
+    value: 'week',
+    title: 'Week',
+    detail: 'Et ugeforløb med gemte sessioner fordelt på dage.',
+    icon: 'calendar.badge.clock',
+    materialIcon: 'event_note',
+  },
+];
+
+const PLAN_VIEW_TARGETS: {
+  value: PlanViewTarget;
+  label: string;
+  icon: string;
+  materialIcon: string;
+  templateType?: TrainingTemplateType;
+}[] = [
   { value: 'tasks', label: 'Opgaver', icon: 'checklist', materialIcon: 'checklist' },
-  { value: 'programs', label: 'Programmer', icon: 'list.bullet.rectangle', materialIcon: 'view_list' },
+  { value: 'exercise', label: 'Exercise', icon: 'timer', materialIcon: 'timer', templateType: 'exercise' },
+  { value: 'session', label: 'Session', icon: 'calendar', materialIcon: 'event', templateType: 'session' },
+  { value: 'week', label: 'Week', icon: 'calendar.badge.clock', materialIcon: 'event_note', templateType: 'week' },
   { value: 'assignments', label: 'Tildelinger', icon: 'person.2.fill', materialIcon: 'groups' },
 ];
 
@@ -451,6 +491,7 @@ export default function PlanScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createPickerVisible, setCreatePickerVisible] = useState(false);
   const [draftVisible, setDraftVisible] = useState(false);
   const [draft, setDraft] = useState<TemplateDraft>(() => createEmptyDraft());
   const [itemTitle, setItemTitle] = useState('');
@@ -539,12 +580,21 @@ export default function PlanScreen() {
       current.includes(type) ? current.filter((value) => value !== type) : [...current, type]
     );
   }, []);
-  const programTemplates = useMemo(
+  const sessionTemplates = useMemo(
     () =>
       (payload?.templates ?? []).filter(
         (template) =>
           template.status === 'active' &&
-          (template.templateType === 'session' || template.templateType === 'week')
+          template.templateType === 'session'
+      ),
+    [payload?.templates]
+  );
+  const weekTemplates = useMemo(
+    () =>
+      (payload?.templates ?? []).filter(
+        (template) =>
+          template.status === 'active' &&
+          template.templateType === 'week'
       ),
     [payload?.templates]
   );
@@ -619,6 +669,28 @@ export default function PlanScreen() {
     resetItemDraft(type);
     setDraftVisible(true);
   }, [resetItemDraft]);
+
+  const openCreateFromPicker = useCallback((type: TrainingTemplateType) => {
+    setCreatePickerVisible(false);
+    openCreate(type);
+  }, [openCreate]);
+
+  const selectPlanViewTarget = useCallback((target: (typeof PLAN_VIEW_TARGETS)[number]) => {
+    setPlanFilterPicker(null);
+    if (target.value === 'tasks') {
+      setActiveSection('tasks');
+      return;
+    }
+    if (target.value === 'assignments') {
+      setActiveSection('assignments');
+      return;
+    }
+    if (target.templateType) {
+      setActiveSection('templates');
+      setStatusFilter('active');
+      setSelectedTemplateTypes([target.templateType]);
+    }
+  }, []);
 
   const openEdit = useCallback((template: TrainingTemplateSummary) => {
     setDraft(createDraftFromTemplate(template));
@@ -949,6 +1021,15 @@ export default function PlanScreen() {
     });
   }, [updateDraftTaskConfig]);
 
+  const activePlanViewLabel =
+    activeSection === 'tasks'
+      ? 'Opgaver'
+      : activeSection === 'assignments'
+        ? 'Tildelinger'
+        : selectedTemplateTypes.length
+          ? selectedTypeLabel
+          : 'Alle typer';
+
   if (roleLoading || loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
@@ -976,6 +1057,16 @@ export default function PlanScreen() {
               {activeWorkspace?.name ?? payload?.ownerAccount.name ?? 'Owner workspace'}
             </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.headerCreateButton, { backgroundColor: colors.primary }]}
+            onPress={() => setCreatePickerVisible(true)}
+            activeOpacity={0.86}
+            accessibilityLabel="Opret skabelon"
+            testID="plan.create.open"
+          >
+            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#FFFFFF" />
+            <Text style={styles.headerCreateText}>Opret</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)/profile' as any)}
@@ -1014,35 +1105,50 @@ export default function PlanScreen() {
         </ScrollView>
       ) : null}
 
-      <View style={styles.sectionSelector} testID="plan.sectionSelector">
-        {PLAN_SECTIONS.map((section) => {
-          const active = activeSection === section.value;
-          return (
-            <TouchableOpacity
-              key={section.value}
-              style={[
-                styles.sectionButton,
-                {
-                  backgroundColor: active ? colors.primary : colors.card,
-                  borderColor: active ? colors.primary : colors.border,
-                },
-              ]}
-              onPress={() => setActiveSection(section.value)}
-              activeOpacity={0.84}
-              testID={`plan.section.${section.value}`}
-            >
-              <IconSymbol
-                ios_icon_name={section.icon as any}
-                android_material_icon_name={section.materialIcon as any}
-                size={18}
-                color={active ? '#FFFFFF' : colors.textSecondary}
-              />
-              <Text style={[styles.sectionButtonText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-                {section.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={styles.sectionBlock}>
+        <View style={styles.sectionBlockHeader}>
+          <Text style={[styles.sectionBlockTitle, { color: colors.textSecondary }]}>Visning</Text>
+          <Text style={[styles.sectionBlockMeta, { color: colors.textSecondary }]}>
+            {activePlanViewLabel}
+          </Text>
+        </View>
+        <View style={styles.sectionSelector} testID="plan.sectionSelector">
+          {PLAN_VIEW_TARGETS.map((section) => {
+            const active =
+              section.value === 'tasks'
+                ? activeSection === 'tasks'
+                : section.value === 'assignments'
+                  ? activeSection === 'assignments'
+                  : activeSection === 'templates' &&
+                    selectedTemplateTypes.length === 1 &&
+                    selectedTemplateTypes[0] === section.templateType;
+            return (
+              <TouchableOpacity
+                key={section.value}
+                style={[
+                  styles.sectionButton,
+                  {
+                    backgroundColor: active ? colors.primary : colors.card,
+                    borderColor: active ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => selectPlanViewTarget(section)}
+                activeOpacity={0.84}
+                testID={`plan.section.${section.value}`}
+              >
+                <IconSymbol
+                  ios_icon_name={section.icon as any}
+                  android_material_icon_name={section.materialIcon as any}
+                  size={18}
+                  color={active ? '#FFFFFF' : colors.textSecondary}
+                />
+                <Text style={[styles.sectionButtonText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                  {section.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {error ? (
@@ -1141,7 +1247,7 @@ export default function PlanScreen() {
                     <PlanFilterOption
                       key={type.value}
                       label={type.label}
-                      detail={type.value === 'task' ? 'Opgaveskabeloner' : type.value === 'exercise' ? 'Interval- og øvelsesopgaver' : type.value === 'session' ? 'Samlede sessioner' : 'Ugeforløb'}
+                      detail={type.value === 'task' ? 'Opgaveskabeloner' : type.value === 'exercise' ? 'Interval- og øvelsesopgaver' : type.value === 'session' ? 'Sessioner' : 'Ugeforløb'}
                       active={selectedTemplateTypes.includes(type.value)}
                       colors={colors}
                       onPress={() => toggleTemplateTypeFilter(type.value)}
@@ -1149,21 +1255,6 @@ export default function PlanScreen() {
                   ))}
                 </View>
               ) : null}
-            </View>
-
-            <View style={styles.actionRow}>
-              {TEMPLATE_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type.value}
-                  style={[styles.createButton, { backgroundColor: getTemplateTone(type.value, colors) }]}
-                  onPress={() => openCreate(type.value)}
-                  activeOpacity={0.88}
-                  testID={`plan.template.create.${type.value}`}
-                >
-                  <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
-                  <Text style={styles.createButtonText}>{type.label}</Text>
-                </TouchableOpacity>
-              ))}
             </View>
 
             <View style={styles.templateList} testID="plan.templates.list">
@@ -1191,60 +1282,6 @@ export default function PlanScreen() {
           </>
         ) : null}
 
-        {activeSection === 'programs' ? (
-          <>
-            <PlanSectionHeader
-              title="Programmer"
-              detail={`${programTemplates.length} aktive sessioner og ugeforløb`}
-              icon="list.bullet.rectangle"
-              materialIcon="view_list"
-              colors={colors}
-            />
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={[styles.createButton, { backgroundColor: getTemplateTone('session', colors) }]}
-                onPress={() => openCreate('session')}
-                activeOpacity={0.88}
-                testID="plan.programs.create.session"
-              >
-                <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
-                <Text style={styles.createButtonText}>Session</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.createButton, { backgroundColor: getTemplateTone('week', colors) }]}
-                onPress={() => openCreate('week')}
-                activeOpacity={0.88}
-                testID="plan.programs.create.week"
-              >
-                <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
-                <Text style={styles.createButtonText}>Week</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.templateList} testID="plan.programs.list">
-              {programTemplates.length ? (
-                programTemplates.map((template) => (
-                  <TemplateCard
-                    key={template.id}
-                    template={template}
-                    colors={colors}
-                    onEdit={() => openEdit(template)}
-                    onDuplicate={() => duplicateTemplate(template)}
-                    onArchive={() => toggleArchive(template)}
-                    busy={saving}
-                  />
-                ))
-              ) : (
-                <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <IconSymbol ios_icon_name="list.bullet.rectangle" android_material_icon_name="view_list" size={34} color={colors.textSecondary} />
-                  <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
-                    Ingen aktive programmer endnu.
-                  </Text>
-                </View>
-              )}
-            </View>
-          </>
-        ) : null}
-
         {activeSection === 'assignments' ? (
           <>
             <PlanSectionHeader
@@ -1264,20 +1301,26 @@ export default function PlanScreen() {
                 onPress={() => setActiveSection('tasks')}
               />
               <PlanShortcutCard
-                title="Programmer"
-                detail={`${programTemplates.length} sessioner og ugeforløb`}
-                icon="list.bullet.rectangle"
-                materialIcon="view_list"
+                title="Session"
+                detail={`${sessionTemplates.length} aktive sessioner`}
+                icon="calendar"
+                materialIcon="event"
                 colors={colors}
-                onPress={() => setActiveSection('programs')}
+                onPress={() => {
+                  setActiveSection('templates');
+                  setSelectedTemplateTypes(['session']);
+                }}
               />
               <PlanShortcutCard
-                title="Skabeloner"
-                detail={`${payload?.summary.active ?? 0} aktive skabeloner`}
-                icon="rectangle.3.group"
-                materialIcon="dashboard"
+                title="Week"
+                detail={`${weekTemplates.length} aktive ugeforløb`}
+                icon="calendar.badge.clock"
+                materialIcon="event_note"
                 colors={colors}
-                onPress={() => setActiveSection('templates')}
+                onPress={() => {
+                  setActiveSection('templates');
+                  setSelectedTemplateTypes(['week']);
+                }}
               />
             </View>
           </>
@@ -1665,7 +1708,75 @@ export default function PlanScreen() {
           setItemPickerMode(null);
         }}
       />
+      <CreateTemplatePickerModal
+        visible={createPickerVisible}
+        colors={colors}
+        onClose={() => setCreatePickerVisible(false)}
+        onSelect={openCreateFromPicker}
+      />
     </View>
+  );
+}
+
+function CreateTemplatePickerModal({
+  visible,
+  colors,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  colors: ReturnType<typeof getColors>;
+  onClose: () => void;
+  onSelect: (type: TrainingTemplateType) => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.pickerOverlay}>
+        <View style={[styles.createSheet, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          <View style={styles.pickerHeader}>
+            <View style={styles.headerCopy}>
+              <Text style={[styles.pickerTitle, { color: colors.text }]}>Opret skabelon</Text>
+              <Text style={[styles.pickerSubtitle, { color: colors.textSecondary }]}>Vælg type</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+              onPress={onClose}
+              activeOpacity={0.84}
+              testID="plan.create.close"
+            >
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={20} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.createOptionList}>
+            {CREATE_TEMPLATE_OPTIONS.map((option) => {
+              const tone = getTemplateTone(option.value, colors);
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[styles.createOptionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => onSelect(option.value)}
+                  activeOpacity={0.86}
+                  testID={`plan.create.type.${option.value}`}
+                >
+                  <View style={[styles.createOptionIcon, { backgroundColor: `${tone}18`, borderColor: tone }]}>
+                    <IconSymbol ios_icon_name={option.icon as any} android_material_icon_name={option.materialIcon as any} size={21} color={tone} />
+                  </View>
+                  <View style={styles.createOptionBody}>
+                    <View style={styles.createOptionTitleRow}>
+                      <Text style={[styles.createOptionTitle, { color: colors.text }]}>{option.title}</Text>
+                      <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={16} color={colors.textSecondary} />
+                    </View>
+                    <Text style={[styles.createOptionDetail, { color: colors.textSecondary }]}>{option.detail}</Text>
+                  </View>
+                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2493,6 +2604,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerCreateButton: {
+    minHeight: 38,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: 6,
+  },
+  headerCreateText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
   workspaceRow: {
     paddingBottom: 14,
     columnGap: 8,
@@ -2508,11 +2633,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  sectionBlock: {
+    marginBottom: 14,
+  },
+  sectionBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 10,
+    marginBottom: 8,
+  },
+  sectionBlockTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  sectionBlockMeta: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   sectionSelector: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 14,
   },
   sectionButton: {
     width: '48.5%',
@@ -2636,32 +2781,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
   },
-  actionRow: {
-    flexDirection: 'row',
-    columnGap: 8,
-    marginBottom: 14,
-  },
   inlineSectionHeader: {
     minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 12,
     marginBottom: 14,
-  },
-  createButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    columnGap: 6,
-    paddingHorizontal: 8,
-  },
-  createButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
   },
   templateList: {
     rowGap: 10,
@@ -2979,6 +3104,54 @@ const styles = StyleSheet.create({
   pickerList: {
     rowGap: 10,
     paddingBottom: 12,
+  },
+  createSheet: {
+    maxHeight: '82%',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 18,
+  },
+  createOptionList: {
+    rowGap: 10,
+  },
+  createOptionCard: {
+    minHeight: 84,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 11,
+  },
+  createOptionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createOptionBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  createOptionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  createOptionTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  createOptionDetail: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginTop: 4,
   },
   pickerCard: {
     borderWidth: 2,

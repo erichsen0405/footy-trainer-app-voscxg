@@ -9,7 +9,7 @@ Traenerens bundmenu er samlet i fire hovedomraader:
 
 - `Overblik`: dashboard, alerts, dagens traeninger, aabne opgaver og hurtige handlinger.
 - `Spillere`: spiller-/holdoverblik, CRM, tags, noter, udvikling og feedback.
-- `Plan`: opgaver, skabeloner, programmer og tildelinger.
+- `Plan`: opgaver, exercise, sessioner, week-skabeloner og tildelinger.
 - `Bibliotek`: oevelser, inspiration, egne oevelser og FootballCoach-content.
 
 `Profile` ligger ikke laengere i bundmenuen for traenere. Du aabner profil,
@@ -21,10 +21,11 @@ af `Overblik` eller `Plan`.
 Training templates ligger i:
 
 ```text
-Plan > Skabeloner
+Plan
 ```
 
-Her kan traeneren oprette og administrere fire typer skabeloner:
+I toppen af `Plan` ligger knappen `Opret`. Her kan traeneren oprette fire typer
+skabeloner:
 
 - `Task`: en genbrugelig opgave.
 - `Exercise`: en genbrugelig opgave med intervaltimer.
@@ -63,8 +64,8 @@ stabil version, selvom skabelonen bliver redigeret bagefter.
 ## Opret En Ny Skabelon
 
 1. Aabn `Plan`.
-2. Vaelg `Skabeloner`.
-3. Tryk paa den type, du vil oprette:
+2. Tryk `Opret`.
+3. Vaelg den type, du vil oprette i popup'en:
    - `Task`
    - `Exercise`
    - `Session`
@@ -151,7 +152,7 @@ til at fjerne et item fra skabelonen.
 
 ## Rediger En Skabelon
 
-1. Aabn `Plan > Skabeloner`.
+1. Aabn `Plan`.
 2. Find skabelonen paa listen.
 3. Tryk `Edit`.
 4. Ret titel, beskrivelse, fokusomraader, varighed eller items.
@@ -161,7 +162,7 @@ Naar du gemmer, oprettes en ny version/snapshot.
 
 ## Dupliker En Skabelon
 
-1. Aabn `Plan > Skabeloner`.
+1. Aabn `Plan`.
 2. Find skabelonen.
 3. Tryk `Copy`.
 
@@ -175,7 +176,7 @@ men stadig skal bevares historisk.
 
 Arkiver:
 
-1. Aabn `Plan > Skabeloner`.
+1. Aabn `Plan`.
 2. Find skabelonen.
 3. Tryk `Archive`.
 
@@ -189,7 +190,7 @@ Arkiverede skabeloner slettes ikke. De bevarer versionshistorik og kan gendannes
 
 ## Filtre
 
-I `Plan > Skabeloner` kan du filtrere paa:
+I `Plan` kan du filtrere paa:
 
 - `Active`
 - `Archived`
@@ -201,12 +202,14 @@ I `Plan > Skabeloner` kan du filtrere paa:
 
 Brug `Active` til daglig drift og `Archived` til gamle skabeloner.
 
-## Opgaver, Programmer Og Tildelinger
+## Opgaver, Exercise, Session, Week Og Tildelinger
 
 I `Plan` findes ogsaa:
 
 - `Opgaver`: aabner det eksisterende task-template bibliotek.
-- `Programmer`: reserveret til program builder.
+- `Exercise`: viser exercise-skabeloner.
+- `Session`: viser session-skabeloner.
+- `Week`: viser week-skabeloner.
 - `Tildelinger`: reserveret til bulk assignment.
 
 Training templates er fundamentet for de senere program- og bulk-assignment

@@ -50,8 +50,12 @@ i den eksisterende owner portal.
 Mobilappen placerer samme feature under:
 
 ```text
-Plan > Skabeloner
+Plan > Opret
 ```
+
+Eksisterende skabeloner vises under Plan-visningerne `Opgaver`, `Exercise`,
+`Session` og `Week`; der er ikke laengere en separat `Skabeloner`-knap i
+mobilnavigationen.
 
 Web og mobil skal bruge samme backend-kontrakt og samme owner permissions.
 
