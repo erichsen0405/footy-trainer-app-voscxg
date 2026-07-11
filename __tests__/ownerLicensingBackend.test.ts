@@ -354,6 +354,20 @@ describe('owner licensing backend helpers', () => {
     expect(ownerSeatBase44Prompt).toContain('If Base44 shows `Status: —`');
   });
 
+  it('documents Base44 dashboard seat status fallback handling', () => {
+    expect(ownerSeatBase44Prompt).toContain('Dashboard/KPI implementation rules');
+    expect(ownerSeatBase44Prompt).toContain('`KlubAdmin.jsx` skal hente `getOwnerSeatStatus`');
+    expect(ownerSeatBase44Prompt).toContain('`KlubDashboard.jsx` skal foretraekke den prop-baserede status');
+    expect(ownerSeatBase44Prompt).toContain('`DashboardKpiStrip.jsx` skal have en `getPlayerSeats(seatStatus)`-helper');
+    expect(ownerSeatBase44Prompt).toContain('`seatStatusLoading`, `seatStatusError` og');
+    expect(ownerSeatBase44Prompt).toContain('`onSeatStatusRetry` videre til `KlubDashboard`');
+    expect(ownerSeatBase44Prompt).toContain('returnerer `null`, naar `seatStatus` eller `seatStatus.playerSeats` mangler');
+    expect(ownerSeatBase44Prompt).toContain('Den maa ikke returnere `{ total: 0, used: 0, available: 0 }` som fallback');
+    expect(ownerSeatBase44Prompt).toContain('Hvis der bruges `Loader2`, skal ikonet have `animate-spin`');
+    expect(ownerSeatBase44Prompt).toContain('Vis aldrig `0/0` som placeholder');
+    expect(ownerSeatBase44Prompt).toContain('`playerSeats.effectiveSeats`, `playerSeats.seatsUsed` og');
+  });
+
   it('calls the platform owner account delete RPC', async () => {
     const client = createRpcClient({
       data: {

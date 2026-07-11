@@ -112,6 +112,28 @@ UI rule:
 - Vis `effectiveSeats`, `seatsUsed` og `seatsAvailable` fra response.
 - Fald ikke tilbage til `0`, hvis request fejler. Vis en fejlstate og retry.
 
+Dashboard/KPI implementation rules:
+
+- `KlubAdmin.jsx` skal hente `getOwnerSeatStatus` for den valgte owner account
+  og sende `seatStatus`, `seatStatusLoading`, `seatStatusError` og
+  `onSeatStatusRetry` videre til `KlubDashboard`.
+- `KlubDashboard.jsx` skal foretraekke den prop-baserede status fra
+  `getOwnerSeatStatus` over eventuel legacy `data?.seatStatus`, fx
+  `seatStatus ?? data?.seatStatus ?? null`, og sende samme loading/error/retry
+  props videre til `DashboardKpiStrip`.
+- `DashboardKpiStrip.jsx` skal have en `getPlayerSeats(seatStatus)`-helper, der
+  returnerer `null`, naar `seatStatus` eller `seatStatus.playerSeats` mangler.
+  Den maa ikke returnere `{ total: 0, used: 0, available: 0 }` som fallback.
+  Vis kun `0`, hvis backend faktisk sender `0`.
+- Mens seat-status loader, skal KPI'en vise en lille spinner og `Henter...`.
+  Hvis der bruges `Loader2`, skal ikonet have `animate-spin`.
+- Hvis seat-status fejler, skal KPI'en vise `Fejl` og en tydelig retry-handling,
+  der kalder `onSeatStatusRetry`.
+- Naar seat-status er hentet, skal KPI'en vise tallene fra
+  `playerSeats.effectiveSeats`, `playerSeats.seatsUsed` og
+  `playerSeats.seatsAvailable`.
+- Vis aldrig `0/0` som placeholder, loading fallback eller error fallback.
+
 ## 2. Check Seat Before Assignment
 
 Function:
