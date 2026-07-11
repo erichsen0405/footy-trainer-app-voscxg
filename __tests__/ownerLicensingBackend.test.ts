@@ -24,6 +24,7 @@ const deleteVisibilityMigrationPath = path.join(
   'supabase/migrations/20260710150000_platform_admin_owner_account_delete_visibility.sql'
 );
 const ownerSeatBase44PromptPath = path.join(process.cwd(), 'docs/base44-owner-seat-endpoints-deployed-prompt.md');
+const ownerDeleteBase44PromptPath = path.join(process.cwd(), 'docs/base44-delete-owner-account-fix-prompt.md');
 
 function createRpcClient(result: { data: unknown; error: { message?: string } | null }) {
   return {
@@ -75,6 +76,7 @@ const ownerSeatStatusPayload = {
 describe('owner licensing backend helpers', () => {
   const deleteVisibilityMigration = fs.readFileSync(deleteVisibilityMigrationPath, 'utf8');
   const ownerSeatBase44Prompt = fs.readFileSync(ownerSeatBase44PromptPath, 'utf8');
+  const ownerDeleteBase44Prompt = fs.readFileSync(ownerDeleteBase44PromptPath, 'utf8');
 
   it('normalizes owner seat status input', () => {
     expect(parseOwnerSeatStatusBody({ ownerAccountId })).toEqual({ ownerAccountId });
@@ -352,6 +354,20 @@ describe('owner licensing backend helpers', () => {
     expect(ownerSeatBase44Prompt).toContain('| `deleteOwnerAccount` | ACTIVE | Protected; unauthenticated smoke returns `401`, not `404`. |');
     expect(ownerSeatBase44Prompt).toContain('URL: https://lhpczofddvwcyrgotzha.supabase.co/functions/v1/deleteOwnerAccount');
     expect(ownerSeatBase44Prompt).toContain('If Base44 shows `Status: —`');
+  });
+
+  it('documents the Base44 owner account delete fix', () => {
+    expect(ownerDeleteBase44Prompt).toContain('Base44 Prompt: Fix Owner Account Delete Flow');
+    expect(ownerDeleteBase44Prompt).toContain('Slet altid ud fra `row.ownerAccountId`');
+    expect(ownerDeleteBase44Prompt).toContain('Brug aldrig `ownerName` som identitet');
+    expect(ownerDeleteBase44Prompt).toContain('Brug aldrig `coachAccountId` som `ownerAccountId`');
+    expect(ownerDeleteBase44Prompt).toContain('response.data.ownerAccountId === selectedOwnerAccountId');
+    expect(ownerDeleteBase44Prompt).toContain('Merge aldrig med gammel');
+    expect(ownerDeleteBase44Prompt).toContain('setOwnerAccounts(refreshed.ownerAccounts ?? [])');
+    expect(ownerDeleteBase44Prompt).toContain('e6a68cb1-53d5-491e-bca6-1d4ce660919f');
+    expect(ownerDeleteBase44Prompt).toContain('9f1f6e7a-f971-4b29-8d40-0ae8fc5c6c0f');
+    expect(ownerDeleteBase44Prompt).toContain('025e0cc0-69ac-4bbd-bd74-5eac6dd56e1a');
+    expect(ownerDeleteBase44Prompt).toContain('Der er ingen hardcoded special-case for Jeppe');
   });
 
   it('documents Base44 dashboard seat status fallback handling', () => {
