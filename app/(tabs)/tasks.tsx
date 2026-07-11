@@ -402,6 +402,7 @@ export const TaskCard = React.memo(
     onArchive = () => {},
     onDelete,
     onAssign,
+    getCategoryItems,
     isArchived = false,
     canAssign = false,
   }: {
@@ -429,8 +430,41 @@ export const TaskCard = React.memo(
         : sourceFolder.toLowerCase().includes('personal') || !sourceFolder
           ? 'My template'
           : sourceFolder;
+    const categoryIds = Array.from(new Set(
+      (((task as any)?.categoryIds ?? (task as any)?.category_ids ?? []) as unknown[])
+        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+    ));
+    const categoryLabel = getCategoryItems(categoryIds)
+      .map((category) => `${category.emoji ? `${category.emoji} ` : ''}${category.name}`.trim())
+      .filter(Boolean)
+      .join(', ');
+    const autoAdd = (task as any)?.autoAddToActivities === true || (task as any)?.auto_add_to_activities === true;
+    const taskDurationEnabled =
+      (task as any)?.taskDurationEnabled === true || (task as any)?.task_duration_enabled === true;
+    const taskDurationMinutes = Number((task as any)?.taskDurationMinutes ?? (task as any)?.task_duration_minutes);
+    const reminderMinutes = normalizeReminderValue((task as any)?.reminder);
+    const feedbackEnabled = (task as any)?.afterTrainingEnabled === true || (task as any)?.after_training_enabled === true;
+    const feedbackDelayMinutes = Number(
+      (task as any)?.afterTrainingDelayMinutes ?? (task as any)?.after_training_delay_minutes,
+    );
     const taskFacts = [
-      { label: 'Source', value: sourceLabel },
+      { label: 'Category', value: categoryLabel || 'None' },
+      { label: 'Auto-add', value: autoAdd ? 'On' : 'Off' },
+      {
+        label: 'Task duration',
+        value: taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0
+          ? `${taskDurationMinutes} min`
+          : 'Not set',
+      },
+      { label: 'Reminder', value: reminderMinutes !== null ? `${reminderMinutes} min before` : 'Off' },
+      {
+        label: 'Feedback',
+        value: feedbackEnabled
+          ? Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0
+            ? `${feedbackDelayMinutes} min after`
+            : 'After activity'
+          : 'Off',
+      },
     ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 
     return (
@@ -455,6 +489,17 @@ export const TaskCard = React.memo(
             </View>
 
             <View style={styles.taskActions}>
+              <TouchableOpacity
+                onPress={() => Alert.alert('Source', sourceLabel)}
+                style={styles.actionButton}
+                activeOpacity={0.84}
+                accessibilityRole="button"
+                accessibilityLabel={`Source: ${sourceLabel}`}
+                accessibilityHint="Shows where this task comes from"
+                testID={`tasks.task.source.${taskId}`}
+              >
+                <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info_outline" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
                 <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
               </TouchableOpacity>

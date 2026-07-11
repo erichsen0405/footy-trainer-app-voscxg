@@ -460,6 +460,13 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('plan.template.assign.${template.templateType}');
     expect(plan).toContain('plan.template.duplicate.${template.templateType}');
     expect(plan).toContain('plan.template.edit.${template.templateType}');
+    expect(plan).toContain('plan.template.source.${template.templateType}');
+    expect(plan).toContain("Alert.alert('Source', sourceLabel)");
+    expect(plan).toContain("{ label: 'Category', value: categoryLabel ?? 'None' }");
+    expect(plan).toContain("{ label: 'Auto-add', value: autoAdd ? 'On' : 'Off' }");
+    expect(plan).toContain("label: 'Task duration'");
+    expect(plan).toContain("label: 'Reminder'");
+    expect(plan).toContain("label: 'Feedback'");
     expect(plan).not.toContain('TemplateAction label="Assign"');
     expect(plan).toContain('Description');
     expect(plan).toContain('FocusTagEditor');
@@ -485,7 +492,13 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain(": 'Category'");
     expect(tasks).toContain('Your own templates and templates shared by your coach.');
     expect(tasks).toContain('taskFacts');
-    expect(tasks).toContain("label: 'Source', value: sourceLabel");
+    expect(tasks).toContain('tasks.task.source.${taskId}');
+    expect(tasks).toContain("Alert.alert('Source', sourceLabel)");
+    expect(tasks).toContain("{ label: 'Category', value: categoryLabel || 'None' }");
+    expect(tasks).toContain("{ label: 'Auto-add', value: autoAdd ? 'On' : 'Off' }");
+    expect(tasks).toContain("label: 'Task duration'");
+    expect(tasks).toContain("label: 'Reminder'");
+    expect(tasks).toContain("label: 'Feedback'");
     expect(tasks).toContain('tasks.taskFocusTags');
     expect(tasks).toContain('tasks.focusTagFilter.button');
     expect(tasks).toContain('TaskFocusTagEditor');

@@ -496,11 +496,68 @@ function getTemplateSourceKind(template: TrainingTemplateSummary, actorUserId: s
 
 function getTemplateFacts(
   template: TrainingTemplateSummary,
-  sourceLabel?: string,
   timer: TrainingTemplateExerciseTimer | null = getTemplateTimer(template),
+  categories: TemplateCategoryOption[] = [],
 ): { label: string; value: string }[] {
+  const task = getTemplateTaskConfig(template);
+  const rawCategoryIds = task.categoryIds ?? task.category_ids;
+  const categoryIds = Array.isArray(rawCategoryIds)
+    ? rawCategoryIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  const categoryNames = categoryIds
+    .map((id) => categories.find((category) => category.id === id))
+    .filter((category): category is TemplateCategoryOption => Boolean(category))
+    .map((category) => `${category.emoji ? `${category.emoji} ` : ''}${category.name}`.trim());
+  const categoryLabel = categoryNames.length
+    ? categoryNames.join(', ')
+    : template.defaultActivityCategoryName?.trim() || (categoryIds.length ? `${categoryIds.length} selected` : null);
+
+  if (template.templateType === 'session' || template.templateType === 'week') {
+    return [
+      { label: template.templateType === 'week' ? 'Sessions' : 'Items', value: String(template.itemCount) },
+      { label: 'Category', value: categoryLabel },
+    ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
+  }
+
+  const durationEnabled = task.taskDurationEnabled === true || task.task_duration_enabled === true;
+  const rawDurationMinutes = task.taskDurationMinutes ?? task.task_duration_minutes;
+  const durationMinutes = rawDurationMinutes === null || rawDurationMinutes === undefined || rawDurationMinutes === ''
+    ? null
+    : Number(rawDurationMinutes);
+  const rawReminderMinutes = task.reminderMinutes ?? task.reminder ?? task.reminder_minutes;
+  const reminderMinutes = rawReminderMinutes === null || rawReminderMinutes === undefined || rawReminderMinutes === ''
+    ? null
+    : Number(rawReminderMinutes);
+  const feedbackEnabled = task.afterTrainingEnabled === true || task.after_training_enabled === true;
+  const rawFeedbackDelayMinutes = task.afterTrainingDelayMinutes ?? task.after_training_delay_minutes;
+  const feedbackDelayMinutes = rawFeedbackDelayMinutes === null || rawFeedbackDelayMinutes === undefined || rawFeedbackDelayMinutes === ''
+    ? null
+    : Number(rawFeedbackDelayMinutes);
+  const autoAdd = task.autoAddToActivities === true || task.auto_add_to_activities === true;
+
   return [
-    { label: 'Source', value: sourceLabel ?? null },
+    { label: 'Category', value: categoryLabel ?? 'None' },
+    { label: 'Auto-add', value: autoAdd ? 'On' : 'Off' },
+    {
+      label: 'Task duration',
+      value: durationEnabled && durationMinutes !== null && Number.isFinite(durationMinutes) && durationMinutes > 0
+        ? `${durationMinutes} min`
+        : 'Not set',
+    },
+    {
+      label: 'Reminder',
+      value: reminderMinutes !== null && Number.isFinite(reminderMinutes) && reminderMinutes >= 0
+        ? `${reminderMinutes} min before`
+        : 'Off',
+    },
+    {
+      label: 'Feedback',
+      value: feedbackEnabled
+        ? feedbackDelayMinutes !== null && Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0
+          ? `${feedbackDelayMinutes} min after`
+          : 'After activity'
+        : 'Off',
+    },
     { label: 'Timer', value: formatExerciseTimer(timer) },
   ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 }
@@ -1384,6 +1441,7 @@ export default function PlanScreen() {
               onToggleFocusTag={toggleTemplateFocusTagFilter}
               onClearFocusTags={() => setTemplateFocusTagFilter([])}
               actorUserId={actorUserId}
+              categories={templateCategories}
               colors={colors}
               onEdit={openEdit}
               onDuplicate={duplicateTemplate}
@@ -1764,6 +1822,7 @@ function PlanTemplateLibraryView({
   onToggleFocusTag,
   onClearFocusTags,
   actorUserId,
+  categories,
   colors,
   onEdit,
   onDuplicate,
@@ -1788,6 +1847,7 @@ function PlanTemplateLibraryView({
   onToggleFocusTag: (value: string) => void;
   onClearFocusTags: () => void;
   actorUserId: string | null;
+  categories: TemplateCategoryOption[];
   colors: ReturnType<typeof getColors>;
   onEdit: (template: TrainingTemplateSummary) => void;
   onDuplicate: (template: TrainingTemplateSummary) => void;
@@ -1870,6 +1930,7 @@ function PlanTemplateLibraryView({
               key={template.id}
               template={template}
               sourceLabel={getTemplateSourceKind(template, actorUserId) === 'mine' ? 'My template' : 'Workspace'}
+              categories={categories}
               colors={colors}
               onEdit={() => onEdit(template)}
               onDuplicate={() => onDuplicate(template)}
@@ -2430,6 +2491,7 @@ function PlanFilterOption({
 function TemplateCard({
   template,
   sourceLabel,
+  categories,
   colors,
   onEdit,
   onDuplicate,
@@ -2440,6 +2502,7 @@ function TemplateCard({
 }: {
   template: TrainingTemplateSummary;
   sourceLabel?: string;
+  categories: TemplateCategoryOption[];
   colors: ReturnType<typeof getColors>;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -2451,7 +2514,7 @@ function TemplateCard({
   const tone = getTemplateTone(template.templateType, colors);
   const mediaUrls = getTemplateMediaUrls(template);
   const timer = getTemplateTimer(template);
-  const templateFacts = getTemplateFacts(template, sourceLabel, timer);
+  const templateFacts = getTemplateFacts(template, timer, categories);
   const focusTags = normalizeFocusTags(template.focusAreas);
   const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType);
   return (
@@ -2481,6 +2544,19 @@ function TemplateCard({
         </View>
 
         <View style={styles.templateActions}>
+          {sourceLabel ? (
+            <TouchableOpacity
+              style={styles.templateActionButton}
+              onPress={() => Alert.alert('Source', sourceLabel)}
+              activeOpacity={0.84}
+              accessibilityRole="button"
+              accessibilityLabel={`Source: ${sourceLabel}`}
+              accessibilityHint="Shows where this template comes from"
+              testID={`plan.template.source.${template.templateType}`}
+            >
+              <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info_outline" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={[styles.templateActionButton, { opacity: busy ? 0.5 : 1 }]}
             onPress={onDuplicate}
