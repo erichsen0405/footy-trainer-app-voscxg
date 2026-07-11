@@ -166,6 +166,14 @@ const getTaskTrainerName = (task: any): string => {
 };
 
 type FolderType = 'personal' | 'trainer' | 'footballcoach' | 'source';
+type TaskSourceFilter = 'all' | 'mine' | 'coach' | 'workspace' | 'library';
+type TaskSourceKind = Exclude<TaskSourceFilter, 'all'>;
+
+type TaskSourceFilterOption = {
+  value: TaskSourceFilter;
+  label: string;
+  count: number;
+};
 
 interface FolderItem {
   id: string;
@@ -188,6 +196,55 @@ const DELETE_TEMPLATE_WARNING_TEXT =
 // ✅ læs source-folder robust (snake_case eller camelCase)
 function getTaskSourceFolder(task: any): string {
   return String(task?.source_folder ?? task?.sourceFolder ?? '').trim();
+}
+
+function isTrainerOwnedTask(task: any, options: { userRole: string | null; currentUserId: string | null }): boolean {
+  const sf = getTaskSourceFolder(task).toLowerCase();
+  const ownerId = getTaskOwnerId(task);
+  if (
+    sf === 'trainer' ||
+    sf === 'from coach' ||
+    sf.startsWith('from coach:') ||
+    sf === 'fra træner' ||
+    sf.startsWith('fra træner:')
+  ) {
+    return true;
+  }
+  return options.userRole === 'player' && !!ownerId && !!options.currentUserId && ownerId !== options.currentUserId;
+}
+
+function getTaskSourceKind(
+  task: any,
+  options: { adminMode: string; userRole: string | null; currentUserId: string | null },
+): TaskSourceKind {
+  const sourceFolder = getTaskSourceFolder(task);
+  if (isFootballCoachSource(sourceFolder)) return 'library';
+  if (options.adminMode === 'self' && isTrainerOwnedTask(task, options)) return 'coach';
+  const ownerId = getTaskOwnerId(task);
+  if (ownerId && options.currentUserId && ownerId !== options.currentUserId) return 'workspace';
+  return 'mine';
+}
+
+function buildTaskSourceFilterOptions(
+  tasks: Task[],
+  options: { adminMode: string; userRole: string | null; currentUserId: string | null },
+): TaskSourceFilterOption[] {
+  const counts: Record<TaskSourceKind, number> = {
+    mine: 0,
+    coach: 0,
+    workspace: 0,
+    library: 0,
+  };
+  tasks.forEach((task) => {
+    counts[getTaskSourceKind(task, options)] += 1;
+  });
+
+  const sourceOptions: TaskSourceFilterOption[] = [{ value: 'all', label: 'Alle', count: tasks.length }];
+  if (counts.mine > 0) sourceOptions.push({ value: 'mine', label: 'Mine', count: counts.mine });
+  if (counts.coach > 0) sourceOptions.push({ value: 'coach', label: 'Fra træner', count: counts.coach });
+  if (counts.workspace > 0) sourceOptions.push({ value: 'workspace', label: 'Workspace', count: counts.workspace });
+  if (counts.library > 0) sourceOptions.push({ value: 'library', label: 'Library', count: counts.library });
+  return sourceOptions;
 }
 
 // ✅ simple icon mapping for source folders
@@ -604,6 +661,50 @@ const FolderItemComponent = React.memo(
   },
 );
 
+function TaskSourceSelector({
+  options,
+  selected,
+  onSelect,
+  isDark,
+  cardBgColor,
+  textColor,
+  textSecondaryColor,
+}: {
+  options: TaskSourceFilterOption[];
+  selected: TaskSourceFilter;
+  onSelect: (value: TaskSourceFilter) => void;
+  isDark: boolean;
+  cardBgColor: string;
+  textColor: string;
+  textSecondaryColor: string;
+}) {
+  return (
+    <View style={styles.sourceFilterRow} testID="tasks.sourceFilter">
+      {options.map((option) => {
+        const active = selected === option.value;
+        return (
+          <TouchableOpacity
+            key={option.value}
+            style={[
+              styles.sourceFilterChip,
+              {
+                backgroundColor: active ? colors.primary : cardBgColor,
+                borderColor: active ? colors.primary : isDark ? '#333' : colors.highlight,
+              },
+            ]}
+            onPress={() => onSelect(option.value)}
+            activeOpacity={0.84}
+            testID={`tasks.sourceFilter.${option.value}`}
+          >
+            <Text style={[styles.sourceFilterText, { color: active ? '#fff' : textColor }]}>{option.label}</Text>
+            <Text style={[styles.sourceFilterCount, { color: active ? '#fff' : textSecondaryColor }]}>{option.count}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 type TaskLibrarySectionProps = {
   embedded?: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -669,6 +770,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryFilterId, setSelectedCategoryFilterId] = useState<string | null>(null);
+  const [taskSourceFilter, setTaskSourceFilter] = useState<TaskSourceFilter>('all');
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -725,7 +827,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     });
   }, [scopedTasks, searchQuery, selectedCategoryFilterId]);
 
-  const templateTasks = useMemo(
+  const templateTaskCandidates = useMemo(
     () =>
       filteredTasks.filter((t: any) => {
         if (!t?.isTemplate) return false;
@@ -735,6 +837,22 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         return templateView === 'active' ? !isArchived : isArchived;
       }),
     [filteredTasks, templateView],
+  );
+  const taskSourceOptions = useMemo(
+    () => buildTaskSourceFilterOptions(templateTaskCandidates, { adminMode, userRole, currentUserId: user?.id ?? null }),
+    [adminMode, templateTaskCandidates, user?.id, userRole],
+  );
+  const effectiveTaskSourceFilter = taskSourceOptions.some((option) => option.value === taskSourceFilter)
+    ? taskSourceFilter
+    : 'all';
+  const templateTasks = useMemo(
+    () =>
+      effectiveTaskSourceFilter === 'all'
+        ? templateTaskCandidates
+        : templateTaskCandidates.filter((task) =>
+            getTaskSourceKind(task, { adminMode, userRole, currentUserId: user?.id ?? null }) === effectiveTaskSourceFilter
+          ),
+    [adminMode, effectiveTaskSourceFilter, templateTaskCandidates, user?.id, userRole],
   );
   const folders = useMemo(
     () => organizeFolders(templateTasks, { adminMode, userRole, currentUserId: user?.id ?? null }),
@@ -1266,6 +1384,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
   const isTrainerProfile = userRole === 'trainer';
   const isPlayerPlan = userRole === 'player' && !embedded;
+  const showFlatTemplateList = embedded || isPlayerPlan;
   const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Opgaver' : 'Tasks';
   const screenSubtitleText = isPlayerPlan
     ? `${templateTasks.length} skabeloner`
@@ -1289,6 +1408,10 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
       );
     },
     [expandedFolders, toggleFolder, renderTaskCard, textColor, textSecondaryColor, cardBgColor],
+  );
+  const renderFlatTask = useCallback(
+    ({ item }: { item: Task }) => renderTaskCard(item),
+    [renderTaskCard],
   );
 
   const ListHeaderComponent = useMemo(() => {
@@ -1362,6 +1485,18 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           ) : null}
         </View>
 
+        {taskSourceOptions.length > 2 ? (
+          <TaskSourceSelector
+            options={taskSourceOptions}
+            selected={effectiveTaskSourceFilter}
+            onSelect={setTaskSourceFilter}
+            isDark={isDark}
+            cardBgColor={cardBgColor}
+            textColor={textColor}
+            textSecondaryColor={textSecondaryColor}
+          />
+        ) : null}
+
         <View style={styles.categoryFilterHeader}>
           <TouchableOpacity
             style={[
@@ -1392,7 +1527,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
             >
               {selectedCategoryFilter
                 ? `${String((selectedCategoryFilter as any).emoji ?? '').trim()} ${String((selectedCategoryFilter as any).name ?? '')}`.trim()
-                : 'Filter'}
+                : 'Kategori'}
             </Text>
             <IconSymbol
               ios_icon_name={categoryFilterOpen ? 'chevron.up' : 'chevron.down'}
@@ -1462,7 +1597,9 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         ) : null}
 
         <View style={styles.sectionDivider}>
-          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>Folders</Text>
+          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>
+            {showFlatTemplateList ? 'Opgaver' : 'Folders'}
+          </Text>
           <LinearGradient
             colors={[withAlpha(colors.highlight, 0), withAlpha(colors.highlight, 0.92), withAlpha(colors.primary, 0.35)]}
             start={{ x: 0, y: 0.5 }}
@@ -1521,6 +1658,9 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     categoryFilterOpen,
     selectedCategoryFilter,
     selectedCategoryFilterId,
+    effectiveTaskSourceFilter,
+    showFlatTemplateList,
+    taskSourceOptions,
     uniqueCategories,
     toggleCategoryFilterOpen,
     selectCategoryFilter,
@@ -1532,7 +1672,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
       <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
         <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={48} color={textSecondaryColor} />
         <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
-          {searchQuery || selectedCategoryFilterId
+          {searchQuery || selectedCategoryFilterId || effectiveTaskSourceFilter !== 'all'
             ? 'No tasks match your filter'
             : templateView === 'active'
               ? 'No active task templates'
@@ -1540,7 +1680,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         </Text>
       </View>
     );
-  }, [searchQuery, selectedCategoryFilterId, cardBgColor, textSecondaryColor, templateView]);
+  }, [searchQuery, selectedCategoryFilterId, effectiveTaskSourceFilter, cardBgColor, textSecondaryColor, templateView]);
 
   const ListFooterComponent = useMemo(() => <View style={{ height: embedded ? 132 : 100 }} />, [embedded]);
 
@@ -1608,21 +1748,38 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           </View>
         ) : null}
 
-        <FlatList
-          ref={listRef}
-          data={folders}
-          keyExtractor={(f) => f.id}
-          renderItem={renderFolder}
-          contentContainerStyle={[styles.contentContainer, embedded ? styles.embeddedContentContainer : null, contentContainerStyle]}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          removeClippedSubviews={Platform.OS !== 'web'}
-          initialNumToRender={8}
-          maxToRenderPerBatch={6}
-          windowSize={10}
-          ListHeaderComponent={ListHeaderComponent}
-          ListEmptyComponent={ListEmptyComponent}
-          ListFooterComponent={ListFooterComponent}
-        />
+        {showFlatTemplateList ? (
+          <FlatList
+            data={templateTasks}
+            keyExtractor={(item) => String((item as any).id)}
+            renderItem={renderFlatTask}
+            contentContainerStyle={[styles.contentContainer, embedded ? styles.embeddedContentContainer : null, contentContainerStyle]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={10}
+            ListHeaderComponent={ListHeaderComponent}
+            ListEmptyComponent={ListEmptyComponent}
+            ListFooterComponent={ListFooterComponent}
+          />
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={folders}
+            keyExtractor={(f) => f.id}
+            renderItem={renderFolder}
+            contentContainerStyle={[styles.contentContainer, embedded ? styles.embeddedContentContainer : null, contentContainerStyle]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={10}
+            ListHeaderComponent={ListHeaderComponent}
+            ListEmptyComponent={ListEmptyComponent}
+            ListFooterComponent={ListFooterComponent}
+          />
+        )}
       </View>
 
       <Modal
@@ -2251,6 +2408,31 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '600' },
+  sourceFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: -4,
+    marginBottom: 14,
+  },
+  sourceFilterChip: {
+    minHeight: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sourceFilterText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  sourceFilterCount: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
   categoryFilterHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 14 },
   categoryFilterButton: {
     flex: 1,

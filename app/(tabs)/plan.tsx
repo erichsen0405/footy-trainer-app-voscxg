@@ -53,9 +53,16 @@ import {
 type PlanSection = 'templates' | 'tasks' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
 type PlanFilterPicker = 'view' | null;
+type TemplateSourceFilter = 'all' | 'mine' | 'workspace';
 type ItemSourceMode = 'new' | 'saved' | 'library';
 type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
 type PlanViewTarget = 'tasks' | 'exercise' | 'session' | 'week' | 'assignments';
+
+type PlanSourceFilterOption = {
+  value: TemplateSourceFilter;
+  label: string;
+  count: number;
+};
 
 type DraftItem = TrainingTemplateItemInput & {
   localId: string;
@@ -422,6 +429,22 @@ function getTemplateTone(type: TrainingTemplateType, colors: ReturnType<typeof g
   return colors.primary;
 }
 
+function getTemplateSourceKind(template: TrainingTemplateSummary, actorUserId: string | null): Exclude<TemplateSourceFilter, 'all'> {
+  return actorUserId && template.createdBy === actorUserId ? 'mine' : 'workspace';
+}
+
+function buildTemplateSourceFilterOptions(
+  templates: TrainingTemplateSummary[],
+  actorUserId: string | null
+): PlanSourceFilterOption[] {
+  const mine = templates.filter((template) => getTemplateSourceKind(template, actorUserId) === 'mine').length;
+  const workspace = templates.length - mine;
+  const options: PlanSourceFilterOption[] = [{ value: 'all', label: 'Alle', count: templates.length }];
+  if (mine > 0) options.push({ value: 'mine', label: 'Mine', count: mine });
+  if (workspace > 0) options.push({ value: 'workspace', label: 'Workspace', count: workspace });
+  return options;
+}
+
 function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft {
   return {
     id: null,
@@ -489,7 +512,7 @@ export default function PlanScreen() {
   const [selectedTemplateTypes, setSelectedTemplateTypes] = useState<TrainingTemplateType[]>([]);
   const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
-  const [expandedTemplateFolders, setExpandedTemplateFolders] = useState<Set<string>>(new Set());
+  const [templateSourceFilter, setTemplateSourceFilter] = useState<TemplateSourceFilter>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -583,6 +606,7 @@ export default function PlanScreen() {
     [payload?.templates, statusFilter]
   );
   const currentPlanTemplates = activeSection === 'assignments' ? assignmentTemplates : templates;
+  const actorUserId = payload?.actor.userId ?? user?.id ?? null;
   const searchedPlanTemplates = useMemo(() => {
     const q = templateSearchQuery.trim().toLowerCase();
     if (!q) return currentPlanTemplates;
@@ -600,6 +624,17 @@ export default function PlanScreen() {
       return haystack.includes(q);
     });
   }, [currentPlanTemplates, templateSearchQuery]);
+  const templateSourceOptions = useMemo(
+    () => buildTemplateSourceFilterOptions(searchedPlanTemplates, actorUserId),
+    [actorUserId, searchedPlanTemplates]
+  );
+  const effectiveTemplateSourceFilter = templateSourceOptions.some((option) => option.value === templateSourceFilter)
+    ? templateSourceFilter
+    : 'all';
+  const visiblePlanTemplates = useMemo(() => {
+    if (effectiveTemplateSourceFilter === 'all') return searchedPlanTemplates;
+    return searchedPlanTemplates.filter((template) => getTemplateSourceKind(template, actorUserId) === effectiveTemplateSourceFilter);
+  }, [actorUserId, effectiveTemplateSourceFilter, searchedPlanTemplates]);
 
   const allowedItemTypes = useMemo(
     () => ITEM_TYPES.filter((type) => ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(type.value)),
@@ -675,6 +710,7 @@ export default function PlanScreen() {
 
   const selectPlanViewTarget = useCallback((target: (typeof PLAN_VIEW_TARGETS)[number]) => {
     setPlanFilterPicker(null);
+    setTemplateSourceFilter('all');
     if (target.value === 'tasks') {
       setActiveSection('tasks');
       setSelectedTemplateTypes([]);
@@ -690,18 +726,6 @@ export default function PlanScreen() {
       setStatusFilter('active');
       setSelectedTemplateTypes([target.templateType]);
     }
-  }, []);
-
-  const toggleTemplateFolder = useCallback((folderId: string) => {
-    setExpandedTemplateFolders((current) => {
-      const next = new Set(current);
-      if (next.has(folderId)) {
-        next.delete(folderId);
-      } else {
-        next.add(folderId);
-      }
-      return next;
-    });
   }, []);
 
   const openEdit = useCallback((template: TrainingTemplateSummary) => {
@@ -1202,14 +1226,16 @@ export default function PlanScreen() {
             <PlanTemplateLibraryView
               title={currentTemplateViewTitle}
               detail={currentTemplateViewDetail}
-              templates={searchedPlanTemplates}
+              templates={visiblePlanTemplates}
               totalCount={currentPlanTemplates.length}
               searchQuery={templateSearchQuery}
               onSearchChange={setTemplateSearchQuery}
               statusFilter={statusFilter}
               onStatusFilterChange={setStatusFilter}
-              expandedFolders={expandedTemplateFolders}
-              onToggleFolder={toggleTemplateFolder}
+              sourceOptions={templateSourceOptions}
+              sourceFilter={effectiveTemplateSourceFilter}
+              onSourceFilterChange={setTemplateSourceFilter}
+              actorUserId={actorUserId}
               colors={colors}
               onEdit={openEdit}
               onDuplicate={duplicateTemplate}
@@ -1610,42 +1636,6 @@ export default function PlanScreen() {
   );
 }
 
-type PlanTemplateFolder = {
-  id: string;
-  title: string;
-  detail: string;
-  icon: string;
-  materialIcon: string;
-  templates: TrainingTemplateSummary[];
-};
-
-function buildPlanTemplateFolders(templates: TrainingTemplateSummary[]): PlanTemplateFolder[] {
-  const folders = new Map<string, PlanTemplateFolder>();
-  templates.forEach((template) => {
-    const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType) ?? TEMPLATE_TYPES[0];
-    const folderId = template.folderId ? `folder:${template.folderId}` : `type:${template.templateType}`;
-    const title = template.folderName ?? `${templateTypeLabel(template.templateType)} skabeloner`;
-    if (!folders.has(folderId)) {
-      folders.set(folderId, {
-        id: folderId,
-        title,
-        detail: '',
-        icon: template.folderId ? 'folder.fill' : typeMeta.icon,
-        materialIcon: template.folderId ? 'folder' : typeMeta.materialIcon,
-        templates: [],
-      });
-    }
-    folders.get(folderId)?.templates.push(template);
-  });
-
-  return Array.from(folders.values())
-    .map((folder) => ({
-      ...folder,
-      detail: `${folder.templates.length} skabelon${folder.templates.length === 1 ? '' : 'er'}`,
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title));
-}
-
 function PlanTemplateLibraryView({
   title,
   detail,
@@ -1655,8 +1645,10 @@ function PlanTemplateLibraryView({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
-  expandedFolders,
-  onToggleFolder,
+  sourceOptions,
+  sourceFilter,
+  onSourceFilterChange,
+  actorUserId,
   colors,
   onEdit,
   onDuplicate,
@@ -1671,16 +1663,16 @@ function PlanTemplateLibraryView({
   onSearchChange: (value: string) => void;
   statusFilter: TemplateStatusFilter;
   onStatusFilterChange: (value: TemplateStatusFilter) => void;
-  expandedFolders: Set<string>;
-  onToggleFolder: (folderId: string) => void;
+  sourceOptions: PlanSourceFilterOption[];
+  sourceFilter: TemplateSourceFilter;
+  onSourceFilterChange: (value: TemplateSourceFilter) => void;
+  actorUserId: string | null;
   colors: ReturnType<typeof getColors>;
   onEdit: (template: TrainingTemplateSummary) => void;
   onDuplicate: (template: TrainingTemplateSummary) => void;
   onArchive: (template: TrainingTemplateSummary) => void;
   busy: boolean;
 }) {
-  const folders = useMemo(() => buildPlanTemplateFolders(templates), [templates]);
-
   return (
     <View style={styles.planLibraryView} testID="plan.templates.libraryView">
       <View style={[styles.planSearchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1703,8 +1695,17 @@ function PlanTemplateLibraryView({
         ) : null}
       </View>
 
+      {sourceOptions.length > 2 ? (
+        <PlanSourceSelector
+          options={sourceOptions}
+          selected={sourceFilter}
+          onSelect={onSourceFilterChange}
+          colors={colors}
+        />
+      ) : null}
+
       <View style={styles.planSectionDivider}>
-        <Text style={[styles.planSectionDividerText, { color: colors.textSecondary }]}>Folders</Text>
+        <Text style={[styles.planSectionDividerText, { color: colors.textSecondary }]}>{title}</Text>
         <View style={[styles.planSectionDividerLine, { backgroundColor: colors.border }]} />
       </View>
 
@@ -1727,60 +1728,25 @@ function PlanTemplateLibraryView({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.planFolderList} testID="plan.templates.list">
-        {folders.length ? (
-          folders.map((folder) => {
-            const isExpanded = expandedFolders.has(folder.id);
-            return (
-              <View key={folder.id} style={styles.planFolderGroup}>
-                <TouchableOpacity
-                  style={[styles.shortcutCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => onToggleFolder(folder.id)}
-                  activeOpacity={0.84}
-                >
-                  <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
-                    <IconSymbol ios_icon_name={folder.icon as any} android_material_icon_name={folder.materialIcon as any} size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.shortcutBody}>
-                    <Text style={[styles.shortcutTitle, { color: colors.text }]}>{folder.title}</Text>
-                    <Text style={[styles.shortcutDetail, { color: colors.textSecondary }]}>{folder.detail}</Text>
-                  </View>
-                  <View style={styles.planFolderCountWrap}>
-                    <View style={[styles.planFolderCount, { backgroundColor: `${colors.primary}12` }]}>
-                      <Text style={[styles.planFolderCountText, { color: colors.primary }]}>{folder.templates.length}</Text>
-                    </View>
-                    <IconSymbol
-                      ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
-                      android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
-                      size={20}
-                      color={colors.textSecondary}
-                    />
-                  </View>
-                </TouchableOpacity>
-
-                {isExpanded ? (
-                  <View style={styles.planFolderTemplates}>
-                    {folder.templates.map((template) => (
-                      <TemplateCard
-                        key={template.id}
-                        template={template}
-                        colors={colors}
-                        onEdit={() => onEdit(template)}
-                        onDuplicate={() => onDuplicate(template)}
-                        onArchive={() => onArchive(template)}
-                        busy={busy}
-                      />
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            );
-          })
+      <View style={styles.planTemplateList} testID="plan.templates.list">
+        {templates.length ? (
+          templates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              sourceLabel={getTemplateSourceKind(template, actorUserId) === 'mine' ? 'Mine' : 'Workspace'}
+              colors={colors}
+              onEdit={() => onEdit(template)}
+              onDuplicate={() => onDuplicate(template)}
+              onArchive={() => onArchive(template)}
+              busy={busy}
+            />
+          ))
         ) : (
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={34} color={colors.textSecondary} />
+            <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={34} color={colors.textSecondary} />
             <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
-              {searchQuery.trim() ? 'No templates match your search.' : `No ${statusFilter} templates in this view.`}
+              {searchQuery.trim() || sourceFilter !== 'all' ? 'No templates match your filters.' : `No ${statusFilter} templates in this view.`}
             </Text>
             {totalCount === 0 ? (
               <Text style={[styles.planEmptyDetail, { color: colors.textSecondary }]}>{detail}</Text>
@@ -1788,6 +1754,48 @@ function PlanTemplateLibraryView({
           </View>
         )}
       </View>
+    </View>
+  );
+}
+
+function PlanSourceSelector({
+  options,
+  selected,
+  onSelect,
+  colors,
+}: {
+  options: PlanSourceFilterOption[];
+  selected: TemplateSourceFilter;
+  onSelect: (value: TemplateSourceFilter) => void;
+  colors: ReturnType<typeof getColors>;
+}) {
+  return (
+    <View style={styles.planSourceFilterRow} testID="plan.templates.sourceFilter">
+      {options.map((option) => {
+        const active = selected === option.value;
+        return (
+          <TouchableOpacity
+            key={option.value}
+            style={[
+              styles.planSourcePill,
+              {
+                backgroundColor: active ? colors.primary : colors.card,
+                borderColor: active ? colors.primary : colors.border,
+              },
+            ]}
+            onPress={() => onSelect(option.value)}
+            activeOpacity={0.84}
+            testID={`plan.templates.source.${option.value}`}
+          >
+            <Text style={[styles.planSourceFilterText, { color: active ? '#FFFFFF' : colors.text }]}>
+              {option.label}
+            </Text>
+            <Text style={[styles.planSourceFilterCount, { color: active ? '#FFFFFF' : colors.textSecondary }]}>
+              {option.count}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -2203,6 +2211,7 @@ function PlanFilterOption({
 
 function TemplateCard({
   template,
+  sourceLabel,
   colors,
   onEdit,
   onDuplicate,
@@ -2210,6 +2219,7 @@ function TemplateCard({
   busy,
 }: {
   template: TrainingTemplateSummary;
+  sourceLabel?: string;
   colors: ReturnType<typeof getColors>;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -2251,6 +2261,7 @@ function TemplateCard({
       ) : null}
 
       <View style={styles.templatePills}>
+        {sourceLabel ? <InfoPill text={sourceLabel} colors={colors} /> : null}
         {sessionStartTime ? <InfoPill text={sessionStartTime.slice(0, 5)} colors={colors} /> : null}
         {template.templateType === 'session' ? <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} /> : null}
         {template.folderName ? <InfoPill text={template.folderName} colors={colors} /> : null}
@@ -2674,6 +2685,29 @@ const styles = StyleSheet.create({
   planSearchClearButton: {
     padding: 4,
   },
+  planSourceFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  planSourcePill: {
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  planSourceFilterText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  planSourceFilterCount: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
   planSectionDivider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2709,30 +2743,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
   },
-  planFolderList: {
-    rowGap: 10,
-  },
-  planFolderGroup: {
-    rowGap: 8,
-  },
-  planFolderCountWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 8,
-  },
-  planFolderCount: {
-    minWidth: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  planFolderCountText: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  planFolderTemplates: {
+  planTemplateList: {
     rowGap: 8,
   },
   planEmptyDetail: {
@@ -2916,36 +2927,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginTop: 8,
-  },
-  shortcutCard: {
-    minHeight: 76,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 12,
-  },
-  shortcutIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shortcutBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  shortcutTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  shortcutDetail: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 3,
   },
   modalScreen: {
     flex: 1,
