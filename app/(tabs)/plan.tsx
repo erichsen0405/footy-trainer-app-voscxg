@@ -52,7 +52,7 @@ import {
 
 type PlanSection = 'templates' | 'tasks' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
-type PlanFilterPicker = 'view' | 'status' | 'types' | null;
+type PlanFilterPicker = 'view' | null;
 type ItemSourceMode = 'new' | 'saved' | 'library';
 type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
 type PlanViewTarget = 'tasks' | 'exercise' | 'session' | 'week' | 'assignments';
@@ -488,6 +488,9 @@ export default function PlanScreen() {
   const [statusFilter, setStatusFilter] = useState<TemplateStatusFilter>('active');
   const [selectedTemplateTypes, setSelectedTemplateTypes] = useState<TrainingTemplateType[]>([]);
   const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [templateContentFilterOpen, setTemplateContentFilterOpen] = useState(false);
+  const [expandedTemplateFolders, setExpandedTemplateFolders] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -576,33 +579,28 @@ export default function PlanScreen() {
   const selectedTypeLabel = selectedTemplateTypes.length
     ? selectedTemplateTypes.map((value) => templateTypeLabel(value)).join(', ')
     : 'Alle typer';
-  const toggleTemplateTypeFilter = useCallback((type: TrainingTemplateType) => {
-    setSelectedTemplateTypes((current) =>
-      current.includes(type) ? current.filter((value) => value !== type) : [...current, type]
-    );
-  }, []);
-  const sessionTemplates = useMemo(
-    () =>
-      (payload?.templates ?? []).filter(
-        (template) =>
-          template.status === 'active' &&
-          template.templateType === 'session'
-      ),
-    [payload?.templates]
-  );
-  const weekTemplates = useMemo(
-    () =>
-      (payload?.templates ?? []).filter(
-        (template) =>
-          template.status === 'active' &&
-          template.templateType === 'week'
-      ),
-    [payload?.templates]
-  );
   const assignmentTemplates = useMemo(
-    () => (payload?.templates ?? []).filter((template) => template.status === 'active'),
-    [payload?.templates]
+    () => (payload?.templates ?? []).filter((template) => template.status === statusFilter),
+    [payload?.templates, statusFilter]
   );
+  const currentPlanTemplates = activeSection === 'assignments' ? assignmentTemplates : templates;
+  const searchedPlanTemplates = useMemo(() => {
+    const q = templateSearchQuery.trim().toLowerCase();
+    if (!q) return currentPlanTemplates;
+    return currentPlanTemplates.filter((template) => {
+      const haystack = [
+        template.title,
+        template.description ?? '',
+        template.folderName ?? '',
+        template.defaultActivityCategoryName ?? '',
+        templateTypeLabel(template.templateType),
+        ...template.focusAreas,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [currentPlanTemplates, templateSearchQuery]);
 
   const allowedItemTypes = useMemo(
     () => ITEM_TYPES.filter((type) => ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(type.value)),
@@ -678,6 +676,7 @@ export default function PlanScreen() {
 
   const selectPlanViewTarget = useCallback((target: (typeof PLAN_VIEW_TARGETS)[number]) => {
     setPlanFilterPicker(null);
+    setTemplateContentFilterOpen(false);
     if (target.value === 'tasks') {
       setActiveSection('tasks');
       return;
@@ -691,6 +690,18 @@ export default function PlanScreen() {
       setStatusFilter('active');
       setSelectedTemplateTypes([target.templateType]);
     }
+  }, []);
+
+  const toggleTemplateFolder = useCallback((folderId: string) => {
+    setExpandedTemplateFolders((current) => {
+      const next = new Set(current);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
   }, []);
 
   const openEdit = useCallback((template: TrainingTemplateSummary) => {
@@ -1030,6 +1041,18 @@ export default function PlanScreen() {
         : selectedTemplateTypes.length
           ? selectedTypeLabel
           : 'Alle typer';
+  const currentTemplateViewTitle =
+    activeSection === 'assignments'
+      ? 'Tildelinger'
+      : selectedTemplateTypes.length === 1
+        ? templateTypeLabel(selectedTemplateTypes[0])
+        : 'Skabeloner';
+  const currentTemplateViewDetail =
+    activeSection === 'assignments'
+      ? 'Skabeloner klar til tildeling'
+      : selectedTemplateTypes.length === 1
+        ? `${templateTypeLabel(selectedTemplateTypes[0])} skabeloner`
+        : 'Alle skabeloner';
 
   if (roleLoading || loading) {
     return (
@@ -1175,153 +1198,28 @@ export default function PlanScreen() {
         >
           {renderPlanChrome()}
 
-          {activeSection === 'templates' ? (
-          <>
-            <View style={styles.summaryGrid}>
-              <SummaryTile label="Active" value={String(payload?.summary.active ?? 0)} colors={colors} tone={colors.success} />
-              <SummaryTile label="Exercises" value={String(payload?.summary.exercise ?? 0)} colors={colors} tone={colors.warning} />
-              <SummaryTile label="Sessions" value={String(payload?.summary.session ?? 0)} colors={colors} tone={colors.secondary} />
-              <SummaryTile label="Weeks" value={String(payload?.summary.week ?? 0)} colors={colors} tone={colors.accent} />
-            </View>
-
-            <View style={styles.filterBlock}>
-              <View style={styles.planFilterGrid}>
-                <PlanFilterSelect
-                  label="Status"
-                  value={statusFilter === 'active' ? 'Aktive' : 'Arkiverede'}
-                  icon="archivebox"
-                  materialIcon="archive"
-                  active={planFilterPicker === 'status'}
-                  colors={colors}
-                  onPress={() => setPlanFilterPicker((current) => (current === 'status' ? null : 'status'))}
-                />
-                <PlanFilterSelect
-                  label="Type"
-                  value={selectedTypeLabel}
-                  icon="line.3.horizontal.decrease.circle"
-                  materialIcon="filter_list"
-                  active={planFilterPicker === 'types' || selectedTemplateTypes.length > 0}
-                  colors={colors}
-                  onPress={() => setPlanFilterPicker((current) => (current === 'types' ? null : 'types'))}
-                />
-              </View>
-
-              {planFilterPicker === 'status' ? (
-                <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <PlanFilterOption
-                    label="Aktive"
-                    detail="Skabeloner der kan bruges nu"
-                    active={statusFilter === 'active'}
-                    colors={colors}
-                    onPress={() => {
-                      setStatusFilter('active');
-                      setPlanFilterPicker(null);
-                    }}
-                  />
-                  <PlanFilterOption
-                    label="Arkiverede"
-                    detail="Skabeloner der er gemt væk"
-                    active={statusFilter === 'archived'}
-                    colors={colors}
-                    onPress={() => {
-                      setStatusFilter('archived');
-                      setPlanFilterPicker(null);
-                    }}
-                  />
-                </View>
-              ) : null}
-
-              {planFilterPicker === 'types' ? (
-                <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <PlanFilterOption
-                    label="Alle typer"
-                    detail="Vis task, exercise, session og week"
-                    active={selectedTemplateTypes.length === 0}
-                    colors={colors}
-                    onPress={() => setSelectedTemplateTypes([])}
-                  />
-                  {TEMPLATE_TYPES.map((type) => (
-                    <PlanFilterOption
-                      key={type.value}
-                      label={type.label}
-                      detail={type.value === 'task' ? 'Opgaveskabeloner' : type.value === 'exercise' ? 'Interval- og øvelsesopgaver' : type.value === 'session' ? 'Sessioner' : 'Ugeforløb'}
-                      active={selectedTemplateTypes.includes(type.value)}
-                      colors={colors}
-                      onPress={() => toggleTemplateTypeFilter(type.value)}
-                    />
-                  ))}
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.templateList} testID="plan.templates.list">
-              {templates.length ? (
-                templates.map((template) => (
-                  <TemplateCard
-                    key={template.id}
-                    template={template}
-                    colors={colors}
-                    onEdit={() => openEdit(template)}
-                    onDuplicate={() => duplicateTemplate(template)}
-                    onArchive={() => toggleArchive(template)}
-                    busy={saving}
-                  />
-                ))
-              ) : (
-                <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <IconSymbol ios_icon_name="rectangle.3.group" android_material_icon_name="dashboard" size={34} color={colors.textSecondary} />
-                  <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
-                    No templates in this view.
-                  </Text>
-                </View>
-              )}
-            </View>
-          </>
-        ) : null}
-
-        {activeSection === 'assignments' ? (
-          <>
-            <PlanSectionHeader
-              title="Tildelinger"
-              detail={`${assignmentTemplates.length} aktive skabeloner klar`}
-              icon="person.2.fill"
-              materialIcon="groups"
+          {activeSection === 'templates' || activeSection === 'assignments' ? (
+            <PlanTemplateLibraryView
+              title={currentTemplateViewTitle}
+              detail={currentTemplateViewDetail}
+              templates={searchedPlanTemplates}
+              totalCount={currentPlanTemplates.length}
+              searchQuery={templateSearchQuery}
+              onSearchChange={setTemplateSearchQuery}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              filterOpen={templateContentFilterOpen}
+              onToggleFilter={() => setTemplateContentFilterOpen((current) => !current)}
+              onCloseFilter={() => setTemplateContentFilterOpen(false)}
+              expandedFolders={expandedTemplateFolders}
+              onToggleFolder={toggleTemplateFolder}
               colors={colors}
+              onEdit={openEdit}
+              onDuplicate={duplicateTemplate}
+              onArchive={toggleArchive}
+              busy={saving}
             />
-            <View style={styles.shortcutGrid} testID="plan.assignments.shortcuts">
-              <PlanShortcutCard
-                title="Opgaver"
-                detail={`${payload?.summary.task ?? 0} opgaveskabeloner`}
-                icon="checklist"
-                materialIcon="checklist"
-                colors={colors}
-                onPress={() => setActiveSection('tasks')}
-              />
-              <PlanShortcutCard
-                title="Session"
-                detail={`${sessionTemplates.length} aktive sessioner`}
-                icon="calendar"
-                materialIcon="event"
-                colors={colors}
-                onPress={() => {
-                  setActiveSection('templates');
-                  setSelectedTemplateTypes(['session']);
-                }}
-              />
-              <PlanShortcutCard
-                title="Week"
-                detail={`${weekTemplates.length} aktive ugeforløb`}
-                icon="calendar.badge.clock"
-                materialIcon="event_note"
-                colors={colors}
-                onPress={() => {
-                  setActiveSection('templates');
-                  setSelectedTemplateTypes(['week']);
-                }}
-              />
-            </View>
-          </>
-        ) : null}
+          ) : null}
       </ScrollView>
       )}
 
@@ -1715,6 +1613,242 @@ export default function PlanScreen() {
   );
 }
 
+type PlanTemplateFolder = {
+  id: string;
+  title: string;
+  detail: string;
+  icon: string;
+  materialIcon: string;
+  templates: TrainingTemplateSummary[];
+};
+
+function buildPlanTemplateFolders(templates: TrainingTemplateSummary[]): PlanTemplateFolder[] {
+  const folders = new Map<string, PlanTemplateFolder>();
+  templates.forEach((template) => {
+    const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType) ?? TEMPLATE_TYPES[0];
+    const folderId = template.folderId ? `folder:${template.folderId}` : `type:${template.templateType}`;
+    const title = template.folderName ?? `${templateTypeLabel(template.templateType)} skabeloner`;
+    if (!folders.has(folderId)) {
+      folders.set(folderId, {
+        id: folderId,
+        title,
+        detail: '',
+        icon: template.folderId ? 'folder.fill' : typeMeta.icon,
+        materialIcon: template.folderId ? 'folder' : typeMeta.materialIcon,
+        templates: [],
+      });
+    }
+    folders.get(folderId)?.templates.push(template);
+  });
+
+  return Array.from(folders.values())
+    .map((folder) => ({
+      ...folder,
+      detail: `${folder.templates.length} skabelon${folder.templates.length === 1 ? '' : 'er'}`,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function PlanTemplateLibraryView({
+  title,
+  detail,
+  templates,
+  totalCount,
+  searchQuery,
+  onSearchChange,
+  statusFilter,
+  onStatusFilterChange,
+  filterOpen,
+  onToggleFilter,
+  onCloseFilter,
+  expandedFolders,
+  onToggleFolder,
+  colors,
+  onEdit,
+  onDuplicate,
+  onArchive,
+  busy,
+}: {
+  title: string;
+  detail: string;
+  templates: TrainingTemplateSummary[];
+  totalCount: number;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  statusFilter: TemplateStatusFilter;
+  onStatusFilterChange: (value: TemplateStatusFilter) => void;
+  filterOpen: boolean;
+  onToggleFilter: () => void;
+  onCloseFilter: () => void;
+  expandedFolders: Set<string>;
+  onToggleFolder: (folderId: string) => void;
+  colors: ReturnType<typeof getColors>;
+  onEdit: (template: TrainingTemplateSummary) => void;
+  onDuplicate: (template: TrainingTemplateSummary) => void;
+  onArchive: (template: TrainingTemplateSummary) => void;
+  busy: boolean;
+}) {
+  const folders = useMemo(() => buildPlanTemplateFolders(templates), [templates]);
+
+  return (
+    <View style={styles.planLibraryView} testID="plan.templates.libraryView">
+      <View style={[styles.planSearchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color={colors.textSecondary} />
+        <TextInput
+          style={[styles.planSearchInput, { color: colors.text }]}
+          placeholder={`Search ${title.toLowerCase()}...`}
+          placeholderTextColor={colors.textSecondary}
+          value={searchQuery}
+          onChangeText={onSearchChange}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          testID="plan.templates.searchInput"
+        />
+        {searchQuery.trim().length ? (
+          <TouchableOpacity onPress={() => onSearchChange('')} style={styles.planSearchClearButton} activeOpacity={0.8}>
+            <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="cancel" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <View style={styles.planContentFilterRow}>
+        <TouchableOpacity
+          style={[styles.planContentFilterButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={onToggleFilter}
+          activeOpacity={0.85}
+          testID="plan.templates.filterButton"
+        >
+          <IconSymbol ios_icon_name="line.3.horizontal.decrease.circle" android_material_icon_name="filter_list" size={18} color={colors.textSecondary} />
+          <View style={styles.planContentFilterText}>
+            <Text style={[styles.planContentFilterLabel, { color: colors.text }]}>Filter</Text>
+            <Text style={[styles.planContentFilterValue, { color: colors.textSecondary }]} numberOfLines={1}>
+              {statusFilter === 'active' ? 'Active' : 'Archived'} · {detail}
+            </Text>
+          </View>
+          <IconSymbol
+            ios_icon_name={filterOpen ? 'chevron.up' : 'chevron.down'}
+            android_material_icon_name={filterOpen ? 'expand_less' : 'expand_more'}
+            size={16}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {filterOpen ? (
+        <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <PlanFilterOption
+            label="Active"
+            detail="Skabeloner der kan bruges nu"
+            active={statusFilter === 'active'}
+            colors={colors}
+            onPress={() => {
+              onStatusFilterChange('active');
+              onCloseFilter();
+            }}
+          />
+          <PlanFilterOption
+            label="Archived"
+            detail="Skabeloner der er gemt væk"
+            active={statusFilter === 'archived'}
+            colors={colors}
+            onPress={() => {
+              onStatusFilterChange('archived');
+              onCloseFilter();
+            }}
+          />
+        </View>
+      ) : null}
+
+      <View style={styles.planSectionDivider}>
+        <Text style={[styles.planSectionDividerText, { color: colors.textSecondary }]}>Folders</Text>
+        <View style={[styles.planSectionDividerLine, { backgroundColor: colors.border }]} />
+      </View>
+
+      <View style={[styles.planTemplateViewToggle, { backgroundColor: colors.card }]}>
+        <TouchableOpacity
+          style={[styles.planTemplateViewToggleButton, statusFilter === 'active' && { backgroundColor: colors.primary }]}
+          onPress={() => onStatusFilterChange('active')}
+          activeOpacity={0.85}
+          testID="plan.templates.status.active"
+        >
+          <Text style={[styles.planTemplateViewToggleText, { color: statusFilter === 'active' ? '#FFFFFF' : colors.text }]}>Active</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.planTemplateViewToggleButton, statusFilter === 'archived' && { backgroundColor: colors.primary }]}
+          onPress={() => onStatusFilterChange('archived')}
+          activeOpacity={0.85}
+          testID="plan.templates.status.archived"
+        >
+          <Text style={[styles.planTemplateViewToggleText, { color: statusFilter === 'archived' ? '#FFFFFF' : colors.text }]}>Archived</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.planFolderList} testID="plan.templates.list">
+        {folders.length ? (
+          folders.map((folder) => {
+            const isExpanded = expandedFolders.has(folder.id);
+            return (
+              <View key={folder.id} style={styles.planFolderGroup}>
+                <TouchableOpacity
+                  style={[styles.shortcutCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => onToggleFolder(folder.id)}
+                  activeOpacity={0.84}
+                >
+                  <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+                    <IconSymbol ios_icon_name={folder.icon as any} android_material_icon_name={folder.materialIcon as any} size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.shortcutBody}>
+                    <Text style={[styles.shortcutTitle, { color: colors.text }]}>{folder.title}</Text>
+                    <Text style={[styles.shortcutDetail, { color: colors.textSecondary }]}>{folder.detail}</Text>
+                  </View>
+                  <View style={styles.planFolderCountWrap}>
+                    <View style={[styles.planFolderCount, { backgroundColor: `${colors.primary}12` }]}>
+                      <Text style={[styles.planFolderCountText, { color: colors.primary }]}>{folder.templates.length}</Text>
+                    </View>
+                    <IconSymbol
+                      ios_icon_name={isExpanded ? 'chevron.down' : 'chevron.right'}
+                      android_material_icon_name={isExpanded ? 'expand_more' : 'chevron_right'}
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                {isExpanded ? (
+                  <View style={styles.planFolderTemplates}>
+                    {folder.templates.map((template) => (
+                      <TemplateCard
+                        key={template.id}
+                        template={template}
+                        colors={colors}
+                        onEdit={() => onEdit(template)}
+                        onDuplicate={() => onDuplicate(template)}
+                        onArchive={() => onArchive(template)}
+                        busy={busy}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })
+        ) : (
+          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={34} color={colors.textSecondary} />
+            <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
+              {searchQuery.trim() ? 'No templates match your search.' : `No ${statusFilter} templates in this view.`}
+            </Text>
+            {totalCount === 0 ? (
+              <Text style={[styles.planEmptyDetail, { color: colors.textSecondary }]}>{detail}</Text>
+            ) : null}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 function CreateTemplatePickerModal({
   visible,
   colors,
@@ -2043,25 +2177,6 @@ function PickerEmptyState({ text, colors }: { text: string; colors: ReturnType<t
     <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={28} color={colors.textSecondary} />
       <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>{text}</Text>
-    </View>
-  );
-}
-
-function SummaryTile({
-  label,
-  value,
-  tone,
-  colors,
-}: {
-  label: string;
-  value: string;
-  tone: string;
-  colors: ReturnType<typeof getColors>;
-}) {
-  return (
-    <View style={[styles.summaryTile, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.summaryValue, { color: tone }]}>{value}</Text>
-      <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{label}</Text>
     </View>
   );
 }
@@ -2490,65 +2605,6 @@ function ExerciseTimerEditor({
   );
 }
 
-function PlanSectionHeader({
-  title,
-  detail,
-  icon,
-  materialIcon,
-  colors,
-}: {
-  title: string;
-  detail: string;
-  icon: string;
-  materialIcon: string;
-  colors: ReturnType<typeof getColors>;
-}) {
-  return (
-    <View style={styles.inlineSectionHeader}>
-      <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
-        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={22} color={colors.primary} />
-      </View>
-      <View style={styles.shortcutBody}>
-        <Text style={[styles.shortcutTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.shortcutDetail, { color: colors.textSecondary }]}>{detail}</Text>
-      </View>
-    </View>
-  );
-}
-
-function PlanShortcutCard({
-  title,
-  detail,
-  icon,
-  materialIcon,
-  colors,
-  onPress,
-}: {
-  title: string;
-  detail: string;
-  icon: string;
-  materialIcon: string;
-  colors: ReturnType<typeof getColors>;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.shortcutCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      onPress={onPress}
-      activeOpacity={0.84}
-    >
-      <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
-        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={22} color={colors.primary} />
-      </View>
-      <View style={styles.shortcutBody}>
-        <Text style={[styles.shortcutTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.shortcutDetail, { color: colors.textSecondary }]}>{detail}</Text>
-      </View>
-      <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={colors.textSecondary} />
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
@@ -2653,6 +2709,123 @@ const styles = StyleSheet.create({
   sectionBlock: {
     marginBottom: 14,
   },
+  planLibraryView: {
+    rowGap: 12,
+  },
+  planSearchBar: {
+    minHeight: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  planSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  planSearchClearButton: {
+    padding: 4,
+  },
+  planContentFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  planContentFilterButton: {
+    flex: 1,
+    minHeight: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  planContentFilterText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planContentFilterLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  planContentFilterValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  planSectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+    marginTop: 4,
+  },
+  planSectionDividerText: {
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  planSectionDividerLine: {
+    flex: 1,
+    height: 2,
+    borderRadius: 999,
+  },
+  planTemplateViewToggle: {
+    minHeight: 46,
+    borderRadius: 8,
+    padding: 4,
+    flexDirection: 'row',
+    columnGap: 4,
+  },
+  planTemplateViewToggleButton: {
+    flex: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  planTemplateViewToggleText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  planFolderList: {
+    rowGap: 10,
+  },
+  planFolderGroup: {
+    rowGap: 8,
+  },
+  planFolderCountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  planFolderCount: {
+    minWidth: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  planFolderCountText: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  planFolderTemplates: {
+    rowGap: 8,
+  },
+  planEmptyDetail: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 5,
+    textAlign: 'center',
+  },
   notice: {
     borderWidth: 1,
     borderRadius: 8,
@@ -2667,35 +2840,6 @@ const styles = StyleSheet.create({
   noticeText: {
     fontSize: 14,
     lineHeight: 20,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    columnGap: 8,
-    marginBottom: 12,
-  },
-  summaryTile: {
-    flex: 1,
-    minHeight: 72,
-    borderWidth: 1,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-  },
-  summaryValue: {
-    fontSize: 23,
-    fontWeight: '900',
-  },
-  summaryLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  filterBlock: {
-    marginBottom: 12,
-  },
-  planFilterGrid: {
-    rowGap: 8,
   },
   planFilterSelect: {
     minHeight: 54,
@@ -2759,16 +2903,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
-  },
-  inlineSectionHeader: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 12,
-    marginBottom: 14,
-  },
-  templateList: {
-    rowGap: 10,
   },
   templateCard: {
     borderWidth: 1,
@@ -2897,9 +3031,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginTop: 3,
-  },
-  shortcutGrid: {
-    rowGap: 10,
   },
   modalScreen: {
     flex: 1,

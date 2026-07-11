@@ -1294,7 +1294,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const ListHeaderComponent = useMemo(() => {
     return (
       <>
-        {isPlayerPlan || embedded ? (
+        {isPlayerPlan ? (
           <View style={[styles.planSectionSelector, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}>
             <View style={[styles.planSectionIcon, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
               <IconSymbol ios_icon_name="rectangle.3.group" android_material_icon_name="dashboard" size={18} color={colors.primary} />
@@ -1322,7 +1322,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           </View>
         )}
 
-        {isTrainerProfile ? (
+        {isTrainerProfile && !embedded ? (
           <TrainerScopeFilter
             testIDPrefix="tasks.scopeFilter"
             modalTitle="Tasks"
@@ -1558,11 +1558,13 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         presentation="none"
       >
         <View style={[styles.screen, { backgroundColor: bgColor }]}>
-          <View style={[styles.topBar, embedded ? styles.embeddedTopBar : null]}>
-            <Text style={[styles.screenTitle, embedded ? styles.embeddedScreenTitle : null, { color: textColor }]} testID="tasks.header.title">
-              {screenTitleText}
-            </Text>
-          </View>
+          {!embedded ? (
+            <View style={styles.topBar}>
+              <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">
+                {screenTitleText}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
@@ -1579,30 +1581,32 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
       presentation="none"
     >
       <View style={[styles.screen, { backgroundColor: bgColor }]} testID="tasks.screen">
-        <View style={[styles.topBar, embedded ? styles.embeddedTopBar : null]}>
-          <View style={styles.topBarTitleWrap}>
-            <Text
-              style={[styles.screenTitle, embedded ? styles.embeddedScreenTitle : null, { color: textColor }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              testID="tasks.header.title"
+        {!embedded ? (
+          <View style={styles.topBar}>
+            <View style={styles.topBarTitleWrap}>
+              <Text
+                style={[styles.screenTitle, { color: textColor }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                testID="tasks.header.title"
+              >
+                {screenTitleText}
+              </Text>
+              <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
+                {screenSubtitleText}
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.createButton, { backgroundColor: colors.primary }]}
+              onPress={openNewTaskModal}
+              testID="tasks.header.newTaskButton"
             >
-              {screenTitleText}
-            </Text>
-            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-              {screenSubtitleText}
-            </Text>
+              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
+              <Text style={styles.createButtonText}>{isPlayerPlan ? 'Ny skabelon' : 'New task'}</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={openNewTaskModal}
-            testID="tasks.header.newTaskButton"
-          >
-            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>{isPlayerPlan || embedded ? 'Ny skabelon' : 'New task'}</Text>
-          </TouchableOpacity>
-        </View>
+        ) : null}
 
         <FlatList
           ref={listRef}
@@ -2170,19 +2174,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  embeddedTopBar: {
-    paddingTop: 2,
-    paddingHorizontal: 16,
-  },
   topBarTitleWrap: { flex: 1, minWidth: 0 },
   screenTitle: {
     fontSize: 34,
     lineHeight: 40,
     fontWeight: '800',
-  },
-  embeddedScreenTitle: {
-    fontSize: 23,
-    lineHeight: 29,
   },
   topBarRight: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
   headerSubtitle: { fontSize: 13, fontWeight: '800', marginTop: 2 },
