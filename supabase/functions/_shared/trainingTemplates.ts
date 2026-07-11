@@ -147,10 +147,6 @@ type ExerciseTimerConfig = {
   rounds: number;
 };
 
-type SessionConfig = {
-  startTime: string | null;
-};
-
 type ParsedTrainingTemplateBody =
   | { action: 'context' }
   | { action: 'list'; ownerAccountId: string }
@@ -418,25 +414,6 @@ function normalizeExerciseTimer(value: unknown): ExerciseTimerConfig {
   };
 }
 
-function normalizeTime(value: unknown): string | null {
-  const normalized = optionalTrimmedString(value);
-  if (!normalized) return null;
-  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
-    throw new AppError('VALIDATION_ERROR', 'startTime must be HH:mm or HH:mm:ss.', 400);
-  }
-  return normalized.length === 5 ? `${normalized}:00` : normalized;
-}
-
-function normalizeSessionConfig(value: unknown, explicitStartTime: unknown): SessionConfig {
-  const record = normalizeJsonObject(value);
-  const startTimeValue = explicitStartTime !== undefined
-    ? explicitStartTime
-    : record.startTime ?? record.start_time;
-  return {
-    startTime: normalizeTime(startTimeValue),
-  };
-}
-
 function normalizeItemConfig(
   record: Record<string, unknown>,
   itemType: TrainingTemplateItemType,
@@ -477,7 +454,6 @@ function normalizeTemplateItems(value: unknown, templateType: TrainingTemplateTy
     }
     const title = requiredTrimmedString(record.title, 'item.title');
     const description = optionalTrimmedString(record.description);
-    const carriesSessionTiming = templateType === 'week' && itemType === 'session_template';
     return {
       id: optionalUuid(record.id, 'item.id'),
       parentItemId: optionalUuid(record.parentItemId, 'item.parentItemId'),
@@ -488,10 +464,8 @@ function normalizeTemplateItems(value: unknown, templateType: TrainingTemplateTy
       title,
       description,
       dayOffset: templateType === 'week' ? normalizeInt(record.dayOffset, 'item.dayOffset', { min: 0, max: 365 }) ?? 0 : 0,
-      startTime: carriesSessionTiming ? normalizeTime(record.startTime) : null,
-      durationMinutes: carriesSessionTiming
-        ? normalizeInt(record.durationMinutes, 'item.durationMinutes', { min: 1, max: 1440, nullable: true })
-        : null,
+      startTime: null,
+      durationMinutes: null,
       sortOrder: normalizeInt(record.sortOrder ?? index, 'item.sortOrder', { min: 0, max: 999 }) ?? index,
       config: normalizeItemConfig(record, itemType, { title, description }),
     };
@@ -532,17 +506,7 @@ export function parseTrainingTemplateBody(body: unknown): ParsedTrainingTemplate
     const title = requiredTrimmedString(record.title, 'title');
     const description = optionalTrimmedString(record.description);
     const metadata = { ...normalizeJsonObject(record.metadata) };
-    if (templateType === 'session') {
-      const explicitSessionStartTime = Object.prototype.hasOwnProperty.call(record, 'sessionStartTime')
-        ? record.sessionStartTime
-        : record.startTime;
-      metadata.session = normalizeSessionConfig(
-        record.sessionConfig ?? record.session ?? metadata.session,
-        explicitSessionStartTime
-      );
-    } else {
-      delete metadata.session;
-    }
+    delete metadata.session;
     if (templateType === 'task' || templateType === 'exercise') {
       metadata.task = normalizeTaskConfig(record.taskConfig ?? record.task ?? metadata.task, { title, description });
     }
@@ -559,12 +523,10 @@ export function parseTrainingTemplateBody(body: unknown): ParsedTrainingTemplate
       description,
       folderId: optionalUuid(record.folderId, 'folderId'),
       focusAreas: normalizeStringArray(record.focusAreas, 'focusAreas'),
-      durationMinutes: templateType === 'session'
-        ? normalizeInt(record.durationMinutes, 'durationMinutes', { min: 1, max: 1440, nullable: true })
-        : null,
+      durationMinutes: null,
       defaultActivityCategoryId: optionalUuid(record.defaultActivityCategoryId, 'defaultActivityCategoryId'),
       defaultActivityCategoryName: optionalTrimmedString(record.defaultActivityCategoryName),
-      status: normalizeTemplateStatus(record.status),
+      status: templateType === 'task' || templateType === 'exercise' ? normalizeTemplateStatus(record.status) : 'active',
       sourceTaskTemplateId: optionalUuid(record.sourceTaskTemplateId, 'sourceTaskTemplateId'),
       metadata,
       items: normalizeTemplateItems(record.items, templateType),

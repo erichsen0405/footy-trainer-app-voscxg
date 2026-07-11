@@ -132,13 +132,9 @@ coach vaelge oevelser fra `exercise_library`.
   "description": "High repetition finishing session.",
   "folderId": null,
   "focusAreas": ["Finishing", "First touch"],
-  "sessionStartTime": "17:30",
-  "durationMinutes": 75,
-  "metadata": {
-    "session": {
-      "startTime": "17:30"
-    }
-  },
+  "sessionStartTime": null,
+  "durationMinutes": null,
+  "metadata": {},
   "defaultActivityCategoryName": "Training",
   "status": "active",
   "sourceTaskTemplateId": null,
@@ -199,9 +195,11 @@ Task og exercise templates har ikke item-liste. De gemmer opgavefelterne direkte
 i `metadata.task` via `taskConfig`. Exercise templates gemmer desuden timer i
 `metadata.timer` via `exerciseTimer`.
 
-Session templates gemmer starttid paa selve sessionen via `sessionStartTime`
-eller `metadata.session.startTime`. Varighed gemmes paa `durationMinutes`.
-Starttid og varighed maa ikke gemmes paa task/exercise items i en session.
+Session templates gemmer ikke dato, starttid eller varighed. Det saettes foerst,
+naar coachen vaelger `Tildel` og materialiserer sessionen til en konkret
+aktivitet i spillerens kalender. Hvis klienten sender `sessionStartTime`,
+`startTime`, `metadata.session.startTime` eller `durationMinutes` paa en
+session template, ignorerer Edge Function disse felter.
 
 Task og exercise maa ikke have subtasks eller egen task time. Hvis klienten
 sender `subtasks`, `taskDurationEnabled` eller `taskDurationMinutes`, ignorerer
@@ -481,11 +479,10 @@ Byg en desktop-effektiv template builder i eksisterende owner portal:
 
 - owner/workspace switcher, hvis brugeren har flere owners
 - type filter: task, exercise, session, week
-- status filter: active, archived
+- status filter: active, archived for task/exercise
 - folder/kategori filter
-- liste med titel, type, session-starttid/varighed, fokusomraader, item count og
-  version
-- handlinger: opret, rediger, dupliker, arkiver, gendan
+- liste med titel, type, fokusomraader, item count og version
+- handlinger: opret, rediger, dupliker, arkiver/gendan for task/exercise
 - builder med ordered items, drag/reorder og preview
 - paa mobil skal valg af `Saved` eller `Library` aabne en popup/bottom sheet med
   de samme kort-typer som resten af template/library UI'et; vis ikke saved eller
@@ -494,11 +491,12 @@ Byg en desktop-effektiv template builder i eksisterende owner portal:
 Session-template:
 
 - er selve sessionen/aktiviteten og kan have default aktivitetskategori
-- har starttidspunkt paa `sessionStartTime`/`metadata.session.startTime` og
-  varighed paa `durationMinutes`
+- har ikke fast starttidspunkt, dato eller varighed i selve skabelonen
+- tidspunkter og varighed skal foerst vaelges ved `Tildel`, hvor coachen
+  materialiserer sessionen til en konkret aktivitet for en spiller
 - session items ligger per default paa samme dag som sessionen; vis ikke
   `dayOffset`/Day-vaelger i session builderen
-- starttid og varighed hoerer til sessionen, ikke til task/exercise items
+- starttid og varighed hoerer til tildelingen, ikke til task/exercise items
 - kan indeholde task-template items, exercise items, feedback requirements,
   notes og focus items
 - task og exercise items kan oprettes som nye inline items, vaelges fra gemte
@@ -512,7 +510,10 @@ Week-template:
 - kan kun indeholde gemte session templates med `dayOffset`
 - vis Day-vaelgeren i week builderen, da week items fordeles paa dag 1, dag 2
   osv.
-- vis kun starttid og varighed paa `session_template` items i week builderen
+- gem kun foreslaaet dag via `dayOffset`; vis ikke starttid eller varighed paa
+  `session_template` items i week builderen
+- startdato, uge og konkrete session-tidspunkter skal foerst vaelges ved
+  `Tildel`, hvor coachen kan override de foreslaaede dage pr. spiller
 - vis ikke task, exercise, focus eller note som item-valg i week builderen
 - session items i week bruger `Saved` flowet og maa ikke kunne vaelges fra
   `Library`

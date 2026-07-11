@@ -46,7 +46,7 @@ intervaltimer med aktiv arbejdstid, pause og antal runder.
 En traeningssession, fx "Finishing session". Sessionen er det, der senere kan
 blive til en aktivitet i kalenderen, og den kan have standardkategori som
 "Training". Den kan bestaa af task items, exercise items, feedback, fokusnoter
-og varighed.
+og noter. Dato, starttid og varighed vaelges foerst ved tildeling.
 
 `Week template`  
 En ugeplan, fx "U13 finishing week", hvor gemte sessioner kan have day offset,
@@ -73,12 +73,11 @@ stabil version, selvom skabelonen bliver redigeret bagefter.
 4. Udfyld titel.
 5. Tilfoej evt. beskrivelse.
 6. Tilfoej evt. fokusomraader, adskilt med komma.
-7. Tilfoej evt. starttidspunkt og samlet varighed, hvis det er en `Session`.
-8. Tilfoej items, hvis typen er `Session` eller `Week`.
-9. Tryk `Save template`.
+7. Tilfoej items, hvis typen er `Session` eller `Week`.
+8. Tryk `Save template`.
 
-Titel er paakraevet. Beskrivelse, fokusomraader, sessionstid, varighed og items
-kan tilfoejes loebende.
+Titel er paakraevet. Beskrivelse, fokusomraader og items kan tilfoejes
+loebende. Kalenderdata hoerer til tildelingen, ikke selve skabelonen.
 
 ## Tilfoej Items Til En Skabelon
 
@@ -101,10 +100,10 @@ For hvert item kan du angive placering:
 
 `Day` vises kun, naar du arbejder med en `Week` skabelon. En `Session`
 er altid samme dag som aktiviteten, saa session-items har ikke day-vaelger.
-Starttid og varighed saettes paa selve `Session` skabelonen. I en `Week` kan du
-kun tilfoeje gemte `Session` skabeloner, og week itemet kan have dag, starttid
-og varighed, fordi det repraesenterer en planlagt session i ugen. `Task` og
-`Exercise` har ikke eget tidspunkt eller egen varighed.
+I en `Week` kan du kun tilfoeje gemte `Session` skabeloner, og week itemet kan
+have et forslag til dag. Startdato, konkrete sessionstidspunkter og varighed
+vaelges foerst ved `Tildel`, hvor traeneren kan override planen pr. spiller.
+`Task` og `Exercise` har ikke eget tidspunkt eller egen varighed.
 
 For `Task` og `Exercise` kan du derudover angive de samme felter som paa normale
 opgaver:
@@ -155,7 +154,7 @@ til at fjerne et item fra skabelonen.
 1. Aabn `Plan`.
 2. Find skabelonen paa listen.
 3. Tryk `Edit`.
-4. Ret titel, beskrivelse, fokusomraader, varighed eller items.
+4. Ret titel, beskrivelse, fokusomraader eller items.
 5. Tryk `Save template`.
 
 Naar du gemmer, oprettes en ny version/snapshot.
@@ -171,8 +170,9 @@ den kan redigeres uden at aendre originalen.
 
 ## Arkiver Og Gendan
 
-Arkivering bruges, naar en skabelon ikke laengere skal bruges i daglig drift,
-men stadig skal bevares historisk.
+Arkivering bruges for `Task` og `Exercise`, naar en skabelon ikke laengere skal
+bruges i daglig drift, men stadig skal bevares historisk. `Session` og `Week`
+er plan-skabeloner og vises uden aktiv/arkiv skift i mobilflowet.
 
 Arkiver:
 
@@ -192,15 +192,15 @@ Arkiverede skabeloner slettes ikke. De bevarer versionshistorik og kan gendannes
 
 I `Plan` kan du filtrere paa:
 
-- `Active`
-- `Archived`
 - `All types`
 - `Task`
 - `Exercise`
 - `Session`
 - `Week`
+- `Mine`
+- `Fra traener` eller `Workspace`, naar der er delt indhold
 
-Brug `Active` til daglig drift og `Archived` til gamle skabeloner.
+`Active`/`Archived` vises kun, hvor det giver mening for `Task` og `Exercise`.
 
 ## Opgaver, Exercise, Session, Week Og Tildelinger
 
@@ -253,7 +253,7 @@ Brugeren har ikke en aktiv owner rolle med coach-adgang.
 Kontroller titel, owner access og at payloaden er gyldig.
 
 `No templates in this view`  
-Skift mellem `Active`, `Archived` eller typefiltrene.
+Skift visning, kildefilter eller soegning.
 
 `401` fra endpointet  
 Brugeren er ikke logget ind, eller access token mangler.
@@ -269,7 +269,7 @@ Skabelonen eller folderen findes ikke i den valgte owner. Refetch listen.
 Test dette flow som traener:
 
 1. Log ind som traener.
-2. Bekraeft at bundmenuen viser `Overblik`, `Spillere`, `Plan`, `Bibliotek`.
+2. Bekraeft at bundmenuen viser `Overblik`, `Spillere`, `Plan`.
 3. Aabn `Plan`.
 4. Opret en `Session` skabelon.
 5. Tilfoej et nyt `Task` item med media.
@@ -279,5 +279,5 @@ Test dette flow som traener:
 9. Opret en `Week` skabelon og tilfoej en gemt `Session`.
 10. Rediger skabelonen og gem igen.
 11. Dupliker skabelonen.
-12. Arkiver kopien.
+12. Skift til `Exercise` eller `Opgaver`, arkiver en kopi.
 13. Skift til `Archived` og gendan kopien.

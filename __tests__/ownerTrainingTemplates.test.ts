@@ -129,16 +129,12 @@ describe('owner training templates contract', () => {
       description: 'Build-up and finishing',
       folderId,
       focusAreas: ['Finishing', 'First touch'],
-      durationMinutes: 75,
+      durationMinutes: null,
       defaultActivityCategoryId: null,
       defaultActivityCategoryName: 'Training',
       status: 'active',
       sourceTaskTemplateId: taskTemplateId,
-      metadata: {
-        session: {
-          startTime: '10:15:00',
-        },
-      },
+      metadata: {},
       items: [
         {
           id: null,
@@ -278,8 +274,8 @@ describe('owner training templates contract', () => {
           itemType: 'session_template',
           linkedTemplateId: templateId,
           dayOffset: 2,
-          startTime: '18:30:00',
-          durationMinutes: 75,
+          startTime: null,
+          durationMinutes: null,
         },
       ],
     });
@@ -413,15 +409,19 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('LibraryPickerCard');
     expect(plan).toContain('selectedReusableTemplateId');
     expect(plan).toContain('selectedLibraryItemId');
-    expect(plan).toContain('sessionStartTimeInput');
-    expect(plan).toContain('Session start time');
+    expect(plan).not.toContain('sessionStartTimeInput');
+    expect(plan).not.toContain('Session start time');
+    expect(plan).not.toContain('Duration minutes');
     expect(plan).toContain("week: ['session_template']");
     expect(plan).toContain("itemType === 'session_template' ? 'session'");
     expect(plan).toContain('Saved sessions open in a popup');
     expect(plan).toContain('buildTaskConfigPayloadFromLibraryItem');
-    expect(plan).toContain("const itemCarriesSessionTiming = draft.templateType === 'week' && itemType === 'session_template'");
     expect(plan).toContain("draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0");
     expect(plan).toContain("draft.templateType === 'session' ? 0 : item.dayOffset");
+    expect(plan).toContain('showStatusControls={templateViewSupportsArchive}');
+    expect(plan).toContain('sourceOptions.length > 1');
+    expect(plan).toContain('startTime: null');
+    expect(plan).toContain('durationMinutes: null');
     expect(plan).not.toContain('reusablePickerChip');
     expect(plan).not.toContain('Subtasks');
     expect(plan).not.toContain('Task time');
@@ -465,10 +465,11 @@ describe('owner training templates contract', () => {
     expect(base44Prompt).toContain('popup/bottom sheet');
     expect(base44Prompt).toContain('Day-vaelger i session builderen');
     expect(base44Prompt).toContain('sessionStartTime');
+    expect(base44Prompt).toContain('ignorerer Edge Function disse felter');
     expect(base44Prompt).toContain('Task og exercise maa ikke have subtasks eller egen task time');
     expect(base44Prompt).toContain('kan kun indeholde gemte session templates');
     expect(base44Prompt).toContain('Week builderen maa ikke tilbyde `New`, `Library`');
-    expect(base44Prompt).toContain('vis kun starttid og varighed paa `session_template` items');
+    expect(base44Prompt).toContain('vis ikke starttid eller varighed paa');
     expect(base44Prompt).toContain('supabase functions list --project-ref lhpczofddvwcyrgotzha');
   });
 });

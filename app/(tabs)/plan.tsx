@@ -94,8 +94,6 @@ type TemplateDraft = {
   description: string;
   folderId: string | null;
   focusInput: string;
-  sessionStartTimeInput: string;
-  durationInput: string;
   defaultActivityCategoryName: string;
   taskConfig: TaskConfigDraft;
   exerciseTimer: ExerciseTimerDraft;
@@ -257,17 +255,6 @@ function clampNumber(value: number | null, fallback: number, min: number, max: n
   return Math.max(min, Math.min(max, value));
 }
 
-function normalizeDraftStartTime(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour > 23 || minute > 59) return null;
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -321,12 +308,6 @@ function getTemplateTaskConfig(template: TrainingTemplateSummary): Record<string
 function getTemplateTimer(template: TrainingTemplateSummary): TrainingTemplateExerciseTimer | null {
   const timer = asRecord(asRecord(template.metadata).timer);
   return typeof timer.activeSeconds === 'number' ? timer as unknown as TrainingTemplateExerciseTimer : null;
-}
-
-function getTemplateSessionStartTime(template: TrainingTemplateSummary): string | null {
-  if (template.templateType !== 'session') return null;
-  const session = asRecord(asRecord(template.metadata).session);
-  return typeof session.startTime === 'string' && session.startTime ? session.startTime : null;
 }
 
 function buildTaskConfigPayload(title: string, description: string | null, config: TaskConfigDraft): TrainingTemplateTaskConfig {
@@ -410,14 +391,6 @@ function getTaskMediaLabel(url: string): string {
 
 type TaskConfigUpdate = TaskConfigDraft | ((current: TaskConfigDraft) => TaskConfigDraft);
 
-function formatDuration(minutes: number | null): string {
-  if (!minutes) return 'No duration';
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}m` : `${hours}h`;
-}
-
 function templateTypeLabel(type: TrainingTemplateType): string {
   return TEMPLATE_TYPES.find((item) => item.value === type)?.label ?? type;
 }
@@ -453,8 +426,6 @@ function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft
     description: '',
     folderId: null,
     focusInput: '',
-    sessionStartTimeInput: '',
-    durationInput: '',
     defaultActivityCategoryName: '',
     taskConfig: createEmptyTaskConfigDraft(),
     exerciseTimer: createEmptyExerciseTimerDraft(),
@@ -465,7 +436,6 @@ function createEmptyDraft(type: TrainingTemplateType = 'session'): TemplateDraft
 
 function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDraft {
   const metadata = asRecord(template.metadata);
-  const sessionStartTime = getTemplateSessionStartTime(template);
   return {
     id: template.id,
     templateType: template.templateType,
@@ -473,8 +443,6 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
     description: template.description ?? '',
     folderId: template.folderId,
     focusInput: template.focusAreas.join(', '),
-    sessionStartTimeInput: sessionStartTime ? sessionStartTime.slice(0, 5) : '',
-    durationInput: template.templateType === 'session' && template.durationMinutes ? String(template.durationMinutes) : '',
     defaultActivityCategoryName: template.defaultActivityCategoryName ?? '',
     taskConfig: createTaskConfigDraftFromConfig(metadata.task),
     exerciseTimer: createExerciseTimerDraftFromConfig(metadata.timer),
@@ -490,8 +458,8 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
       title: item.title,
       description: item.description,
       dayOffset: template.templateType === 'session' ? 0 : item.dayOffset,
-      startTime: template.templateType === 'week' && item.itemType === 'session_template' ? item.startTime : null,
-      durationMinutes: template.templateType === 'week' && item.itemType === 'session_template' ? item.durationMinutes : null,
+      startTime: null,
+      durationMinutes: null,
       sortOrder: item.sortOrder,
       config: item.config,
     })),
@@ -524,8 +492,6 @@ export default function PlanScreen() {
   const [itemDescription, setItemDescription] = useState('');
   const [itemType, setItemType] = useState<DraftItem['itemType']>('task_template');
   const [itemDayOffset, setItemDayOffset] = useState('');
-  const [itemStartTime, setItemStartTime] = useState('');
-  const [itemDuration, setItemDuration] = useState('');
   const [itemTaskConfig, setItemTaskConfig] = useState<TaskConfigDraft>(() => createEmptyTaskConfigDraft());
   const [itemExerciseTimer, setItemExerciseTimer] = useState<ExerciseTimerDraft>(() => createEmptyExerciseTimerDraft());
   const [itemSourceMode, setItemSourceMode] = useState<ItemSourceMode>('new');
@@ -592,18 +558,24 @@ export default function PlanScreen() {
   }, [activeOwnerAccountId, canAccessPlan, loadTemplates]);
 
   const templates = useMemo(() => {
+    const supportsArchive = selectedTemplateTypes.length === 1 && ['task', 'exercise'].includes(selectedTemplateTypes[0]);
+    const effectiveStatusFilter = supportsArchive ? statusFilter : 'active';
     return (payload?.templates ?? []).filter((template) => {
-      if (template.status !== statusFilter) return false;
+      if (template.status !== effectiveStatusFilter) return false;
       if (selectedTemplateTypes.length && !selectedTemplateTypes.includes(template.templateType)) return false;
       return true;
     });
   }, [payload?.templates, selectedTemplateTypes, statusFilter]);
+  const templateViewSupportsArchive =
+    activeSection === 'templates' &&
+    selectedTemplateTypes.length === 1 &&
+    ['task', 'exercise'].includes(selectedTemplateTypes[0]);
   const selectedTypeLabel = selectedTemplateTypes.length
     ? selectedTemplateTypes.map((value) => templateTypeLabel(value)).join(', ')
     : 'Alle typer';
   const assignmentTemplates = useMemo(
-    () => (payload?.templates ?? []).filter((template) => template.status === statusFilter),
-    [payload?.templates, statusFilter]
+    () => (payload?.templates ?? []).filter((template) => template.status === 'active'),
+    [payload?.templates]
   );
   const currentPlanTemplates = activeSection === 'assignments' ? assignmentTemplates : templates;
   const actorUserId = payload?.actor.userId ?? user?.id ?? null;
@@ -687,8 +659,6 @@ export default function PlanScreen() {
     setItemDescription('');
     setItemType(defaultItemType);
     setItemDayOffset('');
-    setItemStartTime('');
-    setItemDuration('');
     setItemTaskConfig(createEmptyTaskConfigDraft());
     setItemExerciseTimer(createEmptyExerciseTimerDraft());
     setItemSourceMode(defaultItemType === 'session_template' ? 'saved' : 'new');
@@ -750,16 +720,15 @@ export default function PlanScreen() {
       return {
         ...current,
         templateType,
-        sessionStartTimeInput: templateType === 'session' ? current.sessionStartTimeInput : '',
-        durationInput: templateType === 'session' ? current.durationInput : '',
         defaultActivityCategoryName: templateType === 'session' ? current.defaultActivityCategoryName : '',
+        status: templateType === 'task' || templateType === 'exercise' ? current.status : 'active',
         items: current.items
           .filter((item) => allowed.has(item.itemType))
           .map((item, sortOrder) => ({
             ...item,
             dayOffset: templateType === 'session' ? 0 : item.dayOffset,
-            startTime: templateType === 'week' && item.itemType === 'session_template' ? item.startTime : null,
-            durationMinutes: templateType === 'week' && item.itemType === 'session_template' ? item.durationMinutes : null,
+            startTime: null,
+            durationMinutes: null,
             sortOrder,
           })),
       };
@@ -769,10 +738,6 @@ export default function PlanScreen() {
 
   const changeItemType = useCallback((nextItemType: DraftItem['itemType']) => {
     setItemType(nextItemType);
-    if (nextItemType !== 'session_template') {
-      setItemStartTime('');
-      setItemDuration('');
-    }
     setItemSourceMode(nextItemType === 'session_template' ? 'saved' : 'new');
     setSelectedReusableTemplateId(null);
     setSelectedLibraryItemId(null);
@@ -806,12 +771,6 @@ export default function PlanScreen() {
     const title = itemTitle.trim() || fallbackTitle;
     if (!title) return;
     const description = itemDescription.trim() || reusableTemplate?.description || libraryItem?.description || null;
-    const itemCarriesSessionTiming = draft.templateType === 'week' && itemType === 'session_template';
-    const startTime = itemCarriesSessionTiming ? normalizeDraftStartTime(itemStartTime) : null;
-    if (itemCarriesSessionTiming && itemStartTime.trim() && !startTime) {
-      Alert.alert('Invalid time', 'Use HH:mm, for example 09:30.');
-      return;
-    }
     const config: Record<string, unknown> = {};
     if (itemType === 'task_template' || itemType === 'exercise') {
       if (reusableTemplate) {
@@ -848,8 +807,8 @@ export default function PlanScreen() {
           title,
           description,
           dayOffset: draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0,
-          startTime,
-          durationMinutes: itemCarriesSessionTiming ? parsePositiveInt(itemDuration) : null,
+          startTime: null,
+          durationMinutes: null,
           sortOrder: current.items.length,
           config,
         },
@@ -860,10 +819,8 @@ export default function PlanScreen() {
     draft.templateType,
     itemDayOffset,
     itemDescription,
-    itemDuration,
     itemExerciseTimer,
     itemSourceMode,
-    itemStartTime,
     itemTaskConfig,
     itemTitle,
     itemType,
@@ -905,12 +862,6 @@ export default function PlanScreen() {
       Alert.alert('Missing title', 'Give the template a title before saving.');
       return;
     }
-    const sessionStartTime = draft.templateType === 'session' ? normalizeDraftStartTime(draft.sessionStartTimeInput) : null;
-    if (draft.templateType === 'session' && draft.sessionStartTimeInput.trim() && !sessionStartTime) {
-      Alert.alert('Invalid time', 'Use HH:mm, for example 09:30.');
-      return;
-    }
-
     setSaving(true);
     try {
       const taskConfig = draft.templateType === 'task' || draft.templateType === 'exercise'
@@ -926,11 +877,11 @@ export default function PlanScreen() {
         description: draft.description.trim() || null,
         folderId: draft.folderId,
         focusAreas: normalizeFocusInput(draft.focusInput),
-        metadata: draft.templateType === 'session' ? { session: { startTime: sessionStartTime } } : undefined,
-        sessionStartTime,
-        durationMinutes: draft.templateType === 'session' ? parsePositiveInt(draft.durationInput) : null,
+        metadata: undefined,
+        sessionStartTime: null,
+        durationMinutes: null,
         defaultActivityCategoryName: draft.templateType === 'session' ? draft.defaultActivityCategoryName.trim() || null : null,
-        status: draft.status,
+        status: draft.templateType === 'task' || draft.templateType === 'exercise' ? draft.status : 'active',
         taskConfig,
         exerciseTimer,
         items: draft.templateType === 'task' || draft.templateType === 'exercise'
@@ -940,8 +891,8 @@ export default function PlanScreen() {
               .map((item, sortOrder) => ({
                 ...item,
                 dayOffset: draft.templateType === 'session' ? 0 : item.dayOffset,
-                startTime: draft.templateType === 'week' && item.itemType === 'session_template' ? item.startTime : null,
-                durationMinutes: draft.templateType === 'week' && item.itemType === 'session_template' ? item.durationMinutes : null,
+                startTime: null,
+                durationMinutes: null,
                 sortOrder,
               })),
         changeNote: draft.id ? 'Mobile edit' : 'Mobile create',
@@ -1240,6 +1191,7 @@ export default function PlanScreen() {
               onEdit={openEdit}
               onDuplicate={duplicateTemplate}
               onArchive={toggleArchive}
+              showStatusControls={templateViewSupportsArchive}
               busy={saving}
             />
           ) : null}
@@ -1316,27 +1268,6 @@ export default function PlanScreen() {
               colors={colors}
               placeholder="Finishing, first touch, scanning"
             />
-            {draft.templateType === 'session' ? (
-              <>
-                <LabeledInput
-                  label="Session start time"
-                  value={draft.sessionStartTimeInput}
-                  onChangeText={(value) => setDraft((current) => ({ ...current, sessionStartTimeInput: value.replace(/[^0-9:]/g, '').slice(0, 5) }))}
-                  colors={colors}
-                  placeholder="09:30"
-                  keyboardType="numbers-and-punctuation"
-                />
-                <LabeledInput
-                  label="Duration minutes"
-                  value={draft.durationInput}
-                  onChangeText={(value) => setDraft((current) => ({ ...current, durationInput: value.replace(/[^0-9]/g, '') }))}
-                  colors={colors}
-                  placeholder="60"
-                  keyboardType="number-pad"
-                />
-              </>
-            ) : null}
-
             {draft.templateType === 'session' ? (
               <LabeledInput
                 label="Default category"
@@ -1516,26 +1447,6 @@ export default function PlanScreen() {
                         placeholderTextColor={colors.textSecondary}
                         keyboardType="number-pad"
                       />
-                      {itemType === 'session_template' ? (
-                        <>
-                          <TextInput
-                            style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                            value={itemStartTime}
-                            onChangeText={(value) => setItemStartTime(value.replace(/[^0-9:]/g, '').slice(0, 5))}
-                            placeholder="HH:mm"
-                            placeholderTextColor={colors.textSecondary}
-                            keyboardType="numbers-and-punctuation"
-                          />
-                          <TextInput
-                            style={[styles.input, styles.itemMetaInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
-                            value={itemDuration}
-                            onChangeText={(value) => setItemDuration(value.replace(/[^0-9]/g, ''))}
-                            placeholder="Min"
-                            placeholderTextColor={colors.textSecondary}
-                            keyboardType="number-pad"
-                          />
-                        </>
-                      ) : null}
                     </View>
                   ) : null}
                   <TouchableOpacity
@@ -1563,8 +1474,6 @@ export default function PlanScreen() {
                         <Text style={[styles.draftItemMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                           {ITEM_TYPES.find((type) => type.value === item.itemType)?.label ?? item.itemType}
                           {draft.templateType === 'week' && item.dayOffset ? ` · day ${item.dayOffset + 1}` : ''}
-                          {item.itemType === 'session_template' && item.startTime ? ` · ${String(item.startTime).slice(0, 5)}` : ''}
-                          {item.itemType === 'session_template' && item.durationMinutes ? ` · ${formatDuration(item.durationMinutes)}` : ''}
                           {timer ? ` · ${timer.rounds} x ${timer.activeSeconds}s/${timer.restSeconds}s` : ''}
                           {taskConfig?.videoUrls.length ? ` · ${taskConfig.videoUrls.length} media` : ''}
                         </Text>
@@ -1653,6 +1562,7 @@ function PlanTemplateLibraryView({
   onEdit,
   onDuplicate,
   onArchive,
+  showStatusControls,
   busy,
 }: {
   title: string;
@@ -1671,6 +1581,7 @@ function PlanTemplateLibraryView({
   onEdit: (template: TrainingTemplateSummary) => void;
   onDuplicate: (template: TrainingTemplateSummary) => void;
   onArchive: (template: TrainingTemplateSummary) => void;
+  showStatusControls: boolean;
   busy: boolean;
 }) {
   return (
@@ -1695,7 +1606,7 @@ function PlanTemplateLibraryView({
         ) : null}
       </View>
 
-      {sourceOptions.length > 2 ? (
+      {sourceOptions.length > 1 ? (
         <PlanSourceSelector
           options={sourceOptions}
           selected={sourceFilter}
@@ -1709,24 +1620,26 @@ function PlanTemplateLibraryView({
         <View style={[styles.planSectionDividerLine, { backgroundColor: colors.border }]} />
       </View>
 
-      <View style={[styles.planTemplateViewToggle, { backgroundColor: colors.card }]}>
-        <TouchableOpacity
-          style={[styles.planTemplateViewToggleButton, statusFilter === 'active' && { backgroundColor: colors.primary }]}
-          onPress={() => onStatusFilterChange('active')}
-          activeOpacity={0.85}
-          testID="plan.templates.status.active"
-        >
-          <Text style={[styles.planTemplateViewToggleText, { color: statusFilter === 'active' ? '#FFFFFF' : colors.text }]}>Active</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.planTemplateViewToggleButton, statusFilter === 'archived' && { backgroundColor: colors.primary }]}
-          onPress={() => onStatusFilterChange('archived')}
-          activeOpacity={0.85}
-          testID="plan.templates.status.archived"
-        >
-          <Text style={[styles.planTemplateViewToggleText, { color: statusFilter === 'archived' ? '#FFFFFF' : colors.text }]}>Archived</Text>
-        </TouchableOpacity>
-      </View>
+      {showStatusControls ? (
+        <View style={[styles.planTemplateViewToggle, { backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            style={[styles.planTemplateViewToggleButton, statusFilter === 'active' && { backgroundColor: colors.primary }]}
+            onPress={() => onStatusFilterChange('active')}
+            activeOpacity={0.85}
+            testID="plan.templates.status.active"
+          >
+            <Text style={[styles.planTemplateViewToggleText, { color: statusFilter === 'active' ? '#FFFFFF' : colors.text }]}>Active</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.planTemplateViewToggleButton, statusFilter === 'archived' && { backgroundColor: colors.primary }]}
+            onPress={() => onStatusFilterChange('archived')}
+            activeOpacity={0.85}
+            testID="plan.templates.status.archived"
+          >
+            <Text style={[styles.planTemplateViewToggleText, { color: statusFilter === 'archived' ? '#FFFFFF' : colors.text }]}>Archived</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={styles.planTemplateList} testID="plan.templates.list">
         {templates.length ? (
@@ -1739,6 +1652,7 @@ function PlanTemplateLibraryView({
               onEdit={() => onEdit(template)}
               onDuplicate={() => onDuplicate(template)}
               onArchive={() => onArchive(template)}
+              showStatusControls={showStatusControls}
               busy={busy}
             />
           ))
@@ -1746,7 +1660,11 @@ function PlanTemplateLibraryView({
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <IconSymbol ios_icon_name="tray" android_material_icon_name="inbox" size={34} color={colors.textSecondary} />
             <Text style={[styles.emptyCardText, { color: colors.textSecondary }]}>
-              {searchQuery.trim() || sourceFilter !== 'all' ? 'No templates match your filters.' : `No ${statusFilter} templates in this view.`}
+              {searchQuery.trim() || sourceFilter !== 'all'
+                ? 'No templates match your filters.'
+                : showStatusControls
+                  ? `No ${statusFilter} templates in this view.`
+                  : 'No templates in this view.'}
             </Text>
             {totalCount === 0 ? (
               <Text style={[styles.planEmptyDetail, { color: colors.textSecondary }]}>{detail}</Text>
@@ -2008,7 +1926,6 @@ function TemplatePickerCard({
   const taskConfig = getTemplateTaskConfig(template);
   const timer = getTemplateTimer(template);
   const mediaCount = getTaskConfigMediaCount(taskConfig);
-  const sessionStartTime = getTemplateSessionStartTime(template);
 
   return (
     <TouchableOpacity
@@ -2055,8 +1972,6 @@ function TemplatePickerCard({
       ) : null}
 
       <View style={styles.templatePills}>
-        {sessionStartTime ? <InfoPill text={sessionStartTime.slice(0, 5)} colors={colors} /> : null}
-        {template.templateType === 'session' ? <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} /> : null}
         {mediaCount ? <InfoPill text={`${mediaCount} media`} colors={colors} /> : null}
         {template.focusAreas.slice(0, 2).map((focus) => (
           <InfoPill key={focus} text={focus} colors={colors} />
@@ -2216,6 +2131,7 @@ function TemplateCard({
   onEdit,
   onDuplicate,
   onArchive,
+  showStatusControls,
   busy,
 }: {
   template: TrainingTemplateSummary;
@@ -2224,10 +2140,10 @@ function TemplateCard({
   onEdit: () => void;
   onDuplicate: () => void;
   onArchive: () => void;
+  showStatusControls: boolean;
   busy: boolean;
 }) {
   const tone = getTemplateTone(template.templateType, colors);
-  const sessionStartTime = getTemplateSessionStartTime(template);
   return (
     <View style={[styles.templateCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID={`plan.template.${template.templateType}`}>
       <View style={styles.templateHeader}>
@@ -2247,11 +2163,13 @@ function TemplateCard({
             {templateTypeLabel(template.templateType)} · v{template.versionNumber} · {template.itemCount} items
           </Text>
         </View>
-        <View style={[styles.statusBadge, { borderColor: template.status === 'archived' ? colors.textSecondary : colors.success }]}>
-          <Text style={[styles.statusBadgeText, { color: template.status === 'archived' ? colors.textSecondary : colors.success }]}>
-            {template.status}
-          </Text>
-        </View>
+        {showStatusControls ? (
+          <View style={[styles.statusBadge, { borderColor: template.status === 'archived' ? colors.textSecondary : colors.success }]}>
+            <Text style={[styles.statusBadgeText, { color: template.status === 'archived' ? colors.textSecondary : colors.success }]}>
+              {template.status}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {template.description ? (
@@ -2262,8 +2180,6 @@ function TemplateCard({
 
       <View style={styles.templatePills}>
         {sourceLabel ? <InfoPill text={sourceLabel} colors={colors} /> : null}
-        {sessionStartTime ? <InfoPill text={sessionStartTime.slice(0, 5)} colors={colors} /> : null}
-        {template.templateType === 'session' ? <InfoPill text={formatDuration(template.durationMinutes)} colors={colors} /> : null}
         {template.folderName ? <InfoPill text={template.folderName} colors={colors} /> : null}
         {template.focusAreas.slice(0, 3).map((focus) => (
           <InfoPill key={focus} text={focus} colors={colors} />
@@ -2273,14 +2189,16 @@ function TemplateCard({
       <View style={styles.cardActions}>
         <TemplateAction label="Edit" icon="pencil" materialIcon="edit" colors={colors} onPress={onEdit} disabled={busy} />
         <TemplateAction label="Copy" icon="doc.on.doc" materialIcon="content_copy" colors={colors} onPress={onDuplicate} disabled={busy} />
-        <TemplateAction
-          label={template.status === 'archived' ? 'Restore' : 'Archive'}
-          icon={template.status === 'archived' ? 'arrow.uturn.backward.circle' : 'archivebox'}
-          materialIcon={template.status === 'archived' ? 'unarchive' : 'archive'}
-          colors={colors}
-          onPress={onArchive}
-          disabled={busy}
-        />
+        {showStatusControls ? (
+          <TemplateAction
+            label={template.status === 'archived' ? 'Restore' : 'Archive'}
+            icon={template.status === 'archived' ? 'arrow.uturn.backward.circle' : 'archivebox'}
+            materialIcon={template.status === 'archived' ? 'unarchive' : 'archive'}
+            colors={colors}
+            onPress={onArchive}
+            disabled={busy}
+          />
+        ) : null}
       </View>
     </View>
   );

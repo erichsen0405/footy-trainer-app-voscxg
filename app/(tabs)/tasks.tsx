@@ -1485,7 +1485,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           ) : null}
         </View>
 
-        {taskSourceOptions.length > 2 ? (
+        {taskSourceOptions.length > 1 ? (
           <TaskSourceSelector
             options={taskSourceOptions}
             selected={effectiveTaskSourceFilter}
