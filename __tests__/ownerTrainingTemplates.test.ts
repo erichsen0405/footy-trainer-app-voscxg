@@ -1,0 +1,562 @@
+import fs from 'fs';
+import path from 'path';
+import {
+  normalizeOwnerTrainingTemplatesPayload,
+  parseTrainingTemplateBody,
+} from '../supabase/functions/_shared/trainingTemplates';
+
+const ownerAccountId = '22222222-2222-4222-8222-222222222222';
+const templateId = '33333333-3333-4333-8333-333333333333';
+const folderId = '44444444-4444-4444-8444-444444444444';
+const taskTemplateId = '55555555-5555-4555-8555-555555555555';
+const categoryId = '66666666-6666-4666-8666-666666666666';
+
+const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260709150000_owner_training_templates.sql');
+const itemLogicMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709162000_training_template_item_logic.sql');
+const exerciseReuseMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709173000_training_template_exercise_reuse.sql');
+const weekSessionsMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709174500_training_template_week_sessions_only.sql');
+const functionPath = path.join(process.cwd(), 'supabase/functions/manageTrainingTemplates/index.ts');
+const sharedPath = path.join(process.cwd(), 'supabase/functions/_shared/trainingTemplates.ts');
+const servicePath = path.join(process.cwd(), 'services/trainingTemplateService.ts');
+const planPath = path.join(process.cwd(), 'app/(tabs)/plan.tsx');
+const tasksPath = path.join(process.cwd(), 'app/(tabs)/tasks.tsx');
+const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
+const libraryPath = path.join(process.cwd(), 'app/(tabs)/library.tsx');
+const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-training-templates-prompt.md');
+const completeBase44PromptPath = path.join(process.cwd(), 'docs/base44-issue-286-complete-prompt.md');
+
+describe('owner training templates contract', () => {
+  const migration = fs.readFileSync(migrationPath, 'utf8');
+  const itemLogicMigration = fs.readFileSync(itemLogicMigrationPath, 'utf8');
+  const exerciseReuseMigration = fs.readFileSync(exerciseReuseMigrationPath, 'utf8');
+  const weekSessionsMigration = fs.readFileSync(weekSessionsMigrationPath, 'utf8');
+  const edgeFunction = fs.readFileSync(functionPath, 'utf8');
+  const shared = fs.readFileSync(sharedPath, 'utf8');
+  const service = fs.readFileSync(servicePath, 'utf8');
+  const plan = fs.readFileSync(planPath, 'utf8');
+  const tasks = fs.readFileSync(tasksPath, 'utf8');
+  const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
+  const library = fs.readFileSync(libraryPath, 'utf8');
+  const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
+  const completeBase44Prompt = fs.readFileSync(completeBase44PromptPath, 'utf8');
+
+  it('creates owner-scoped training template storage with version snapshots', () => {
+    expect(migration).toContain('create table if not exists public.training_template_folders');
+    expect(migration).toContain('create table if not exists public.training_templates');
+    expect(migration).toContain('create table if not exists public.training_template_items');
+    expect(migration).toContain('create table if not exists public.template_versions');
+    expect(migration).toContain('owner_account_id uuid not null references public.owner_accounts');
+    expect(migration).toContain("template_type in ('task', 'session', 'week')");
+    expect(itemLogicMigration).toContain("item_type in ('task_template', 'exercise', 'session_template', 'note', 'focus', 'feedback_requirement')");
+    expect(itemLogicMigration).toContain('default_activity_category_name');
+    expect(migration).toContain('snapshot jsonb not null');
+    expect(exerciseReuseMigration).toContain("template_type in ('task', 'exercise', 'session', 'week')");
+    expect(exerciseReuseMigration).toContain('exercise_library rows');
+    expect(weekSessionsMigration).toContain('Week templates contain saved session templates only');
+    expect(migration).toContain('public.has_owner_account_coach_access(owner_account_id, (select auth.uid()))');
+    expect(migration).toContain('Players and guardians');
+  });
+
+  it('keeps template writes behind the shared Edge Function', () => {
+    expect(edgeFunction).toContain('manageTrainingTemplatesAction');
+    expect(edgeFunction).toContain('requireAuthContext');
+    expect(shared).toContain('createVersionSnapshot');
+    expect(shared).toContain('replaceTemplateItems');
+    expect(shared).toContain('resolveReusableTemplateItemLinks');
+    expect(shared).toContain('loadExerciseLibraryItems');
+    expect(shared).toContain('exercise_library');
+    expect(shared).toContain('libraryItems');
+    expect(shared).toContain('has_owner_account_coach_access');
+    expect(shared).toContain('duplicateTemplate');
+    expect(service).toContain("supabase.functions.invoke('manageTrainingTemplates'");
+    expect(service).toContain('saveOwnerTrainingTemplate');
+    expect(service).toContain('duplicateOwnerTrainingTemplate');
+    expect(service).toContain('archiveOwnerTrainingTemplate');
+    expect(service).toContain('restoreOwnerTrainingTemplate');
+  });
+
+  it('parses template payloads for mobile and Base44', () => {
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        id: templateId,
+        templateType: 'session',
+        title: ' Finishing session ',
+        description: '  Build-up and finishing  ',
+        folderId,
+        focusAreas: [' Finishing ', 'First touch', 'Finishing'],
+        sessionStartTime: '10:15',
+        durationMinutes: 75,
+        defaultActivityCategoryName: ' Training ',
+        status: 'active',
+        sourceTaskTemplateId: taskTemplateId,
+        items: [
+          {
+            itemType: 'exercise',
+            sourceTaskTemplateId: taskTemplateId,
+            title: ' Interval finishing ',
+            description: ' Two-touch ',
+            startTime: '10:15',
+            dayOffset: 0,
+            durationMinutes: 18,
+            sortOrder: 0,
+            config: {
+              task: {
+                videoUrls: ['https://example.com/drill.mp4'],
+                mediaNames: ['Drill video'],
+                subtasks: [{ title: 'Right foot' }, { title: 'Left foot' }],
+                reminderMinutes: 10,
+                afterTrainingEnabled: true,
+                afterTrainingDelayMinutes: 15,
+                afterTrainingFeedbackScoreExplanation: 'Rate technique',
+                taskDurationEnabled: true,
+                taskDurationMinutes: 18,
+              },
+              timer: {
+                activeSeconds: 45,
+                restSeconds: 15,
+                rounds: 4,
+              },
+            },
+          },
+        ],
+        changeNote: ' Base44 edit ',
+      })
+    ).toEqual({
+      action: 'upsertTemplate',
+      ownerAccountId,
+      templateId,
+      templateType: 'session',
+      title: 'Finishing session',
+      description: 'Build-up and finishing',
+      folderId,
+      focusAreas: ['Finishing', 'First touch'],
+      durationMinutes: null,
+      defaultActivityCategoryId: null,
+      defaultActivityCategoryName: 'Training',
+      status: 'active',
+      sourceTaskTemplateId: taskTemplateId,
+      metadata: {},
+      items: [
+        {
+          id: null,
+          parentItemId: null,
+          itemType: 'exercise',
+          sourceTaskTemplateId: taskTemplateId,
+          sourceActivitySeriesId: null,
+          linkedTemplateId: null,
+          title: 'Interval finishing',
+          description: 'Two-touch',
+          dayOffset: 0,
+          startTime: null,
+          durationMinutes: null,
+          sortOrder: 0,
+          config: {
+            task: {
+              title: 'Interval finishing',
+              description: 'Two-touch',
+              categoryIds: [],
+              subtasks: [],
+              videoUrl: 'https://example.com/drill.mp4',
+              videoUrls: ['https://example.com/drill.mp4'],
+              mediaNames: ['Drill video'],
+              reminderMinutes: 10,
+              afterTrainingEnabled: true,
+              afterTrainingDelayMinutes: 15,
+              afterTrainingFeedbackEnableScore: true,
+              afterTrainingFeedbackScoreExplanation: 'Rate technique',
+              afterTrainingFeedbackEnableIntensity: true,
+              afterTrainingFeedbackEnableNote: true,
+              taskDurationEnabled: false,
+              taskDurationMinutes: null,
+              autoAddToActivities: false,
+            },
+            timer: {
+              activeSeconds: 45,
+              restSeconds: 15,
+              rounds: 4,
+            },
+          },
+        },
+      ],
+      changeNote: 'Base44 edit',
+    });
+  });
+
+  it('keeps task templates as task config and rejects mismatched item types', () => {
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'task',
+        title: ' Solo touch work ',
+        taskConfig: {
+          videoUrls: ['https://example.com/touch.png'],
+          subtasks: [{ title: 'Wall passes' }],
+          taskDurationEnabled: true,
+          taskDurationMinutes: 12,
+        },
+        items: [],
+      })
+    ).toMatchObject({
+      action: 'upsertTemplate',
+      templateType: 'task',
+      metadata: {
+        task: {
+          title: 'Solo touch work',
+          videoUrls: ['https://example.com/touch.png'],
+          subtasks: [],
+          taskDurationEnabled: false,
+          taskDurationMinutes: null,
+        },
+      },
+      items: [],
+    });
+
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'exercise',
+        title: ' Repeat sprints ',
+        taskConfig: {
+          categoryIds: [categoryId],
+          videoUrls: ['https://example.com/sprint.mp4'],
+          reminderMinutes: 20,
+          afterTrainingEnabled: true,
+          afterTrainingDelayMinutes: 30,
+          afterTrainingFeedbackScoreExplanation: 'Rate sprint quality',
+          autoAddToActivities: true,
+          taskDurationEnabled: true,
+          taskDurationMinutes: 16,
+        },
+        exerciseTimer: {
+          activeSeconds: 30,
+          restSeconds: 20,
+          rounds: 8,
+        },
+        items: [],
+      })
+    ).toMatchObject({
+      action: 'upsertTemplate',
+      templateType: 'exercise',
+      metadata: {
+        task: {
+          title: 'Repeat sprints',
+          categoryIds: [categoryId],
+          videoUrls: ['https://example.com/sprint.mp4'],
+          reminderMinutes: 20,
+          afterTrainingEnabled: true,
+          afterTrainingDelayMinutes: 30,
+          afterTrainingFeedbackScoreExplanation: 'Rate sprint quality',
+          autoAddToActivities: true,
+          subtasks: [],
+          taskDurationEnabled: false,
+          taskDurationMinutes: null,
+        },
+        timer: {
+          activeSeconds: 30,
+          restSeconds: 20,
+          rounds: 8,
+        },
+      },
+      items: [],
+    });
+
+    expect(
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'week',
+        title: ' Week plan ',
+        items: [
+          {
+            itemType: 'session_template',
+            linkedTemplateId: templateId,
+            title: ' Team training ',
+            dayOffset: 2,
+            startTime: '18:30',
+            durationMinutes: 75,
+          },
+        ],
+      })
+    ).toMatchObject({
+      templateType: 'week',
+      durationMinutes: null,
+      items: [
+        {
+          itemType: 'session_template',
+          linkedTemplateId: templateId,
+          dayOffset: 2,
+          startTime: null,
+          durationMinutes: null,
+        },
+      ],
+    });
+
+    expect(() =>
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'week',
+        title: 'Bad week task',
+        items: [{ itemType: 'task_template', title: 'Touch work' }],
+      })
+    ).toThrow('task_template is not allowed in week templates.');
+
+    expect(() =>
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'week',
+        title: 'Bad week',
+        items: [{ itemType: 'feedback_requirement', title: 'Loose feedback' }],
+      })
+    ).toThrow('feedback_requirement is not allowed in week templates.');
+
+    expect(() =>
+      parseTrainingTemplateBody({
+        action: 'upsertTemplate',
+        ownerAccountId,
+        templateType: 'session',
+        title: 'Bad session',
+        items: [{ itemType: 'activity', title: 'Old activity item' }],
+      })
+    ).toThrow('itemType is invalid.');
+  });
+
+  it('normalizes list payload summary shape', () => {
+    expect(
+      normalizeOwnerTrainingTemplatesPayload({
+        ownerAccount: {
+          ownerAccountId,
+          ownerType: 'club',
+          name: 'FC Test',
+          status: 'active',
+          coachAccountId: null,
+          clubId: null,
+        },
+        actor: {
+          userId: '11111111-1111-4111-8111-111111111111',
+          roles: ['owner', 'coach'],
+          canManageTemplates: true,
+        },
+        folders: [],
+        templates: [],
+        summary: {
+          total: 0,
+          active: 0,
+          archived: 0,
+          task: 0,
+          exercise: 0,
+          session: 0,
+          week: 0,
+        },
+        libraryItems: [],
+      })
+    ).toMatchObject({
+      ownerAccount: { ownerAccountId, ownerType: 'club' },
+      actor: { roles: ['owner', 'coach'], canManageTemplates: true },
+      summary: { total: 0, task: 0, exercise: 0, session: 0, week: 0 },
+      libraryItems: [],
+    });
+  });
+
+  it('adds Plan as the trainer home for templates and simplifies the trainer tab bar', () => {
+    expect(tabLayout).toContain("label: 'Overview'");
+    expect(tabLayout).toContain("label: 'Players'");
+    expect(tabLayout).toContain("label: 'Plan'");
+    expect(tabLayout).toContain("label: isPlayer ? 'Plan' : 'Tasks'");
+    expect(tabLayout).toContain("label: 'Library'");
+    expect(tabLayout).toContain('return [coachDashboardTab, playerCrmTab, planTab]');
+    expect(tabLayout).not.toContain("label: isTrainer ? 'Bibliotek' : 'Library'");
+    expect(tabLayout).not.toContain('return [coachDashboardTab, playerCrmTab, planTab, libraryTab]');
+    expect(tabLayout).toContain('<Stack.Screen name="plan" />');
+    expect(library).toContain("userRole === 'player' || userRole === 'trainer' || userRole === 'admin'");
+    expect(library).toContain("router.replace((userRole === 'player' ? '/(tabs)/tasks' : '/(tabs)/plan') as any)");
+    expect(library).toContain('export function LibraryExperience');
+    expect(plan).toContain('PLAN_VIEW_TARGETS');
+    expect(plan).toContain("value: 'exercise', label: 'Exercise'");
+    expect(plan).toContain("value: 'session', label: 'Session'");
+    expect(plan).toContain("value: 'week', label: 'Week'");
+    expect(plan).toContain('plan.create.open');
+    expect(plan).toContain('CreateTemplatePickerModal');
+    expect(plan).toContain('CREATE_TEMPLATE_OPTIONS');
+    expect(plan).toContain('plan.create.type.${option.value}');
+    expect(plan).toContain("ios_icon_name=\"info.circle\"");
+    expect(plan).not.toContain("value: 'templates'");
+    expect(plan).not.toContain("value: 'programs'");
+    expect(plan).toContain('fetchOwnerTrainingTemplates');
+    expect(plan).toContain('saveOwnerTrainingTemplate');
+    expect(plan).toContain('duplicateOwnerTrainingTemplate');
+    expect(plan).toContain('archiveOwnerTrainingTemplate');
+    expect(plan).toContain('restoreOwnerTrainingTemplate');
+    expect(plan).toContain("const [activeSection, setActiveSection] = useState<PlanSection>('tasks')");
+    expect(plan).toContain("value: 'exercise', label: 'Exercise'");
+    expect(plan).toContain('Interval timer');
+    expect(plan).toContain('Seconds of active work');
+    expect(plan).toContain('Seconds between rounds');
+    expect(plan).toContain('Number of rounds');
+    expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
+    expect(plan).toContain('type ItemPickerMode');
+    expect(plan).toContain("type PlanFilterPicker = 'view' | null");
+    expect(plan).toContain('selectedTemplateTypes');
+    expect(plan).toContain('PlanFilterSelect');
+    expect(plan).toContain('PlanFilterOption');
+    expect(plan).toContain('plan.viewDropdown');
+    expect(plan).toContain("label=\"View\"");
+    expect(plan).toContain('PlanTemplateLibraryView');
+    expect(plan).toContain('plan.templates.libraryView');
+    expect(plan).toContain('plan.templates.searchInput');
+    expect(plan).toContain('plan.templates.sourceFilter');
+    expect(plan).toContain('PlanSourceSelector');
+    expect(plan).toContain('plan.templates.source.${option.value}');
+    expect(plan).toContain('plan.templates.status.active');
+    expect(plan).toContain('plan.templates.status.archived');
+    expect(plan).toContain('setSelectedTemplateTypes([])');
+    expect(plan).toContain('sourceLabel={getTemplateSourceKind');
+    expect(plan).not.toContain('buildPlanTemplateFolders');
+    expect(plan).not.toContain('planFolder');
+    expect(plan).not.toContain('plan.templates.filterButton');
+    expect(plan).not.toContain('planContentFilter');
+    expect(plan).not.toContain('type TemplateTypeFilter');
+    expect(plan).not.toContain('FilterChip');
+    expect(plan).toContain('ReusableItemPickerModal');
+    expect(plan).toContain('TemplatePickerCard');
+    expect(plan).toContain('LibraryPickerCard');
+    expect(plan).toContain('selectedReusableTemplateId');
+    expect(plan).toContain('selectedLibraryItemId');
+    expect(plan).toContain('Auto-add to matching activities');
+    expect(plan).toContain('Activity categories');
+    expect(plan).toContain('plan.template.taskCategories');
+    expect(plan).toContain('categoryIds: Array.from(new Set(config.categoryIds.filter(Boolean)))');
+    expect(plan).not.toContain('sessionStartTimeInput');
+    expect(plan).not.toContain('Session start time');
+    expect(plan).not.toContain('Duration minutes');
+    expect(plan).toContain("week: ['session_template']");
+    expect(plan).toContain("itemType === 'session_template' ? 'session'");
+    expect(plan).toContain('Saved sessions open in a popup');
+    expect(plan).toContain('buildTaskConfigPayloadFromLibraryItem');
+    expect(plan).toContain("draft.templateType === 'week' ? parsePositiveInt(itemDayOffset) ?? 0 : 0");
+    expect(plan).toContain("draft.templateType === 'session' ? 0 : item.dayOffset");
+    expect(plan).toContain('showStatusControls={templateViewSupportsArchive}');
+    expect(plan).toContain('sourceOptions.length > 1');
+    expect(plan).toContain('startTime: null');
+    expect(plan).toContain('durationMinutes: null');
+    expect(plan).not.toContain('reusablePickerChip');
+    expect(plan).not.toContain('Subtasks');
+    expect(plan).not.toContain('Task time');
+    expect(plan).not.toContain("value: 'activity', label: 'Activity'");
+    expect(plan).toContain('TaskLibrarySection');
+    expect(plan).not.toContain('plan.assignments.shortcuts');
+    expect(plan).not.toContain('SummaryTile');
+    expect(plan).not.toContain('PlanShortcutCard');
+    expect(plan).not.toContain('PlanSectionHeader');
+    expect(plan).not.toContain('plan.section.${section.value}');
+    expect(plan).not.toContain('plan.programs.list');
+    expect(plan).not.toContain('plan.template.create.${type.value}');
+    expect(plan).toContain('getTemplateMediaUrls');
+    expect(plan).toContain('SwipeVideoPlayer');
+    expect(plan).toContain('plan.template.mediaPlayer');
+    expect(plan).toContain('plan.template.assign.${template.templateType}');
+    expect(plan).toContain('plan.template.duplicate.${template.templateType}');
+    expect(plan).toContain('plan.template.edit.${template.templateType}');
+    expect(plan).toContain('plan.template.source.${template.templateType}');
+    expect(plan).toContain("Alert.alert('Source', sourceLabel)");
+    expect(plan).toContain("iosIcon: 'person.2.fill'");
+    expect(plan).toContain("iosIcon: 'person.crop.circle.fill'");
+    expect(plan).toContain("{ label: 'Category', value: categoryLabel ?? 'None' }");
+    expect(plan).toContain("{ label: 'Auto-add', value: autoAdd ? 'On' : 'Off' }");
+    expect(plan).toContain("label: 'Task duration'");
+    expect(plan).toContain("label: 'Reminder'");
+    expect(plan).toContain("label: 'Feedback'");
+    expect(plan).toContain('plan.template.feedback.${template.templateType}');
+    expect(plan).not.toContain('TemplateAction label="Assign"');
+    expect(plan).toContain('Description');
+    expect(plan).toContain('FocusTagEditor');
+    expect(plan).toContain('plan.templates.focusTagFilter');
+    expect(plan).toContain('normalizeFocusTags(template.focusAreas)');
+    expect(plan).toContain("value: 'session', label: 'Session'");
+    expect(plan).toContain("value: 'week', label: 'Week'");
+    expect(plan).toContain('plan.template.sessionItems');
+    expect(plan).toContain("['task_template', 'exercise'].includes(item.itemType)");
+    expect(plan).toContain('sessionContentItems.map');
+    expect(plan).toContain('templateTagChip');
+    expect(plan).toContain('minHeight={92}');
+    expect(plan).toContain('hintVariant="counter"');
+    expect(plan).toContain('surfaceColor={colors.background}');
+    expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
+    expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Tasks' : 'Tasks'");
+    expect(tasks).toContain('isTrainerProfile && !embedded');
+    expect(tasks).toContain('{!embedded ? (');
+    expect(tasks).not.toContain('isPlayerPlan || embedded ? (');
+    expect(tasks).toContain('showFlatTemplateList');
+    expect(tasks).toContain('TaskSourceSelector');
+    expect(tasks).toContain('tasks.sourceFilter');
+    expect(tasks).toContain("selected={effectiveTaskSourceFilter}");
+    expect(tasks).toContain("showFlatTemplateList ? 'Tasks' : 'Folders'");
+    expect(tasks).toContain('tasks.categoryFilter.button');
+    expect(tasks).toContain(": 'Category'");
+    expect(tasks).toContain('Your own templates and templates shared by your coach.');
+    expect(tasks).toContain('tasks.task.source.${taskId}');
+    expect(tasks).toContain("Alert.alert('Source', sourceLabel)");
+    expect(tasks).toContain("iosIcon: 'person.2.fill'");
+    expect(tasks).toContain("iosIcon: 'person.crop.circle.fill'");
+    expect(tasks).toContain('tasks.task.duration.${sanitizeTestIdSegment(taskId)}');
+    expect(tasks).toContain("accessibilityLabel={`Auto-add to activities: ${autoAdd ? 'On' : 'Off'}`}");
+    expect(tasks).toContain('tasks.taskCategoryBadge');
+    expect(tasks).toContain('tasks.taskFocusTags');
+    expect(tasks).toContain('tasks.focusTagFilter.button');
+    expect(tasks).toContain('TaskFocusTagEditor');
+    expect(tasks).toContain('tasks.modal.focusTagEditor');
+    expect(tasks).toContain('focusAreas: focusTags');
+    expect(tasks).toContain('focus_areas: focusTags');
+    expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Active'");
+    expect(tasks).toContain('tasks.template.autoAddBadge');
+    expect(tasks).toContain('tasks.template.feedbackBadge');
+    expect(tasks).toContain('tasks.taskCard.media');
+    expect(tasks).toContain('tasks.task.assign');
+    expect(tasks).toContain('SwipeVideoPlayer');
+  });
+
+  it('documents Base44 reuse and Supabase endpoint contract', () => {
+    expect(base44Prompt).toContain('Base44/KlubAdmin');
+    expect(base44Prompt).toContain('Byg ikke en ny portal');
+    expect(base44Prompt).toContain('owner_account_id');
+    expect(base44Prompt).toContain('Plan > Opret');
+    expect(base44Prompt).toContain('manageTrainingTemplates');
+    expect(base44Prompt).toContain('training_templates');
+    expect(base44Prompt).toContain('template_versions');
+    expect(base44Prompt).toContain('Player og guardian maa ikke have template-admin adgang');
+    expect(base44Prompt).toContain('popup/bottom sheet');
+    expect(base44Prompt).toContain('Plan Erstatter Det Gamle Bibliotek');
+    expect(base44Prompt).toContain('Alle kort skal forklare hvad informationen betyder');
+    expect(base44Prompt).toContain('Video skal kunne afspilles direkte fra kortet/listen');
+    expect(base44Prompt).toContain('Alle kort skal have en synlig `Tildel` handling');
+    expect(base44Prompt).toContain('Base44 maa ikke fake tildeling lokalt');
+    expect(base44Prompt).toContain('Task Og Exercise Felter');
+    expect(base44Prompt).toContain('Spillerens Plan');
+    expect(base44Prompt).toContain('Day-vaelger i session builderen');
+    expect(base44Prompt).toContain('sessionStartTime');
+    expect(base44Prompt).toContain('ignorerer Edge Function disse felter');
+    expect(base44Prompt).toContain('Task og exercise maa ikke have subtasks eller egen task time');
+    expect(base44Prompt).toContain('kan kun indeholde gemte session templates');
+    expect(base44Prompt).toContain('Week builderen maa ikke tilbyde `New`, `Library`');
+    expect(base44Prompt).toContain('vis ikke starttid eller varighed paa');
+    expect(base44Prompt).toContain('supabase functions list --project-ref lhpczofddvwcyrgotzha');
+  });
+
+  it('documents the complete Base44 issue 286 handoff', () => {
+    expect(completeBase44Prompt).toContain('Base44 Complete Prompt: Issue 286');
+    expect(completeBase44Prompt).toContain('manageTrainingTemplates');
+    expect(completeBase44Prompt).toContain('Session-kortet skal vise navnene');
+    expect(completeBase44Prompt).toContain('Feedback` viser et lille `On` eller `Off` badge');
+    expect(completeBase44Prompt).toContain('Vis ikke de synlige tekster `Media`, `2 files`');
+    expect(completeBase44Prompt).toContain('Activity Integration');
+    expect(completeBase44Prompt).toContain('deleteOwnerAccount');
+    expect(completeBase44Prompt).toContain('Ingen Automatisk Coach/Owner Provisioning');
+    expect(completeBase44Prompt).toContain('ACTIVE version 6');
+    expect(completeBase44Prompt).toContain('ACTIVE version 3');
+  });
+});

@@ -98,8 +98,8 @@ interface SubscriptionContextType {
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 /**
- * Signature skal kun indeholde felter der påvirker adgang/gating,
- * ellers risikerer vi remounts ved “støj” (fx currentPlayers ændringer).
+ * The signature should only include fields that affect access/gating,
+ * otherwise noisy changes such as currentPlayers can trigger remounts.
  */
 const buildEntitlementSignature = (s: SubscriptionStatus | null): string => {
   if (!s) return 'null';
@@ -309,7 +309,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         ...fallback,
         hasSubscription: true,
         status: fallback.status ?? 'trial',
-        planName: plan?.name ?? fallback.planName ?? 'Aktivt abonnement',
+        planName: plan?.name ?? fallback.planName ?? 'Active subscription',
         maxPlayers: plan?.max_players ?? fallback.maxPlayers,
         subscriptionTier: fallback.subscriptionTier,
       };
@@ -345,7 +345,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         ...status,
         hasSubscription: true,
         status: isComplimentaryEntitlement ? 'lifetime' : 'active',
-        planName: planMeta?.name ?? status.planName ?? 'Aktivt abonnement',
+        planName: planMeta?.name ?? status.planName ?? 'Active subscription',
         maxPlayers: planMeta?.maxPlayers ?? status.maxPlayers ?? 1,
         subscriptionTier: appleEntitlementTier ?? tierFromSku ?? status.subscriptionTier,
         isLifetime: Boolean(status.isLifetime || isComplimentaryEntitlement || status.status === 'lifetime'),
@@ -458,7 +458,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         console.warn('[SubscriptionContext] Edge function returned non-OK status:', response.status);
 
-        // Undgå at “nulstille” hvis vi allerede har en status (forhindrer flicker/remounts ved net-issues)
+        // Avoid resetting if we already have a status; this prevents flicker/remounts during network issues.
         if (!statusRef.current) {
           applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'edge-nok-initial'), 'edge-nok-initial');
         }
@@ -485,7 +485,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     } catch {
       console.warn('[SubscriptionContext] Network request failed');
 
-      // Kun set empty hvis vi ikke har noget i forvejen
+      // Only set empty if we do not already have a status.
       if (!statusRef.current) {
         applyStatus(coerceWithEntitlements(buildEmptyStatus(), 'network-error-initial'), 'network-error-initial');
       }
@@ -580,7 +580,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           };
         }
 
-        // Optimistisk: opdater UI straks (bump kun hvis signature ændrer sig)
+        // Optimistic: update the UI immediately, bumping only if the signature changes.
         applyOptimisticSubscription(planId);
         forceUserRoleRefresh('subscription-success');
 

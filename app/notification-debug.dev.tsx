@@ -87,7 +87,7 @@ export default function NotificationDebugScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Ja, annuller alle',
+          text: 'Yes, cancel all',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -132,7 +132,7 @@ export default function NotificationDebugScreen() {
     } else if (minutes > 0) {
       return `in ${minutes} minutes`;
     } else {
-      return `in ${seconds} sekunder`;
+      return `in ${seconds} seconds`;
     }
   };
 
@@ -218,19 +218,19 @@ export default function NotificationDebugScreen() {
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Alert:</Text>
                     <Text style={styles.infoValue}>
-                      {permissions.ios.allowsAlert ? 'Ja' : 'Nej'}
+                      {permissions.ios.allowsAlert ? 'Yes' : 'No'}
                     </Text>
                   </View>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Badge:</Text>
                     <Text style={styles.infoValue}>
-                      {permissions.ios.allowsBadge ? 'Ja' : 'Nej'}
+                      {permissions.ios.allowsBadge ? 'Yes' : 'No'}
                     </Text>
                   </View>
                   <View style={styles.infoRow}>
                     <Text style={styles.infoLabel}>Sound:</Text>
                     <Text style={styles.infoValue}>
-                      {permissions.ios.allowsSound ? 'Ja' : 'Nej'}
+                      {permissions.ios.allowsSound ? 'Yes' : 'No'}
                     </Text>
                   </View>
                 </React.Fragment>

@@ -48,7 +48,7 @@ export default function UpdatePasswordScreen() {
       
       Alert.alert(
         'Success',
-        'Dit password er opdateret!',
+        'Your password has been updated!',
         [
           {
             text: 'OK',

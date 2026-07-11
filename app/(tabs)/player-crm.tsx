@@ -17,10 +17,11 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import CreatePlayerModal from '@/components/CreatePlayerModal';
 import TeamManagement from '@/components/TeamManagement';
+import { useAdmin } from '@/contexts/AdminContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { getColors } from '@/styles/commonStyles';
 import {
@@ -226,11 +227,13 @@ function PlayerCrmScreen() {
   const colorScheme = useColorScheme();
   const colors = getColors(colorScheme);
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const params = useLocalSearchParams<{
     ownerAccountId?: string | string[];
     playerId?: string | string[];
     openAt?: string | string[];
   }>();
+  const { startAdminPlayer } = useAdmin();
   const { userRole, loading: roleLoading } = useUserRole();
   const canManagePlayers = userRole === 'admin' || userRole === 'trainer';
   const routeOwnerAccountId = getRouteParam(params.ownerAccountId);
@@ -500,6 +503,37 @@ function PlayerCrmScreen() {
       }
     },
     [activeOwnerAccountId],
+  );
+
+  const openPlayerActivities = useCallback(
+    (playerId: string) => {
+      startAdminPlayer(playerId);
+      router.push({
+        pathname: '/(tabs)/(home)',
+        params: {
+          ...(activeOwnerAccountId ? { ownerAccountId: activeOwnerAccountId } : {}),
+          playerId,
+          openAt: String(Date.now()),
+        },
+      } as any);
+    },
+    [activeOwnerAccountId, router, startAdminPlayer],
+  );
+
+  const openPlayerTasks = useCallback(
+    (playerId: string) => {
+      startAdminPlayer(playerId);
+      router.push('/(tabs)/tasks' as any);
+    },
+    [router, startAdminPlayer],
+  );
+
+  const openPlayerProgress = useCallback(
+    (playerId: string) => {
+      startAdminPlayer(playerId);
+      router.push('/(tabs)/performance' as any);
+    },
+    [router, startAdminPlayer],
   );
 
   useEffect(() => {
@@ -898,7 +932,7 @@ function PlayerCrmScreen() {
         <View style={styles.topBar}>
           <View style={styles.titleGroup}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Owner CRM</Text>
-            <Text style={[styles.title, { color: colors.text }]}>Spiller CRM</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Player CRM</Text>
           </View>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: colors.primary }]}
@@ -978,6 +1012,11 @@ function PlayerCrmScreen() {
                   />
                 </View>
 
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Players</Text>
+                  <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{filteredPlayers.length}</Text>
+                </View>
+
                 <FilterChips
                   colors={colors}
                   statusFilter={statusFilter}
@@ -989,11 +1028,6 @@ function PlayerCrmScreen() {
                   teamFilterId={teamFilterId}
                   setTeamFilterId={setTeamFilterId}
                 />
-
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Players</Text>
-                  <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{filteredPlayers.length}</Text>
-                </View>
 
                 {filteredPlayers.length === 0 ? (
                   <View style={[styles.emptyPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -1007,6 +1041,9 @@ function PlayerCrmScreen() {
                       player={player}
                       colors={colors}
                       onPress={() => openPlayerDetail(player)}
+                      onOpenActivities={() => openPlayerActivities(player.playerId)}
+                      onOpenTasks={() => openPlayerTasks(player.playerId)}
+                      onOpenProgress={() => openPlayerProgress(player.playerId)}
                     />
                   ))
                 )}
@@ -1295,10 +1332,16 @@ function PlayerCard({
   player,
   colors,
   onPress,
+  onOpenActivities,
+  onOpenTasks,
+  onOpenProgress,
 }: {
   player: OwnerPlayerCrmPlayer;
   colors: ReturnType<typeof getColors>;
   onPress: () => void;
+  onOpenActivities: () => void;
+  onOpenTasks: () => void;
+  onOpenProgress: () => void;
 }) {
   const status = getStatusMeta(player.crmStatus);
 
@@ -1356,6 +1399,63 @@ function PlayerCard({
           {player.latestNotePreview}
         </Text>
       ) : null}
+
+      <View style={styles.playerCardActions}>
+        <PlayerCardAction
+          label="Activities"
+          icon="calendar"
+          materialIcon="event"
+          colors={colors}
+          onPress={onOpenActivities}
+          testID={`playerCrm.playerCard.${player.playerId}.activities`}
+        />
+        <PlayerCardAction
+          label="Tasks"
+          icon="checklist"
+          materialIcon="checklist"
+          colors={colors}
+          onPress={onOpenTasks}
+          testID={`playerCrm.playerCard.${player.playerId}.tasks`}
+        />
+        <PlayerCardAction
+          label="Progress"
+          icon="chart.bar.fill"
+          materialIcon="bar_chart"
+          colors={colors}
+          onPress={onOpenProgress}
+          testID={`playerCrm.playerCard.${player.playerId}.progress`}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function PlayerCardAction({
+  label,
+  icon,
+  materialIcon,
+  colors,
+  onPress,
+  testID,
+}: {
+  label: string;
+  icon: string;
+  materialIcon: string;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.playerCardAction, { borderColor: colors.border, backgroundColor: colors.background }]}
+      onPress={onPress}
+      activeOpacity={0.78}
+      testID={testID}
+    >
+      <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={14} color={colors.primary} />
+      <Text style={[styles.playerCardActionText, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -2206,6 +2306,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     lineHeight: 18,
+  },
+  playerCardActions: {
+    flexDirection: 'row',
+    gap: 7,
+  },
+  playerCardAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 34,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  playerCardActionText: {
+    minWidth: 0,
+    fontSize: 11,
+    fontWeight: '800',
   },
   emptyPanel: {
     borderWidth: 1,

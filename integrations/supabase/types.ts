@@ -1812,6 +1812,7 @@ export type Database = {
           auto_add_to_activities: boolean
           created_at: string
           description: string | null
+          focus_areas: string[]
           id: string
           library_exercise_id: string | null
           media_names: string[] | null
@@ -1837,6 +1838,7 @@ export type Database = {
           auto_add_to_activities?: boolean
           created_at?: string
           description?: string | null
+          focus_areas?: string[]
           id?: string
           library_exercise_id?: string | null
           media_names?: string[] | null
@@ -1862,6 +1864,7 @@ export type Database = {
           auto_add_to_activities?: boolean
           created_at?: string
           description?: string | null
+          focus_areas?: string[]
           id?: string
           library_exercise_id?: string | null
           media_names?: string[] | null

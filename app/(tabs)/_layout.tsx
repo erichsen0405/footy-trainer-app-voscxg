@@ -133,9 +133,9 @@ function FloatingTabsLayout({
     const taskTab: TabBarItem = {
       name: 'tasks',
       route: '/(tabs)/tasks',
-      icon: 'checklist',
-      materialIcon: 'checklist',
-      label: 'Tasks',
+      icon: isPlayer ? 'calendar.badge.clock' : 'checklist',
+      materialIcon: isPlayer ? 'event_note' : 'checklist',
+      label: isPlayer ? 'Plan' : 'Tasks',
     };
 
     const performanceTab: TabBarItem = {
@@ -159,7 +159,7 @@ function FloatingTabsLayout({
       route: '/(tabs)/coach-dashboard',
       icon: 'chart.bar.fill',
       materialIcon: 'dashboard',
-      label: 'Coach',
+      label: 'Overview',
     };
 
     const playerCrmTab: TabBarItem = {
@@ -167,7 +167,15 @@ function FloatingTabsLayout({
       route: '/(tabs)/player-crm',
       icon: 'person.2.fill',
       materialIcon: 'groups',
-      label: 'CRM',
+      label: 'Players',
+    };
+
+    const planTab: TabBarItem = {
+      name: 'plan',
+      route: '/(tabs)/plan',
+      icon: 'calendar.badge.clock',
+      materialIcon: 'event_note',
+      label: 'Plan',
     };
 
     const profileTab: TabBarItem = {
@@ -178,18 +186,20 @@ function FloatingTabsLayout({
       label: 'Profile',
     };
 
+    if (isTrainer) {
+      return [coachDashboardTab, playerCrmTab, planTab];
+    }
+
     const tabsForRole: TabBarItem[] = [homeTab, taskTab];
 
-    if (isPlayer || isTrainer) {
+    if (isPlayer) {
       tabsForRole.push(performanceTab);
     }
 
-    if (isTrainer) {
-      tabsForRole.unshift(coachDashboardTab);
-      tabsForRole.push(playerCrmTab);
+    if (!isPlayer) {
+      tabsForRole.push(libraryTab);
     }
-
-    tabsForRole.push(libraryTab, profileTab);
+    tabsForRole.push(profileTab);
 
     return tabsForRole;
   }, [locked, userRole]);
@@ -208,6 +218,7 @@ function FloatingTabsLayout({
         <Stack.Screen name="tasks" />
         <Stack.Screen name="performance" />
         <Stack.Screen name="player-crm" />
+        <Stack.Screen name="plan" />
         <Stack.Screen name="library" />
         <Stack.Screen name="profile" />
       </Stack>

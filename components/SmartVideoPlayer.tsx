@@ -6,8 +6,9 @@ import * as Linking from 'expo-linking';
 import { resolveVideoUrl } from '@/utils/videoKey';
 import { isDirectVideoUrl, parseVideoUrl } from '@/utils/videoUrlParser';
 
-export default function SmartVideoPlayer({ url }: { url?: string }) {
+export default function SmartVideoPlayer({ url, height = 220 }: { url?: string; height?: number }) {
   const [playVimeo, setPlayVimeo] = useState(false);
+  const playerHeight = Math.max(96, height);
 
   const resolvedUrl = useMemo(() => resolveVideoUrl(url), [url]);
   const parsedVideo = useMemo(
@@ -44,6 +45,7 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
       <Thumb
         img={thumbnailUrl}
         onPress={() => Linking.openURL(resolvedUrl)}
+        height={playerHeight}
         testID="smart-video-player.thumbnail"
       />
     );
@@ -51,7 +53,7 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
 
   if (vimeoHtml && thumbnailUrl) {
     return (
-      <View style={styles.vimeoContainer}>
+      <View style={[styles.vimeoContainer, { height: playerHeight }]}>
         <View
           pointerEvents={playVimeo ? 'none' : 'auto'}
           style={[styles.thumbnailOverlay, { opacity: playVimeo ? 0 : 1 }]}
@@ -59,13 +61,14 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
           <Thumb
             img={thumbnailUrl}
             onPress={() => setPlayVimeo(true)}
+            height={playerHeight}
             testID="smart-video-player.thumbnail"
           />
         </View>
 
         <View
           pointerEvents={playVimeo ? 'auto' : 'none'}
-          style={[styles.webViewContainer, { opacity: playVimeo ? 1 : 0, height: playVimeo ? 220 : 0 }]}
+          style={[styles.webViewContainer, { opacity: playVimeo ? 1 : 0, height: playVimeo ? playerHeight : 0 }]}
         >
           <WebView
             testID="smart-video-player.webview"
@@ -85,7 +88,7 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
 
   if (inlineVideoHtml) {
     return (
-      <View style={styles.directVideoContainer}>
+      <View style={[styles.directVideoContainer, { height: playerHeight }]}>
         <WebView
           testID="smart-video-player.webview"
           source={{ html: inlineVideoHtml }}
@@ -107,6 +110,7 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
         <Thumb
           img={thumbnailUrl}
           onPress={() => Linking.openURL(instagramUrl)}
+          height={playerHeight}
           testID="smart-video-player.thumbnail"
         />
       );
@@ -115,7 +119,7 @@ export default function SmartVideoPlayer({ url }: { url?: string }) {
     return (
       <Pressable
         onPress={() => Linking.openURL(instagramUrl)}
-        style={styles.externalLinkCard}
+        style={[styles.externalLinkCard, { height: playerHeight }]}
         testID="smart-video-player.external-link"
       >
         <View style={styles.externalLinkBadge}>
@@ -210,11 +214,11 @@ function buildVideoHtml(videoUrl: string, autoPlay = false): string {
 }
 
 /* ui */
-const Thumb = ({ img, onPress, testID }: any) => (
-  <Pressable onPress={onPress} style={styles.thumbContainer} testID={testID}>
+const Thumb = ({ img, onPress, testID, height = 220 }: any) => (
+  <Pressable onPress={onPress} style={[styles.thumbContainer, { height }]} testID={testID}>
     <Image
       source={{ uri: img }}
-      style={styles.thumbImage}
+      style={[styles.thumbImage, { height }]}
       resizeMode="cover"
     />
     <View style={styles.playButtonOverlay}>
@@ -227,13 +231,11 @@ const Thumb = ({ img, onPress, testID }: any) => (
 
 const styles = StyleSheet.create({
   vimeoContainer: {
-    height: 220,
     width: '100%',
     backgroundColor: '#000',
     position: 'relative',
   },
   directVideoContainer: {
-    height: 220,
     width: '100%',
     backgroundColor: '#000',
     overflow: 'hidden',
@@ -255,15 +257,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   thumbContainer: {
-    height: 220,
     width: '100%',
   },
   thumbImage: {
-    height: 220,
     width: '100%',
   },
   externalLinkCard: {
-    height: 220,
     borderRadius: 16,
     backgroundColor: '#111827',
     paddingHorizontal: 20,

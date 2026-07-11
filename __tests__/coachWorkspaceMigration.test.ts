@@ -44,6 +44,7 @@ describe('coach workspace foundation migration', () => {
   it('documents the club separation and migration path', () => {
     expect(docs).toContain('The existing `clubs`, `club_members` and `club_licenses` module is an');
     expect(docs).toContain('The `coach_accounts.source` field reserves a `club_bridge` value');
-    expect(docs).toContain('Create one default `coach_accounts` row for each existing trainer/admin user');
+    expect(docs).toContain('Do not auto-create new default `coach_accounts` rows');
+    expect(docs).toContain('trainer subscription sync or platform-admin creation');
   });
 });

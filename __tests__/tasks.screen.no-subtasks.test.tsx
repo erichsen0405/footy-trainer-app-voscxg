@@ -181,7 +181,7 @@ describe('Tasks redesigned template screen', () => {
     expect(getByText('FootballCoach Inspiration')).toBeTruthy();
   });
 
-  it('groups player self-mode templates by trainer name', () => {
+  it('shows player self-mode trainer templates in the flat plan list', () => {
     mockUseUserRole.mockReturnValue({ userRole: 'player', loading: false, isAdmin: false });
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
@@ -197,8 +197,10 @@ describe('Tasks redesigned template screen', () => {
 
     const { getByTestId, getByText } = render(<TasksScreen />);
 
-    expect(getByTestId('tasks.folder.trainer.trainer-1')).toBeTruthy();
-    expect(getByText('From coach: Coach Mads')).toBeTruthy();
+    expect(getByTestId('tasks.sourceFilter.coach')).toBeTruthy();
+    expect(getByTestId('tasks.taskCard.trainer-task-1')).toBeTruthy();
+    expect(getByTestId('tasks.task.source.trainer-task-1').props.accessibilityLabel).toBe('Source: From Coach Mads');
+    expect(getByText('person.2.fill')).toBeTruthy();
   });
 
   it('shows selected admin context templates under personal tasks', () => {
@@ -245,7 +247,7 @@ describe('Tasks redesigned template screen', () => {
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByText('Pasning')).toBeTruthy();
-    expect(queryByText('Alle aktiviteter')).toBeNull();
+    expect(queryByText('All activities')).toBeNull();
     expect(queryByText('Sprint')).toBeNull();
   });
 
@@ -261,21 +263,41 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByTestId, getByText, queryByText } = render(<TasksScreen />);
+    const { getByTestId, getByText, queryByTestId, queryByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.categoryFilter.button'));
     fireEvent.press(getByTestId('tasks.categoryFilter.option.cat-1'));
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByText('Pasning')).toBeTruthy();
-    expect(getByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeTruthy();
+    expect(queryByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeTruthy();
     expect(queryByText('Sprint')).toBeNull();
   });
 
-  it('shows auto-add status on task template cards', () => {
+  it('filters task templates by selected focus tags', () => {
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
-        baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true }),
+        baseTask({ id: 'tag-pass', title: 'Pasning', focusAreas: ['Teknik', 'Boldkontrol'] }),
+        baseTask({ id: 'tag-speed', title: 'Sprint', focus_areas: ['Fysisk'] }),
+      ],
+    }));
+
+    const { getAllByText, getByTestId, getByText, queryByText } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.focusTagFilter.button'));
+    fireEvent.press(getByTestId('tasks.focusTagFilter.option.technique'));
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+
+    expect(getByTestId('tasks.taskFocusTags.tag-pass')).toBeTruthy();
+    expect(getAllByText('Technique').length).toBeGreaterThan(0);
+    expect(getByText('Pasning')).toBeTruthy();
+    expect(queryByText('Sprint')).toBeNull();
+  });
+
+  it('shows compact auto-add status badges on task cards', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true, afterTrainingEnabled: true }),
         baseTask({ id: 'auto-off', title: 'Auto inaktiv', autoAddToActivities: false }),
       ],
     }));
@@ -284,10 +306,12 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
-    expect(getByTestId('tasks.template.autoAddBadge.auto-on')).toBeTruthy();
-    expect(getByTestId('tasks.template.autoAddBadge.auto-off')).toBeTruthy();
-    expect(getByText('Auto-add to activities: On')).toBeTruthy();
-    expect(getByText('Auto-add to activities: Off')).toBeTruthy();
+    expect(getByText('Auto aktiv')).toBeTruthy();
+    expect(getByText('Auto inaktiv')).toBeTruthy();
+    expect(getByTestId('tasks.template.autoAddBadge.auto-on').props.accessibilityLabel).toBe('Auto-add to activities: On');
+    expect(getByTestId('tasks.template.autoAddBadge.auto-off').props.accessibilityLabel).toBe('Auto-add to activities: Off');
+    expect(getByTestId('tasks.template.feedbackBadge.auto-on').props.accessibilityLabel).toBe('Feedback: On');
+    expect(getByTestId('tasks.template.feedbackBadge.auto-off').props.accessibilityLabel).toBe('Feedback: Off');
   });
 
   it('validates required title and video URL in the modal', () => {
@@ -304,22 +328,20 @@ describe('Tasks redesigned template screen', () => {
     expect(getByText('Invalid media. Use a video, image, or PDF link.')).toBeTruthy();
   });
 
-  it('adds, removes and saves subtasks in order', async () => {
-    const { getAllByPlaceholderText, getAllByText, getByTestId } = render(<TasksScreen />);
+  it('does not show subtasks and saves task templates without subtasks', async () => {
+    const { getByTestId, queryByPlaceholderText, queryByTestId } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.header.newTaskButton'));
-    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med delopgaver');
-    fireEvent.changeText(getAllByPlaceholderText('Subtask')[0], 'Første');
-    fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
-    fireEvent.changeText(getAllByPlaceholderText('Subtask')[1], 'Anden');
-    fireEvent.press(getByTestId('tasks.modal.addSubtaskButton'));
-    fireEvent.changeText(getAllByPlaceholderText('Subtask')[2], 'Tredje');
-    fireEvent.press(getAllByText('minus.circle.fill')[0]);
+    expect(queryByPlaceholderText('Subtask')).toBeNull();
+    expect(queryByTestId('tasks.modal.addSubtaskButton')).toBeNull();
+
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template uden delopgaver');
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
 
     await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
     const createArg = mockCreateTask.mock.calls[0][0];
-    expect(createArg.subtasks.map((subtask: any) => subtask.title)).toEqual(['Anden', 'Tredje']);
+    expect(createArg.subtasks).toEqual([]);
+    expect(createArg.task.subtasks).toEqual([]);
   });
 
   it('saves auto-add setting when creating a task template', async () => {
@@ -334,6 +356,28 @@ describe('Tasks redesigned template screen', () => {
     const createArg = mockCreateTask.mock.calls[0][0];
     expect(createArg.task.autoAddToActivities).toBe(true);
     expect(createArg.task.auto_add_to_activities).toBe(true);
+  });
+
+  it('saves focus tags when creating a task template', async () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'existing-focus', title: 'Eksisterende', focusAreas: ['Teknik'] }),
+      ],
+    }));
+
+    const { getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.header.newTaskButton'));
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med fokus');
+    fireEvent.press(getByTestId('tasks.modal.focusTag.suggestion.technique'));
+    fireEvent.changeText(getByTestId('tasks.modal.focusTag.input'), 'Afslutning');
+    fireEvent.press(getByTestId('tasks.modal.focusTag.add'));
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+
+    await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
+    const createArg = mockCreateTask.mock.calls[0][0];
+    expect(createArg.task.focusAreas).toEqual(['Technique', 'Finishing']);
+    expect(createArg.task.focus_areas).toEqual(['Technique', 'Finishing']);
   });
 
   it('saves auto-add setting when editing a task template', async () => {
@@ -392,7 +436,7 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
     fireEvent.press(getByTestId('tasks.taskCard.template-video-1'));
-    expect(getByText('Media')).toBeTruthy();
+    expect(getAllByText('Media').length).toBeGreaterThan(0);
     expect(getByText('Choose image, video, or PDF')).toBeTruthy();
     expect(getByDisplayValue('Media 1')).toBeTruthy();
     expect(getAllByText('YouTube').length).toBeGreaterThan(0);

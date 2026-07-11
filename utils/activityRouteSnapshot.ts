@@ -11,6 +11,9 @@ type RouteSnapshotTask = Task & {
   video_urls?: string[] | null;
   task_template_id?: string | null;
   feedback_template_id?: string | null;
+  training_template_id?: string | null;
+  training_template_type?: string | null;
+  exercise_timer?: { activeSeconds?: number; restSeconds?: number; rounds?: number } | null;
 };
 
 type RouteSnapshotActivity = {
@@ -78,6 +81,12 @@ function normalizeTask(task: any): RouteSnapshotTask {
   const feedbackTemplateId =
     normalizeNullableString(task?.feedbackTemplateId) ??
     normalizeNullableString(task?.feedback_template_id);
+  const trainingTemplateId =
+    normalizeNullableString(task?.trainingTemplateId) ??
+    normalizeNullableString(task?.training_template_id);
+  const trainingTemplateType =
+    normalizeNullableString(task?.trainingTemplateType) ??
+    normalizeNullableString(task?.training_template_type);
   const reminderMinutes =
     normalizeNumberOrNull(task?.reminder_minutes) ??
     normalizeNumberOrNull(task?.reminder);
@@ -121,6 +130,12 @@ function normalizeTask(task: any): RouteSnapshotTask {
     task_template_id: taskTemplateId,
     feedbackTemplateId: feedbackTemplateId,
     feedback_template_id: feedbackTemplateId,
+    trainingTemplateId,
+    training_template_id: trainingTemplateId,
+    trainingTemplateType,
+    training_template_type: trainingTemplateType,
+    exerciseTimer: task?.exerciseTimer ?? task?.exercise_timer ?? null,
+    exercise_timer: task?.exercise_timer ?? task?.exerciseTimer ?? null,
     isFeedbackTask:
       normalizeBoolean(task?.isFeedbackTask) ||
       normalizeBoolean(task?.is_feedback_task),

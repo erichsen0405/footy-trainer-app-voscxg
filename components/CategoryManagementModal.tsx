@@ -1061,7 +1061,7 @@ export default function CategoryManagementModal({
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={[styles.modalButtonText, { color: '#fff' }]}>
-                {deleteModeAction === 'remove' ? 'Tildel og fjern' : 'Tildel og slet'}
+                {deleteModeAction === 'remove' ? 'Assign and remove' : 'Assign and delete'}
               </Text>
             )}
           </TouchableOpacity>

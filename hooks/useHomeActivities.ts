@@ -41,6 +41,9 @@ interface ActivityTask {
   video_urls?: string[] | null;
   feedback_template_id?: string | null;
   task_template_id?: string | null;
+  training_template_id?: string | null;
+  training_template_type?: string | null;
+  exercise_timer?: { activeSeconds?: number; restSeconds?: number; rounds?: number } | null;
   created_at?: string | null;
 }
 
@@ -861,6 +864,42 @@ export function useHomeActivities(): UseHomeActivitiesResult {
               task_duration_minutes,
               feedback_template_id,
               task_template_id,
+              training_template_id,
+              training_template_type,
+              exercise_timer,
+              created_at
+            )
+          `;
+      const internalSelectWithLocalOptionsLegacy = `
+            id,
+            user_id,
+            player_id,
+            team_id,
+            title,
+            activity_date,
+            activity_time,
+            activity_end_time,
+            series_id,
+            series_instance_date,
+            location,
+            category_id,
+            intensity,
+            intensity_note,
+            intensity_enabled,
+            created_at,
+            updated_at,
+            activity_tasks (
+              id,
+              title,
+              description,
+              completed,
+              reminder_minutes,
+              after_training_enabled,
+              after_training_delay_minutes,
+              task_duration_enabled,
+              task_duration_minutes,
+              feedback_template_id,
+              task_template_id,
               created_at
             )
           `;
@@ -916,7 +955,35 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           return withLocal.data;
         }
 
-        if (!isMissingColumnError(withLocal.error, 'after_training_enabled')) {
+        const isMissingTrainingTemplateColumn =
+          isMissingColumnError(withLocal.error, 'training_template_id') ||
+          isMissingColumnError(withLocal.error, 'training_template_type') ||
+          isMissingColumnError(withLocal.error, 'exercise_timer');
+
+        if (isMissingTrainingTemplateColumn) {
+          const localLegacy = await fetchAllQueryPages<any>((from, to) =>
+            supabase
+              .from('activities')
+              .select(internalSelectWithLocalOptionsLegacy)
+              .or(scopeFilter)
+              .gte('activity_date', startDate)
+              .lt('activity_date', endDateExclusive)
+              .order('activity_date', { ascending: true })
+              .order('activity_time', { ascending: true })
+              .order('created_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to)
+          );
+
+          if (!localLegacy.error) {
+            return localLegacy.data;
+          }
+
+          if (!isMissingColumnError(localLegacy.error, 'after_training_enabled')) {
+            console.error('[useHomeActivities] Error fetching internal activities (local fallback):', localLegacy.error);
+            return null;
+          }
+        } else if (!isMissingColumnError(withLocal.error, 'after_training_enabled')) {
           console.error('[useHomeActivities] Error fetching internal activities:', withLocal.error);
           return null;
         }
@@ -1066,6 +1133,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           task_duration_minutes: coerceReminderMinutes(task.task_duration_minutes),
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exercise_timer: task.exercise_timer ?? null,
           created_at: task.created_at ?? null,
         }));
         
@@ -1247,6 +1317,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
                 video_urls: videoPayload.video_urls,
                 feedback_template_id: task.feedback_template_id ?? null,
                 task_template_id: task.task_template_id ?? null,
+                training_template_id: task.training_template_id ?? null,
+                training_template_type: task.training_template_type ?? null,
+                exercise_timer: task.exercise_timer ?? null,
               };
             });
 
@@ -1383,6 +1456,8 @@ export function useHomeActivities(): UseHomeActivitiesResult {
         : [];
 
       const activityTasksSelectWithLocalOptions =
+        'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, training_template_id, training_template_type, exercise_timer, created_at, video_urls, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
+      const activityTasksSelectWithLocalOptionsLegacy =
         'id, activity_id, title, description, completed, reminder_minutes, after_training_enabled, after_training_delay_minutes, task_duration_enabled, task_duration_minutes, feedback_template_id, task_template_id, created_at, video_urls, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
       const activityTasksSelectLegacy =
         'id, activity_id, title, description, completed, reminder_minutes, feedback_template_id, task_template_id, created_at, video_url, task_templates(after_training_delay_minutes, task_duration_enabled, task_duration_minutes)';
@@ -1399,9 +1474,28 @@ export function useHomeActivities(): UseHomeActivitiesResult {
 
         if (!withLocal.error) return withLocal;
 
+        const isMissingTrainingTemplateColumn =
+          isMissingColumnError(withLocal.error, 'training_template_id') ||
+          isMissingColumnError(withLocal.error, 'training_template_type') ||
+          isMissingColumnError(withLocal.error, 'exercise_timer');
+        if (isMissingTrainingTemplateColumn) {
+          const localLegacy = await supabase
+            .from('activity_tasks')
+            .select(activityTasksSelectWithLocalOptionsLegacy)
+            .in('activity_id', activityIds);
+          if (!localLegacy.error) return localLegacy;
+          if (
+            !isMissingColumnError(localLegacy.error, 'after_training_enabled') &&
+            !isMissingColumnError(localLegacy.error, 'video_urls')
+          ) {
+            return localLegacy;
+          }
+        }
+
         const canRetryWithLegacy =
           isMissingColumnError(withLocal.error, 'after_training_enabled') ||
-          isMissingColumnError(withLocal.error, 'video_urls');
+          isMissingColumnError(withLocal.error, 'video_urls') ||
+          isMissingTrainingTemplateColumn;
         if (!canRetryWithLegacy) {
           return withLocal;
         }
@@ -1512,6 +1606,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exercise_timer: task.exercise_timer ?? null,
           created_at: task.created_at ?? null,
         });
         internalTaskGroups.set(key, list);
@@ -1552,6 +1649,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exercise_timer: task.exercise_timer ?? null,
           created_at: task.created_at ?? null,
         });
         externalEventTaskGroups.set(key, list);
@@ -1592,6 +1692,9 @@ export function useHomeActivities(): UseHomeActivitiesResult {
           video_urls: videoPayload.video_urls,
           feedback_template_id: task.feedback_template_id ?? null,
           task_template_id: task.task_template_id ?? null,
+          training_template_id: task.training_template_id ?? null,
+          training_template_type: task.training_template_type ?? null,
+          exercise_timer: task.exercise_timer ?? null,
           created_at: task.created_at ?? null,
         });
         externalActivityTaskGroups.set(key, list);

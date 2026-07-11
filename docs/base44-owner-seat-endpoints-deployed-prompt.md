@@ -9,12 +9,14 @@ Functions for owner seats.
 Disse Supabase Edge Functions er deployet til projektet
 `lhpczofddvwcyrgotzha`:
 
-- `getOwnerSeatStatus`
-- `assertOwnerSeatAvailable`
-- `createOwnerAccount`
-- `upsertOwnerSeatAdjustment`
-- `listPlatformAdminOwnerAccounts`
-- `deleteOwnerAccount`
+| Endpoint | Remote status | Notes |
+| --- | --- | --- |
+| `getOwnerSeatStatus` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `assertOwnerSeatAvailable` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `createOwnerAccount` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `upsertOwnerSeatAdjustment` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `listPlatformAdminOwnerAccounts` | ACTIVE | Protected; unauthenticated smoke returns `401`. |
+| `deleteOwnerAccount` | ACTIVE | Protected; unauthenticated smoke returns `401`, not `404`. |
 
 Base URL:
 
@@ -109,6 +111,39 @@ UI rule:
 
 - Vis `effectiveSeats`, `seatsUsed` og `seatsAvailable` fra response.
 - Fald ikke tilbage til `0`, hvis request fejler. Vis en fejlstate og retry.
+- Hvis Base44 har et lokalt API-wrapper/adapter-lag omkring
+  `getOwnerSeatStatus`, skal adapteren bevare `playerSeats` fra backendens
+  response og ogsaa gerne sende `seats` videre. Normaliser ikke en manglende
+  `playerSeats` til `0`.
+- Hvis Base44 fortsat bruger flade convenience-felter som `seatsTotal`,
+  `seatsUsed` og `seatsAvailable`, maa de kun vaere `0`, naar backend faktisk
+  sender `0`. Hvis `playerSeats` mangler eller er `null`, skal felterne vaere
+  `null`/`undefined`, saa UI kan vise en tom state i stedet for `0/0`.
+
+Dashboard/KPI implementation rules:
+
+- `KlubAdmin.jsx` skal hente `getOwnerSeatStatus` for den valgte owner account
+  og sende `seatStatus`, `seatStatusLoading`, `seatStatusError` og
+  `onSeatStatusRetry` videre til `KlubDashboard`.
+- Hvis `KlubAdmin.jsx` viser seats i sidebar/header, skal visningen bruge
+  `seatsUsed ?? "—"` og `seatsTotal ?? "—"` eller tilsvarende. Den maa ikke
+  vise `0/0`, naar `playerSeats` mangler.
+- `KlubDashboard.jsx` skal foretraekke den prop-baserede status fra
+  `getOwnerSeatStatus` over eventuel legacy `data?.seatStatus`, fx
+  `seatStatus ?? data?.seatStatus ?? null`, og sende samme loading/error/retry
+  props videre til `DashboardKpiStrip`.
+- `DashboardKpiStrip.jsx` skal have en `getPlayerSeats(seatStatus)`-helper, der
+  returnerer `null`, naar `seatStatus` eller `seatStatus.playerSeats` mangler.
+  Den maa ikke returnere `{ total: 0, used: 0, available: 0 }` som fallback.
+  Vis kun `0`, hvis backend faktisk sender `0`.
+- Mens seat-status loader, skal KPI'en vise en lille spinner og `Henter...`.
+  Hvis der bruges `Loader2`, skal ikonet have `animate-spin`.
+- Hvis seat-status fejler, skal KPI'en vise `Fejl` og en tydelig retry-handling,
+  der kalder `onSeatStatusRetry`.
+- Naar seat-status er hentet, skal KPI'en vise tallene fra
+  `playerSeats.effectiveSeats`, `playerSeats.seatsUsed` og
+  `playerSeats.seatsAvailable`.
+- Vis aldrig `0/0` som placeholder, loading fallback eller error fallback.
 
 ## 2. Check Seat Before Assignment
 
@@ -145,6 +180,29 @@ Alias:
   Seat-status viser `isUnlimited: true`, `seatsUsed` og `null` for loft/ledig.
   Base44 skal ikke vise provisioning-controls eller kalde
   `assertOwnerSeatAvailable` for de roller.
+
+Base44 assignment rules:
+
+- Kald `assertOwnerSeatAvailable` lige foer Base44 opretter eller tildeler en
+  limited seat. For spiller-flowet betyder det fx i `AddPlayerModal.jsx` lige
+  foer `addPlayer(...)`/create-player kaldet:
+
+```ts
+await supabase.functions.invoke('assertOwnerSeatAvailable', {
+  body: {
+    ownerAccountId,
+    role: 'player',
+  },
+});
+```
+
+- Behold stadig backendens seat-check i selve create-/assignment-flowet som
+  autoritativ kontrol. Pre-checket er en UX-forbedring, ikke en erstatning for
+  server-side enforcement, da seats kan aendre sig mellem pre-check og write.
+- Hvis Base44 senere opretter/tildeler `owner` eller `admin`, skal samme
+  pre-check bruges for den konkrete rolle.
+- Kald ikke `assertOwnerSeatAvailable` for `coach`, `assistant_coach` eller
+  `parent`, fordi de er unlimited count-only roller.
 
 Success response:
 
@@ -276,10 +334,16 @@ Success response:
 UI/list rules:
 
 - Unwrap `response.data`.
+- Treat `data.ownerAccounts` as the full source of truth for the visible list.
+  Replace local state with that array on every fetch; do not merge it into an
+  existing array.
 - For coach workspace list, show rows where
   `ownerType === 'private_coach_business'`.
 - Do not filter out rows where `ownerUserId` is `null`.
 - Do not filter out rows where `coachAccountId` is `null`.
+- The endpoint only returns active owner accounts. If an owner account is deleted
+  or deactivated, it must not remain visible from local/cache state after the
+  next fetch.
 - Show player seats from `row.seatStatus.playerSeats`.
 - After `createOwnerAccount` succeeds, refetch this endpoint so the new owner
   appears without manual reload.
@@ -291,6 +355,19 @@ Function:
 ```text
 deleteOwnerAccount
 ```
+
+Remote status per 2026-07-10:
+
+```text
+Endpoint: deleteOwnerAccount
+Status: ACTIVE
+URL: https://lhpczofddvwcyrgotzha.supabase.co/functions/v1/deleteOwnerAccount
+Unauthenticated smoke result: 401 UNAUTHORIZED_NO_AUTH_HEADER
+```
+
+If Base44 shows `Status: —` for this endpoint, treat that as a Base44
+configuration/display issue, not a missing backend endpoint. The endpoint exists
+on project `lhpczofddvwcyrgotzha`.
 
 Kun platform admins maa bruge denne. Brug den fra slette-dialogen i
 platform-admin owner account listen. Base44 maa ikke slette fra tabeller
@@ -327,8 +404,13 @@ UI rules:
 
 - Efter success: vis normal success-toast, luk dialogen og refetch
   `listPlatformAdminOwnerAccounts`.
+- Fjern straks den slettede row fra lokal state med det `ownerAccountId`, som
+  `deleteOwnerAccount` returnerer, og erstat derefter listen med resultatet fra
+  `listPlatformAdminOwnerAccounts`.
 - Fjern den slettede row optimistisk kun hvis requesten returnerer
   `success: true`.
+- Refetch maa ikke merge med den gamle liste. Brug response-listen som ny liste,
+  ellers kan slettede rows blive haengende i Base44 state/cache.
 - Hvis requesten fejler: vis backend-fejlen og behold rowen i listen.
 - Kald aldrig `owner_accounts.delete()` eller andre direkte table deletes fra
   Base44/browseren.

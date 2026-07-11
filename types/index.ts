@@ -70,6 +70,8 @@ export interface Task {
   video_urls?: string[] | null;
   mediaNames?: string[];
   media_names?: string[] | null;
+  focusAreas?: string[];
+  focus_areas?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -84,6 +86,12 @@ export interface Task {
   task_duration_minutes?: number | null;
   taskTemplateId?: string | null;
   feedbackTemplateId?: string | null;
+  trainingTemplateId?: string | null;
+  training_template_id?: string | null;
+  trainingTemplateType?: 'task' | 'exercise' | 'session' | 'week' | string | null;
+  training_template_type?: 'task' | 'exercise' | 'session' | 'week' | string | null;
+  exerciseTimer?: { activeSeconds: number; restSeconds: number; rounds: number } | null;
+  exercise_timer?: { activeSeconds?: number; restSeconds?: number; rounds?: number } | null;
   templateSyncEnabled?: boolean | null;
   template_sync_enabled?: boolean | null;
   taskTemplateSourceFolder?: string | null;

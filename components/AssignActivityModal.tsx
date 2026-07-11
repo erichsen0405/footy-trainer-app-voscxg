@@ -843,7 +843,7 @@ export function AssignActivityModal({
 
         <View style={[styles.footer, { borderTopColor: theme.highlight, backgroundColor: theme.card }]}>
           <View>
-            <Text style={[styles.footerLabel, { color: theme.textSecondary }]}>Valgt</Text>
+            <Text style={[styles.footerLabel, { color: theme.textSecondary }]}>Selected</Text>
             <Text style={[styles.footerValue, { color: theme.text }]}>{selectionCount}</Text>
           </View>
           <TouchableOpacity

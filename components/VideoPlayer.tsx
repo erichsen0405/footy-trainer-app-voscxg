@@ -8,10 +8,10 @@ interface Props {
 }
 
 /**
- * KRITISKE REGLER (iOS):
- * - WebView må aldrig mount/unmount baseret på props
- * - Ingen conditional rendering
- * - Ingen inline HTML-regenerering per render
+ * CRITICAL RULES (iOS):
+ * - WebView must never mount/unmount based on props
+ * - No conditional rendering
+ * - No inline HTML regeneration per render
  */
 const VideoPlayer: React.FC<Props> = ({ url }) => {
   const html = useMemo(() => {

@@ -17,6 +17,8 @@ const mockFetchSelfFeedbackForActivities = jest.fn().mockResolvedValue([]);
 const mockFetchSelfFeedbackForTemplates = jest.fn().mockResolvedValue([]);
 const mockFetchLatestCategoryFeedback = jest.fn().mockResolvedValue([]);
 const mockUpsertSelfFeedback = jest.fn();
+const mockFetchOwnerTrainingTemplatesContext = jest.fn();
+const mockFetchOwnerTrainingTemplates = jest.fn();
 const mockRouterPush = jest.fn();
 const mockFetchActivityAssignments = jest.fn().mockResolvedValue({ playerIds: [], teamIds: [] });
 const mockFetchActivityAssignmentState = jest.fn().mockResolvedValue({
@@ -120,6 +122,11 @@ jest.mock('@/services/feedbackService', () => ({
   upsertSelfFeedback: (...args: any[]) => mockUpsertSelfFeedback(...args),
 }));
 
+jest.mock('@/services/trainingTemplateService', () => ({
+  fetchOwnerTrainingTemplatesContext: (...args: any[]) => mockFetchOwnerTrainingTemplatesContext(...args),
+  fetchOwnerTrainingTemplates: (...args: any[]) => mockFetchOwnerTrainingTemplates(...args),
+}));
+
 jest.mock('expo-linear-gradient', () => {
   const React = jest.requireActual('react');
   const { View } = jest.requireActual('react-native');
@@ -206,6 +213,12 @@ describe('ActivityDetails add-task flow', () => {
     mockFetchSelfFeedbackForActivities.mockResolvedValue([]);
     mockFetchSelfFeedbackForTemplates.mockResolvedValue([]);
     mockFetchLatestCategoryFeedback.mockResolvedValue([]);
+    mockFetchOwnerTrainingTemplatesContext.mockResolvedValue({
+      isPlatformAdmin: false,
+      workspaces: [],
+      defaultOwnerAccountId: null,
+    });
+    mockFetchOwnerTrainingTemplates.mockResolvedValue({ templates: [] });
     mockFetchActivityAssignments.mockResolvedValue({ playerIds: [], teamIds: [] });
     mockFetchActivityAssignmentState.mockResolvedValue({
       playerIds: [],
@@ -281,7 +294,7 @@ describe('ActivityDetails add-task flow', () => {
   it('shows add CTA and updates task list after task-created refetch', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       const manualButton = Array.isArray(buttons)
-        ? (buttons as any[]).find((button) => button?.text === 'Create manually')
+        ? (buttons as any[]).find((button) => button?.text === 'Create task manually')
         : null;
       manualButton?.onPress?.();
     });
@@ -1349,13 +1362,13 @@ describe('ActivityDetails add-task flow', () => {
 
     fireEvent.press(getByTestId('activity.addTaskButton'));
     expect(alertSpy).toHaveBeenCalledWith(
-      'Add task',
-      'Choose how you want to create the task.',
+      'Add item',
+      'Choose how you want to add content to this activity.',
       expect.any(Array),
     );
 
     const buttons = alertSpy.mock.calls[0]?.[2] as any[];
-    const manualButton = buttons.find((button) => button?.text === 'Create manually');
+    const manualButton = buttons.find((button) => button?.text === 'Create task manually');
     manualButton?.onPress?.();
 
     expect(await findByTestId('mock.createActivityTaskModal')).toBeTruthy();
@@ -1382,7 +1395,7 @@ describe('ActivityDetails add-task flow', () => {
 
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       const templateButton = Array.isArray(buttons)
-        ? (buttons as any[]).find((button) => button?.text === 'Create from template')
+        ? (buttons as any[]).find((button) => button?.text === 'Choose template')
         : null;
       templateButton?.onPress?.();
     });
@@ -1402,7 +1415,7 @@ describe('ActivityDetails add-task flow', () => {
 
     fireEvent.press(getByTestId('activity.addTaskButton'));
 
-    expect(await findByText('Select assignment template')).toBeTruthy();
+    expect(await findByText('Select template')).toBeTruthy();
     expect(queryByTestId('mock.createActivityTaskModal')).toBeNull();
 
     alertSpy.mockRestore();
@@ -1549,7 +1562,7 @@ describe('ActivityDetails add-task flow', () => {
 
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       const templateButton = Array.isArray(buttons)
-        ? (buttons as any[]).find((button) => button?.text === 'Create from template')
+        ? (buttons as any[]).find((button) => button?.text === 'Choose template')
         : null;
       templateButton?.onPress?.();
     });
@@ -1566,7 +1579,7 @@ describe('ActivityDetails add-task flow', () => {
     );
 
     fireEvent.press(getByTestId('activity.addTaskButton'));
-    expect(await findByText('Select assignment template')).toBeTruthy();
+    expect(await findByText('Select template')).toBeTruthy();
 
     await act(async () => {
       fireEvent.press(getByText('Instagram Reel'));
@@ -1581,6 +1594,226 @@ describe('ActivityDetails add-task flow', () => {
     expect(insertedActivityTasks[0].video_urls).toEqual([instagramUrl, 'https://vimeo.com/123456']);
     expect(insertedActivityTasks[0].media_names).toEqual(['Instagram reel', 'Vimeo clip']);
     expect(mockSupabaseRpc).not.toHaveBeenCalledWith('update_all_tasks_from_template', expect.anything());
+
+    alertSpy.mockRestore();
+  });
+
+  it('adds an exercise template directly to an activity with timer and task fields', async () => {
+    mockFetchOwnerTrainingTemplatesContext.mockResolvedValue({
+      isPlatformAdmin: false,
+      defaultOwnerAccountId: 'owner-1',
+      workspaces: [{ ownerAccountId: 'owner-1' }],
+    });
+    mockFetchOwnerTrainingTemplates.mockResolvedValue({
+      templates: [
+        {
+          id: 'exercise-template-1',
+          ownerAccountId: 'owner-1',
+          templateType: 'exercise',
+          title: 'Sprint intervals',
+          description: 'Speed block',
+          status: 'active',
+          folderId: null,
+          folderName: null,
+          focusAreas: ['Speed'],
+          durationMinutes: null,
+          defaultActivityCategoryId: null,
+          defaultActivityCategoryName: null,
+          sourceTaskTemplateId: null,
+          activeVersionId: 'version-1',
+          versionNumber: 1,
+          metadata: {
+            task: {
+              title: 'Sprint intervals',
+              description: '5 meter accelerations',
+              reminderMinutes: 20,
+              afterTrainingEnabled: true,
+              afterTrainingDelayMinutes: 10,
+              taskDurationEnabled: true,
+              taskDurationMinutes: 12,
+              videoUrls: ['https://videos.test/sprint.mp4'],
+              mediaNames: ['Sprint demo'],
+            },
+            timer: {
+              activeSeconds: 30,
+              restSeconds: 15,
+              rounds: 4,
+            },
+          },
+          itemCount: 0,
+          createdBy: 'user-1',
+          updatedBy: 'user-1',
+          createdAt: '2026-02-01T00:00:00.000Z',
+          updatedAt: '2026-02-01T00:00:00.000Z',
+          archivedAt: null,
+          items: [],
+        },
+      ],
+    });
+
+    const insertedActivityTasks: Record<string, any>[] = [];
+    const defaultSupabaseFrom = mockSupabaseFrom.getMockImplementation();
+
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table === 'activity_tasks') {
+        const builder: any = {
+          insert: (payload: Record<string, any>) => {
+            insertedActivityTasks.push(payload);
+            return builder;
+          },
+          select: () => builder,
+          eq: async () => ({
+            data: insertedActivityTasks.map((row, index) => ({
+              id: `created-exercise-${index + 1}`,
+              title: row.title,
+              description: row.description,
+              completed: row.completed ?? false,
+              reminder_minutes: row.reminder_minutes ?? null,
+              task_template_id: row.task_template_id ?? null,
+              feedback_template_id: row.feedback_template_id ?? null,
+              training_template_id: row.training_template_id ?? null,
+              training_template_type: row.training_template_type ?? null,
+              exercise_timer: row.exercise_timer ?? null,
+              video_urls: row.video_urls ?? null,
+              media_names: row.media_names ?? null,
+              after_training_enabled: row.after_training_enabled ?? null,
+              after_training_delay_minutes: row.after_training_delay_minutes ?? null,
+              task_duration_enabled: row.task_duration_enabled ?? null,
+              task_duration_minutes: row.task_duration_minutes ?? null,
+            })),
+            error: null,
+          }),
+          single: async () => ({
+            data: { id: `created-exercise-${insertedActivityTasks.length}` },
+            error: null,
+          }),
+        };
+        return builder;
+      }
+
+      if (table === 'activities') {
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          single: async () => ({
+            data: {
+              id: 'activity-exercise-template-1',
+              title: 'Session',
+              activity_date: '2026-02-10',
+              activity_time: '10:00',
+              activity_end_time: null,
+              location: 'Pitch',
+              category_id: 'cat-1',
+              intensity: null,
+              intensity_enabled: false,
+              intensity_note: null,
+              is_external: false,
+              external_calendar_id: null,
+              external_event_id: null,
+              series_id: null,
+              series_instance_date: null,
+              activity_categories: {
+                id: 'cat-1',
+                name: 'Training',
+                color: '#123456',
+                emoji: '⚽️',
+              },
+              activity_tasks: insertedActivityTasks.map((row, index) => ({
+                id: `created-exercise-${index + 1}`,
+                title: row.title,
+                description: row.description,
+                completed: row.completed ?? false,
+                reminder_minutes: row.reminder_minutes ?? null,
+                task_template_id: row.task_template_id ?? null,
+                feedback_template_id: row.feedback_template_id ?? null,
+                training_template_id: row.training_template_id ?? null,
+                training_template_type: row.training_template_type ?? null,
+                exercise_timer: row.exercise_timer ?? null,
+                video_urls: row.video_urls ?? null,
+                media_names: row.media_names ?? null,
+                after_training_enabled: row.after_training_enabled ?? null,
+                after_training_delay_minutes: row.after_training_delay_minutes ?? null,
+                task_duration_enabled: row.task_duration_enabled ?? null,
+                task_duration_minutes: row.task_duration_minutes ?? null,
+              })),
+            },
+            error: null,
+          }),
+        };
+        return builder;
+      }
+
+      return defaultSupabaseFrom?.(table);
+    });
+
+    const activity = {
+      id: 'activity-exercise-template-1',
+      title: 'Session',
+      date: new Date('2026-02-10T10:00:00.000Z'),
+      time: '10:00',
+      location: 'Pitch',
+      category: { id: 'cat-1', name: 'Training', color: '#123456', emoji: '⚽️' },
+      tasks: [],
+      isExternal: false,
+      intensityEnabled: false,
+      intensity: null,
+      user_id: 'user-1',
+      player_id: null,
+      team_id: null,
+    };
+
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+      const templateButton = Array.isArray(buttons)
+        ? (buttons as any[]).find((button) => button?.text === 'Choose template')
+        : null;
+      templateButton?.onPress?.();
+    });
+
+    const { getByTestId, findByText, findByTestId } = render(
+      <ActivityDetailsModule.ActivityDetailsContent
+        activity={activity as any}
+        categories={[activity.category as any]}
+        isAdmin
+        isDark={false}
+        onBack={jest.fn()}
+        onActivityUpdated={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(getByTestId('activity.addTaskButton'));
+    expect(await findByText('Select template')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(await findByTestId('activity.templatePicker.mode.exercise'));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      fireEvent.press(await findByTestId('activity.templateExercise.row.exercise-template-1'));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(insertedActivityTasks).toHaveLength(1));
+    expect(insertedActivityTasks[0]).toMatchObject({
+      title: 'Sprint intervals',
+      description: '5 meter accelerations',
+      reminder_minutes: 20,
+      task_template_id: null,
+      training_template_id: 'exercise-template-1',
+      training_template_type: 'exercise',
+      exercise_timer: {
+        activeSeconds: 30,
+        restSeconds: 15,
+        rounds: 4,
+      },
+      template_sync_enabled: false,
+      after_training_enabled: true,
+      after_training_delay_minutes: 10,
+      task_duration_enabled: true,
+      task_duration_minutes: 12,
+      video_urls: ['https://videos.test/sprint.mp4'],
+      media_names: ['Sprint demo'],
+    });
 
     alertSpy.mockRestore();
   });

@@ -6,9 +6,8 @@ export default function TrainerRedirect() {
   const router = useRouter();
 
   useEffect(() => {
-    // F11: Trainer-route er udfaset -> send brugeren left til tabs-root (Home).
-    // (Vi holder dette simpelt og sikkert for at undgaa "unknown route" hvis profil-path varierer.)
-    router.replace('/(tabs)/profile');
+    // F11: Trainer route is deprecated; the trainer start page is now Overview.
+    router.replace('/(tabs)/coach-dashboard');
   }, [router]);
 
   return (

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Image,
   useColorScheme,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import {
   Switch,
   InteractionManager,
 } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useFootball } from '@/contexts/FootballContext';
@@ -51,7 +51,7 @@ import {
 } from '@/utils/taskVideos';
 import { isDirectVideoUrl } from '@/utils/videoUrlParser';
 
-// ✅ Robust import: undgå Hermes-crash hvis named export "colors" ikke findes
+// Robust import: avoid Hermes crashes if the named export "colors" does not exist.
 import * as CommonStyles from '@/styles/commonStyles';
 
 const FALLBACK_COLORS = {
@@ -78,14 +78,6 @@ const normalizeReminderValue = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const normalizeTaskDurationValue = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  const rounded = Math.round(parsed);
-  return rounded >= 0 ? rounded : null;
-};
-
 function isValidVideoUrl(url?: string | null): boolean {
   return isTaskMediaUrl(String(url ?? ''));
 }
@@ -100,30 +92,6 @@ function getVideoSourceLabel(url?: string | null): string {
   if (normalizedUrl.includes('youtu')) return 'YouTube';
   if (normalizedUrl.includes('/storage/v1/object/public/') || isDirectVideoUrl(normalizedUrl)) return 'Uploaded video';
   return 'Video';
-}
-
-function getYouTubeThumbnail(url: string): string | null {
-  try {
-    if (url.includes('youtu.be/')) {
-      return `https://img.youtube.com/vi/${url.split('youtu.be/')[1].split('?')[0]}/hqdefault.jpg`;
-    }
-
-    if (url.includes('watch?v=')) {
-      return `https://img.youtube.com/vi/${url.split('watch?v=')[1].split('&')[0]}/hqdefault.jpg`;
-    }
-
-    if (url.includes('/shorts/')) {
-      return `https://img.youtube.com/vi/${url.split('/shorts/')[1].split('?')[0]}/hqdefault.jpg`;
-    }
-
-    if (url.includes('/embed/')) {
-      return `https://img.youtube.com/vi/${url.split('/embed/')[1].split('?')[0]}/hqdefault.jpg`;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 const FOOTBALLCOACH_INSPIRATION = 'FootballCoach Inspiration';
@@ -147,7 +115,45 @@ const sanitizeTestIdSegment = (value: unknown): string =>
     .replace(/[^a-z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'unknown';
 
-const createLocalSubtaskId = () => `local-subtask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const LEGACY_TASK_FOCUS_TAG_TRANSLATIONS: Record<string, string> = {
+  afslutning: 'Finishing',
+  afslutninger: 'Finishing',
+  analyse: 'Analysis',
+  boldkontrol: 'Ball control',
+  forsvar: 'Defense',
+  forsvarsspil: 'Defense',
+  fysisk: 'Physical',
+  fysik: 'Physical',
+  hurtighed: 'Speed',
+  midtbane: 'Midfielder',
+  modtagelser: 'First touch',
+  pasning: 'Passing',
+  pasninger: 'Passing',
+  skudtræning: 'Shooting',
+  teknik: 'Technique',
+};
+
+const normalizeCardTags = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.reduce<string[]>((acc, item) => {
+    const rawTag = String(item ?? '').trim();
+    const tag = LEGACY_TASK_FOCUS_TAG_TRANSLATIONS[rawTag.toLowerCase()] ?? rawTag;
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) return acc;
+    seen.add(key);
+    acc.push(tag);
+    return acc;
+  }, []);
+};
+
+const normalizeCardTagKey = (value: string): string => value.trim().toLowerCase();
+
+const normalizeTaskFocusInput = (value: string): string[] =>
+  normalizeCardTags(value.split(','));
+
+const getTaskFocusTags = (task: any): string[] =>
+  normalizeCardTags(task?.focusAreas ?? task?.focus_areas ?? task?.tags);
 
 const isFootballCoachSource = (sourceFolder: string) =>
   sourceFolder.toLowerCase() === FOOTBALLCOACH_INSPIRATION.toLowerCase();
@@ -174,26 +180,21 @@ const getTaskTrainerName = (task: any): string => {
   return fromSource || 'Unknown coach';
 };
 
-const normalizeModalSubtasks = (subtasks: any[] | undefined | null) => {
-  const normalized = (subtasks ?? [])
-    .map((subtask) => ({
-      id: String(subtask?.id ?? '').trim() || createLocalSubtaskId(),
-      title: String(subtask?.title ?? ''),
-      completed: !!subtask?.completed,
-    }));
-  return normalized.length ? normalized : [{ id: createLocalSubtaskId(), title: '', completed: false }];
+type FolderType = 'personal' | 'trainer' | 'footballcoach' | 'source';
+type TaskSourceFilter = 'all' | 'mine' | 'coach' | 'workspace' | 'library';
+type TaskSourceKind = Exclude<TaskSourceFilter, 'all'>;
+
+type TaskSourceFilterOption = {
+  value: TaskSourceFilter;
+  label: string;
+  count: number;
 };
 
-const normalizeSubtasksForSave = (subtasks: any[] | undefined | null) =>
-  (subtasks ?? [])
-    .map((subtask) => ({
-      id: String(subtask?.id ?? '').trim() || createLocalSubtaskId(),
-      title: String(subtask?.title ?? '').trim(),
-      completed: false,
-    }))
-    .filter((subtask) => subtask.title.length > 0);
-
-type FolderType = 'personal' | 'trainer' | 'footballcoach' | 'source';
+type TaskFocusTagOption = {
+  value: string;
+  label: string;
+  count: number;
+};
 
 interface FolderItem {
   id: string;
@@ -213,9 +214,74 @@ const DELETE_TEMPLATE_CONFIRM_TEXT = 'DELETE';
 const DELETE_TEMPLATE_WARNING_TEXT =
   'Deleting this task template will delete all previous and future tasks on related activities. If you want to keep history, select Archive instead.';
 
-// ✅ læs source-folder robust (snake_case eller camelCase)
+// Read source-folder robustly (snake_case or camelCase).
 function getTaskSourceFolder(task: any): string {
   return String(task?.source_folder ?? task?.sourceFolder ?? '').trim();
+}
+
+function isTrainerOwnedTask(task: any, options: { userRole: string | null; currentUserId: string | null }): boolean {
+  const sf = getTaskSourceFolder(task).toLowerCase();
+  const ownerId = getTaskOwnerId(task);
+  if (
+    sf === 'trainer' ||
+    sf === 'from coach' ||
+    sf.startsWith('from coach:') ||
+    sf === 'fra træner' ||
+    sf.startsWith('fra træner:')
+  ) {
+    return true;
+  }
+  return options.userRole === 'player' && !!ownerId && !!options.currentUserId && ownerId !== options.currentUserId;
+}
+
+function getTaskSourceKind(
+  task: any,
+  options: { adminMode: string; userRole: string | null; currentUserId: string | null },
+): TaskSourceKind {
+  const sourceFolder = getTaskSourceFolder(task);
+  if (isFootballCoachSource(sourceFolder)) return 'library';
+  if (options.adminMode === 'self' && isTrainerOwnedTask(task, options)) return 'coach';
+  const ownerId = getTaskOwnerId(task);
+  if (ownerId && options.currentUserId && ownerId !== options.currentUserId) return 'workspace';
+  return 'mine';
+}
+
+function buildTaskSourceFilterOptions(
+  tasks: Task[],
+  options: { adminMode: string; userRole: string | null; currentUserId: string | null },
+): TaskSourceFilterOption[] {
+  const counts: Record<TaskSourceKind, number> = {
+    mine: 0,
+    coach: 0,
+    workspace: 0,
+    library: 0,
+  };
+  tasks.forEach((task) => {
+    counts[getTaskSourceKind(task, options)] += 1;
+  });
+
+  const sourceOptions: TaskSourceFilterOption[] = [{ value: 'all', label: 'All', count: tasks.length }];
+  if (counts.mine > 0) sourceOptions.push({ value: 'mine', label: 'My', count: counts.mine });
+  if (counts.coach > 0) sourceOptions.push({ value: 'coach', label: 'From coach', count: counts.coach });
+  if (counts.workspace > 0) sourceOptions.push({ value: 'workspace', label: 'Workspace', count: counts.workspace });
+  if (counts.library > 0) sourceOptions.push({ value: 'library', label: 'Library', count: counts.library });
+  return sourceOptions;
+}
+
+function buildTaskFocusTagOptions(tasks: Task[]): TaskFocusTagOption[] {
+  const byKey = new Map<string, TaskFocusTagOption>();
+  tasks.forEach((task) => {
+    getTaskFocusTags(task).forEach((tag) => {
+      const key = normalizeCardTagKey(tag);
+      const current = byKey.get(key);
+      if (current) {
+        current.count += 1;
+      } else {
+        byKey.set(key, { value: tag, label: tag, count: 1 });
+      }
+    });
+  });
+  return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 // ✅ simple icon mapping for source folders
@@ -354,9 +420,10 @@ export const TaskCard = React.memo(
     onDuplicate,
     onArchive = () => {},
     onDelete,
-    onVideoPress,
+    onAssign,
     getCategoryItems,
     isArchived = false,
+    canAssign = false,
   }: {
     task: Task;
     isDark: boolean;
@@ -364,175 +431,225 @@ export const TaskCard = React.memo(
     onDuplicate: () => void;
     onArchive?: () => void;
     onDelete: () => void;
-    onVideoPress: (urls: string[], initialIndex?: number) => void;
+    onAssign?: () => void;
     getCategoryItems: (categoryIds: string[]) => any[];
     isArchived?: boolean;
+    canAssign?: boolean;
   }) => {
     const videoUrls = getTaskModalVideoUrls(task);
-    const videoUrl = videoUrls[0] ?? null;
-    const ytThumb = typeof videoUrl === 'string' && videoUrl.includes('youtu') ? getYouTubeThumbnail(videoUrl) : null;
-    const primaryMediaType = getTaskMediaType(videoUrl);
     const taskId = String((task as any)?.id ?? '');
-    const categoryItems = getCategoryItems((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean));
     const description = String((task as any)?.description ?? '').trim();
-    const hasMultipleVideos = videoUrls.length > 1;
-    const autoAddEnabled = !!((task as any)?.autoAddToActivities ?? (task as any)?.auto_add_to_activities);
+    const focusTags = normalizeCardTags((task as any)?.focusAreas ?? (task as any)?.focus_areas ?? (task as any)?.tags);
+    const sourceFolder = getTaskSourceFolder(task);
+    const trainerNameFromSource = parseTrainerNameFromSource(sourceFolder);
+    const normalizedSource = sourceFolder.toLowerCase();
+    const isCoachTemplate = Boolean(
+      trainerNameFromSource ||
+      normalizedSource.includes('coach') ||
+      normalizedSource.includes('trainer') ||
+      normalizedSource.includes('træner'),
+    );
+    const sourceLabel = isFootballCoachSource(sourceFolder)
+      ? 'FootballCoach'
+      : trainerNameFromSource
+        ? `From ${trainerNameFromSource}`
+        : isCoachTemplate
+          ? 'From coach'
+        : sourceFolder.toLowerCase().includes('personal') || !sourceFolder
+          ? 'My template'
+          : sourceFolder;
+    const sourceVisual = isFootballCoachSource(sourceFolder)
+      ? { iosIcon: 'books.vertical.fill', materialIcon: 'menu_book', color: colors.secondary }
+      : isCoachTemplate
+        ? { iosIcon: 'person.2.fill', materialIcon: 'sports', color: colors.secondary }
+        : normalizedSource && !normalizedSource.includes('personal')
+          ? { iosIcon: 'building.2.fill', materialIcon: 'business', color: colors.accent }
+          : { iosIcon: 'person.crop.circle.fill', materialIcon: 'account_circle', color: colors.primary };
+    const categoryIds = Array.from(new Set(
+      (((task as any)?.categoryIds ?? (task as any)?.category_ids ?? []) as unknown[])
+        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+    ));
+    const categoryItems = getCategoryItems(categoryIds);
+    const autoAdd = (task as any)?.autoAddToActivities === true || (task as any)?.auto_add_to_activities === true;
+    const taskDurationEnabled =
+      (task as any)?.taskDurationEnabled === true || (task as any)?.task_duration_enabled === true;
+    const taskDurationMinutes = Number((task as any)?.taskDurationMinutes ?? (task as any)?.task_duration_minutes);
+    const reminderMinutes = normalizeReminderValue((task as any)?.reminder);
+    const feedbackEnabled = (task as any)?.afterTrainingEnabled === true || (task as any)?.after_training_enabled === true;
 
     return (
-      <TouchableOpacity
+      <View
         style={[
           styles.taskCard,
           styles.taskCardShadow,
           { backgroundColor: isDark ? '#2a2a2a' : colors.card },
         ]}
-        onPress={onPress}
-        testID={`tasks.taskCard.${taskId}`}
-        activeOpacity={0.9}
       >
-        <View style={styles.taskHeader}>
-          <View style={styles.taskHeaderLeft}>
-            <View style={styles.taskIconWrap}>
-              <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
+        <TouchableOpacity onPress={onPress} testID={`tasks.taskCard.${taskId}`} activeOpacity={0.9}>
+          <View style={styles.taskHeader}>
+            <View style={styles.taskHeaderLeft}>
+              <View style={[styles.taskIconWrap, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
+                <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.taskTitleWrap}>
+                <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
+                  {String((task as any)?.title ?? '')}
+                </Text>
+              </View>
             </View>
-            <Text style={[styles.taskTitle, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={2}>
-              {String((task as any)?.title ?? '')}
-            </Text>
+
+            <View style={styles.taskActions}>
+              <TouchableOpacity
+                onPress={() => Alert.alert('Source', sourceLabel)}
+                style={[styles.actionButton, styles.sourceActionButton, { backgroundColor: withAlpha(sourceVisual.color, 0.12) }]}
+                activeOpacity={0.84}
+                accessibilityRole="button"
+                accessibilityLabel={`Source: ${sourceLabel}`}
+                accessibilityHint="Shows whether this is your own, coach, workspace, or library template"
+                testID={`tasks.task.source.${taskId}`}
+              >
+                <IconSymbol
+                  ios_icon_name={sourceVisual.iosIcon as any}
+                  android_material_icon_name={sourceVisual.materialIcon as any}
+                  size={18}
+                  color={sourceVisual.color}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
+                <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onPress} style={styles.actionButton}>
+                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onArchive}
+                style={styles.actionButton}
+                testID={`tasks.template.archiveButton.${taskId}`}
+              >
+                <IconSymbol
+                  ios_icon_name={isArchived ? 'arrow.uturn.backward.circle' : 'archivebox'}
+                  android_material_icon_name={isArchived ? 'unarchive' : 'archive'}
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.task.delete.${taskId}`}>
+                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={18} color={colors.error} />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={styles.taskActions}>
-            <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
-              <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onPress} style={styles.actionButton}>
-              <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onArchive}
-              style={styles.actionButton}
-              testID={`tasks.template.archiveButton.${taskId}`}
-            >
-              <IconSymbol
-                ios_icon_name={isArchived ? 'arrow.uturn.backward.circle' : 'archivebox'}
-                android_material_icon_name={isArchived ? 'unarchive' : 'archive'}
-                size={20}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.task.delete.${taskId}`}>
-              <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
-            </TouchableOpacity>
-          </View>
-        </View>
+          {description ? (
+            <View style={styles.taskDescriptionIndented}>
+              <Text
+                style={[styles.taskDescription, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
+                numberOfLines={3}
+              >
+                {description}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
 
-        {description ? (
-          <Text
-            style={[styles.taskDescription, styles.taskDescriptionIndented, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
-            numberOfLines={2}
+        {videoUrls.length ? (
+          <View
+            style={styles.cardMediaSection}
+            testID={`tasks.taskInlineMedia.${sanitizeTestIdSegment(taskId)}`}
+            accessibilityLabel={`${videoUrls.length} ${videoUrls.length === 1 ? 'media file' : 'media files'}`}
           >
-            {description}
-          </Text>
+            <View style={styles.cardMediaPlayer}>
+              <SwipeVideoPlayer
+                urls={videoUrls}
+                minHeight={92}
+                showHint={videoUrls.length > 1}
+                hintVariant="counter"
+                surfaceColor={isDark ? '#222' : colors.background}
+                testID={`tasks.taskCard.media.${sanitizeTestIdSegment(taskId)}`}
+              />
+            </View>
+          </View>
         ) : null}
 
-        {videoUrl && isValidVideoUrl(videoUrl) && (
-          <TouchableOpacity style={styles.videoThumbnailWrapper} onPress={() => onVideoPress(videoUrls, 0)} activeOpacity={0.85}>
-            {ytThumb ? (
-              <Image source={{ uri: ytThumb }} style={styles.videoThumbnail} resizeMode="cover" />
-            ) : primaryMediaType === 'image' ? (
-              <Image source={{ uri: videoUrl }} style={styles.videoThumbnail} resizeMode="cover" />
-            ) : (
-              <View style={styles.videoThumbnailFallback}>
-                {primaryMediaType === 'pdf' ? (
-                  <IconSymbol ios_icon_name="doc.fill" android_material_icon_name="picture_as_pdf" size={36} color="#fff" />
-                ) : null}
-                <Text style={styles.videoThumbnailFallbackLabel}>{getVideoSourceLabel(videoUrl)}</Text>
+        <View style={[styles.taskMetadataGroup, { borderColor: isDark ? '#3a3a3a' : colors.highlight }]}>
+          {taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0 ? (
+            <View style={styles.taskMetadataRow} testID={`tasks.task.duration.${sanitizeTestIdSegment(taskId)}`}>
+              <View style={styles.taskMetadataKey}>
+                <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color={colors.textSecondary} />
+                <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Task time</Text>
               </View>
-            )}
-            <View style={styles.videoOverlay}>
-              <IconSymbol
-                ios_icon_name={primaryMediaType === 'video' ? 'play.circle.fill' : primaryMediaType === 'image' ? 'photo.fill' : 'doc.fill'}
-                android_material_icon_name={primaryMediaType === 'video' ? 'play_circle' : primaryMediaType === 'image' ? 'image' : 'picture_as_pdf'}
-                size={56}
-                color="#fff"
-              />
+              <Text style={[styles.taskMetadataValue, { color: colors.text }]}>{taskDurationMinutes} min</Text>
             </View>
-            {hasMultipleVideos ? (
-              <View style={styles.videoSwipeBadge}>
-                <Text style={styles.videoSwipeBadgeText}>{videoUrls.length} files - swipe</Text>
+          ) : null}
+
+          {reminderMinutes !== null ? (
+            <View style={styles.taskMetadataRow}>
+              <View style={styles.taskMetadataKey}>
+                <IconSymbol ios_icon_name="bell" android_material_icon_name="notifications_none" size={14} color={colors.textSecondary} />
+                <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Reminder</Text>
               </View>
-            ) : null}
-          </TouchableOpacity>
-        )}
+              <Text style={[styles.taskMetadataValue, { color: colors.text }]}>{reminderMinutes} min before</Text>
+            </View>
+          ) : null}
 
-        {(task as any)?.reminder != null && String((task as any).reminder).length > 0 && (
-          <View style={styles.reminderBadge}>
-            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-            <Text style={[styles.reminderText, { color: colors.accent }]}>{String((task as any).reminder)} min before</Text>
-          </View>
-        )}
-
-        {!!(task as any)?.taskDurationEnabled && (
-          <View style={styles.reminderBadge}>
-            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={14} color={colors.primary} />
-            <Text style={[styles.reminderText, { color: colors.primary }]}>
-              {String((task as any)?.taskDurationMinutes ?? 0)} min task time
-            </Text>
-          </View>
-        )}
-
-        <View
-          style={[
-            styles.autoAddBadge,
-            {
-              backgroundColor: autoAddEnabled
-                ? withAlpha(colors.primary, 0.12)
-                : withAlpha(colors.textSecondary ?? '#6B7280', 0.12),
-              borderColor: autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280',
-            },
-          ]}
-          testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
-        >
-          <IconSymbol
-            ios_icon_name={autoAddEnabled ? 'checkmark.circle.fill' : 'minus.circle'}
-            android_material_icon_name={autoAddEnabled ? 'check_circle' : 'remove_circle_outline'}
-            size={15}
-            color={autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280'}
-          />
-          <Text
-            style={[
-              styles.autoAddBadgeText,
-              { color: autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280' },
-            ]}
+          <View
+            style={styles.taskMetadataRow}
+            testID={`tasks.template.feedbackBadge.${sanitizeTestIdSegment(taskId)}`}
+            accessibilityLabel={`Feedback: ${feedbackEnabled ? 'On' : 'Off'}`}
           >
-            Auto-add to activities: {autoAddEnabled ? 'On' : 'Off'}
-          </Text>
+            <View style={styles.taskMetadataKey}>
+              <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat_bubble_outline" size={14} color={colors.textSecondary} />
+              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Feedback</Text>
+            </View>
+            <View style={[styles.taskStatusBadge, { backgroundColor: withAlpha(feedbackEnabled ? colors.primary : colors.textSecondary, 0.08) }]}>
+              <Text style={[styles.taskStatusBadgeText, { color: feedbackEnabled ? colors.primary : colors.textSecondary }]}>
+                {feedbackEnabled ? 'On' : 'Off'}
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={styles.taskMetadataRow}
+            testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
+            accessibilityLabel={`Auto-add to activities: ${autoAdd ? 'On' : 'Off'}`}
+          >
+            <View style={styles.taskMetadataKey}>
+              <IconSymbol
+                ios_icon_name={autoAdd ? 'checkmark.circle.fill' : 'minus.circle'}
+                android_material_icon_name={autoAdd ? 'check_circle' : 'remove_circle_outline'}
+                size={14}
+                color={autoAdd ? colors.primary : colors.textSecondary}
+              />
+              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Auto-add</Text>
+            </View>
+            <View style={[styles.taskStatusBadge, { backgroundColor: withAlpha(autoAdd ? colors.primary : colors.textSecondary, 0.08) }]}>
+              <Text style={[styles.taskStatusBadgeText, { color: autoAdd ? colors.primary : colors.textSecondary }]}>{autoAdd ? 'On' : 'Off'}</Text>
+            </View>
+          </View>
         </View>
 
         {categoryItems.length ? (
-          <View style={styles.categoriesBlock}>
+          <View style={styles.categoriesBlock} testID={`tasks.taskCategories.${sanitizeTestIdSegment(taskId)}`}>
             <View style={styles.categoriesLabelRow}>
               <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
               <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Categories</Text>
             </View>
             <View style={styles.taskCategoryBadges}>
               {categoryItems.map((category: any) => {
-                const catId = String(category.id);
-                const catColor = category.color || colors.primary;
+                const categoryId = String(category.id);
+                const categoryColor = category.color || colors.primary;
                 return (
                   <View
-                    key={catId}
+                    key={categoryId}
                     style={[
                       styles.taskCategoryBadge,
-                      {
-                        backgroundColor: withAlpha(catColor, 0.14),
-                        borderColor: catColor,
-                      },
+                      { backgroundColor: withAlpha(categoryColor, 0.1), borderColor: categoryColor },
                     ]}
-                    testID={`tasks.taskCategoryBadge.${sanitizeTestIdSegment(taskId)}.${sanitizeTestIdSegment(catId)}`}
+                    testID={`tasks.taskCategoryBadge.${sanitizeTestIdSegment(taskId)}.${sanitizeTestIdSegment(categoryId)}`}
                   >
                     {String(category.emoji ?? '').trim() ? (
-                      <Text style={styles.taskCategoryBadgeEmoji}>{String(category.emoji ?? '').trim()}</Text>
+                      <Text style={styles.taskCategoryBadgeEmoji}>{String(category.emoji).trim()}</Text>
                     ) : null}
-                    <Text style={[styles.taskCategoryBadgeText, { color: catColor }]} numberOfLines={1}>
+                    <Text style={[styles.taskCategoryBadgeText, { color: categoryColor }]} numberOfLines={1}>
                       {String(category.name ?? '')}
                     </Text>
                   </View>
@@ -541,7 +658,36 @@ export const TaskCard = React.memo(
             </View>
           </View>
         ) : null}
-      </TouchableOpacity>
+
+        {focusTags.length ? (
+          <View style={styles.categoriesBlock} testID={`tasks.taskFocusTags.${sanitizeTestIdSegment(taskId)}`}>
+            <View style={styles.categoriesLabelRow}>
+              <IconSymbol ios_icon_name="scope" android_material_icon_name="track_changes" size={14} color={isDark ? '#999' : colors.textSecondary} />
+              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Focus</Text>
+            </View>
+            <View style={styles.cardTagRow}>
+              {focusTags.map((tag) => (
+                <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.08), borderColor: colors.primary }]}>
+                  <Text style={[styles.cardTagChipText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {canAssign && onAssign ? (
+          <TouchableOpacity
+            style={[styles.taskAssignButton, { backgroundColor: colors.primary }]}
+            onPress={onAssign}
+            activeOpacity={0.86}
+            testID={`tasks.task.assign.${sanitizeTestIdSegment(taskId)}`}
+          >
+            <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
+            <Text style={styles.taskAssignButtonText}>Assign</Text>
+          </TouchableOpacity>
+        ) : null}
+
+      </View>
     );
   },
 );
@@ -616,7 +762,160 @@ const FolderItemComponent = React.memo(
   },
 );
 
-export default function TasksScreen() {
+function TaskSourceSelector({
+  options,
+  selected,
+  onSelect,
+  isDark,
+  cardBgColor,
+  textColor,
+  textSecondaryColor,
+}: {
+  options: TaskSourceFilterOption[];
+  selected: TaskSourceFilter;
+  onSelect: (value: TaskSourceFilter) => void;
+  isDark: boolean;
+  cardBgColor: string;
+  textColor: string;
+  textSecondaryColor: string;
+}) {
+  return (
+    <View style={styles.sourceFilterRow} testID="tasks.sourceFilter">
+      {options.map((option) => {
+        const active = selected === option.value;
+        return (
+          <TouchableOpacity
+            key={option.value}
+            style={[
+              styles.sourceFilterChip,
+              {
+                backgroundColor: active ? colors.primary : cardBgColor,
+                borderColor: active ? colors.primary : isDark ? '#333' : colors.highlight,
+              },
+            ]}
+            onPress={() => onSelect(option.value)}
+            activeOpacity={0.84}
+            testID={`tasks.sourceFilter.${option.value}`}
+          >
+            <Text style={[styles.sourceFilterText, { color: active ? '#fff' : textColor }]}>{option.label}</Text>
+            <Text style={[styles.sourceFilterCount, { color: active ? '#fff' : textSecondaryColor }]}>{option.count}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function TaskFocusTagEditor({
+  selectedTags,
+  availableTags,
+  inputValue,
+  disabled,
+  isDark,
+  bgColor,
+  cardBgColor,
+  textColor,
+  textSecondaryColor,
+  onInputChange,
+  onAddTag,
+  onRemoveTag,
+}: {
+  selectedTags: string[];
+  availableTags: string[];
+  inputValue: string;
+  disabled: boolean;
+  isDark: boolean;
+  bgColor: string;
+  cardBgColor: string;
+  textColor: string;
+  textSecondaryColor: string;
+  onInputChange: (value: string) => void;
+  onAddTag: (value: string) => void;
+  onRemoveTag: (value: string) => void;
+}) {
+  const selectedKeys = new Set(selectedTags.map(normalizeCardTagKey));
+  const suggestions = availableTags.filter((tag) => !selectedKeys.has(normalizeCardTagKey(tag)));
+
+  return (
+    <View
+      style={[styles.focusEditorCard, { backgroundColor: bgColor, borderColor: isDark ? '#333' : '#dfe5f2' }]}
+      testID="tasks.modal.focusTagEditor"
+    >
+      <View style={styles.focusEditorHeader}>
+        <View style={styles.focusEditorHeaderText}>
+          <Text style={[styles.toggleLabel, { color: textColor }]}>Focus tags</Text>
+          <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+            Use tags to group tasks by technical, physical, or tactical focus.
+          </Text>
+        </View>
+      </View>
+
+      {selectedTags.length ? (
+        <View style={styles.focusEditorTagRow}>
+          {selectedTags.map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.focusEditorSelectedChip, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: disabled ? 0.65 : 1 }]}
+              onPress={() => onRemoveTag(tag)}
+              disabled={disabled}
+              activeOpacity={0.84}
+              testID={`tasks.modal.focusTag.remove.${sanitizeTestIdSegment(tag)}`}
+            >
+              <Text style={styles.focusEditorSelectedText} numberOfLines={1}>{tag}</Text>
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={13} color="#FFFFFF" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.focusEditorInputRow}>
+        <TextInput
+          style={[styles.focusEditorInput, { backgroundColor: cardBgColor, color: textColor, borderColor: isDark ? '#444' : '#d0d7e3' }]}
+          value={inputValue}
+          onChangeText={onInputChange}
+          placeholder="Add focus tag"
+          placeholderTextColor={textSecondaryColor}
+          editable={!disabled}
+          autoCapitalize="sentences"
+          testID="tasks.modal.focusTag.input"
+        />
+        <TouchableOpacity
+          style={[styles.focusEditorAddButton, { backgroundColor: colors.primary, opacity: disabled || !inputValue.trim() ? 0.55 : 1 }]}
+          onPress={() => onAddTag(inputValue)}
+          disabled={disabled || !inputValue.trim()}
+          activeOpacity={0.84}
+          testID="tasks.modal.focusTag.add"
+        >
+          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {suggestions.length ? (
+        <View style={styles.focusEditorSuggestions}>
+          {suggestions.slice(0, 12).map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.focusEditorSuggestionChip, { backgroundColor: cardBgColor, borderColor: colors.primary, opacity: disabled ? 0.65 : 1 }]}
+              onPress={() => onAddTag(tag)}
+              disabled={disabled}
+              activeOpacity={0.84}
+              testID={`tasks.modal.focusTag.suggestion.${sanitizeTestIdSegment(tag)}`}
+            >
+              <Text style={[styles.focusEditorSuggestionText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+type TaskLibrarySectionProps = {
+  embedded?: boolean;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+};
+
+export function TaskLibrarySection({ embedded = false, contentContainerStyle }: TaskLibrarySectionProps = {}) {
   const footballData = useFootball() as any;
   const adminData = useAdmin() as any;
   const { user } = useAuthSession();
@@ -670,12 +969,15 @@ export default function TasksScreen() {
 
   const listRef = useRef<FlatList<FolderItem> | null>(null);
 
-  // ✅ VIGTIGT: alle state hooks før callbacks/memos der bruger dem
+  // Important: all state hooks must come before callbacks/memos that use them.
   const [refreshing, setRefreshing] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryFilterId, setSelectedCategoryFilterId] = useState<string | null>(null);
+  const [taskSourceFilter, setTaskSourceFilter] = useState<TaskSourceFilter>('all');
+  const [focusTagFilterOpen, setFocusTagFilterOpen] = useState(false);
+  const [selectedFocusTags, setSelectedFocusTags] = useState<string[]>([]);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -689,6 +991,7 @@ export default function TasksScreen() {
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [mediaNames, setMediaNames] = useState<string[]>([]);
   const [mediaNameInput, setMediaNameInput] = useState('');
+  const [taskFocusTagInput, setTaskFocusTagInput] = useState('');
 
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrls, setSelectedVideoUrls] = useState<string[]>([]);
@@ -732,7 +1035,7 @@ export default function TasksScreen() {
     });
   }, [scopedTasks, searchQuery, selectedCategoryFilterId]);
 
-  const templateTasks = useMemo(
+  const templateTaskCandidates = useMemo(
     () =>
       filteredTasks.filter((t: any) => {
         if (!t?.isTemplate) return false;
@@ -743,6 +1046,41 @@ export default function TasksScreen() {
       }),
     [filteredTasks, templateView],
   );
+  const taskSourceOptions = useMemo(
+    () => buildTaskSourceFilterOptions(templateTaskCandidates, { adminMode, userRole, currentUserId: user?.id ?? null }),
+    [adminMode, templateTaskCandidates, user?.id, userRole],
+  );
+  const effectiveTaskSourceFilter = taskSourceOptions.some((option) => option.value === taskSourceFilter)
+    ? taskSourceFilter
+    : 'all';
+  const sourceFilteredTemplateTasks = useMemo(
+    () =>
+      effectiveTaskSourceFilter === 'all'
+        ? templateTaskCandidates
+        : templateTaskCandidates.filter((task) =>
+            getTaskSourceKind(task, { adminMode, userRole, currentUserId: user?.id ?? null }) === effectiveTaskSourceFilter
+          ),
+    [adminMode, effectiveTaskSourceFilter, templateTaskCandidates, user?.id, userRole],
+  );
+  const taskFocusTagOptions = useMemo(
+    () => buildTaskFocusTagOptions(sourceFilteredTemplateTasks),
+    [sourceFilteredTemplateTasks],
+  );
+  const allTaskFocusTags = useMemo(
+    () => buildTaskFocusTagOptions(scopedTasks).map((option) => option.value),
+    [scopedTasks],
+  );
+  const effectiveSelectedFocusTags = useMemo(() => {
+    const availableKeys = new Set(taskFocusTagOptions.map((option) => normalizeCardTagKey(option.value)));
+    return selectedFocusTags.filter((tag) => availableKeys.has(normalizeCardTagKey(tag)));
+  }, [selectedFocusTags, taskFocusTagOptions]);
+  const templateTasks = useMemo(() => {
+    if (!effectiveSelectedFocusTags.length) return sourceFilteredTemplateTasks;
+    const selectedKeys = new Set(effectiveSelectedFocusTags.map(normalizeCardTagKey));
+    return sourceFilteredTemplateTasks.filter((task) =>
+      getTaskFocusTags(task).some((tag) => selectedKeys.has(normalizeCardTagKey(tag)))
+    );
+  }, [effectiveSelectedFocusTags, sourceFilteredTemplateTasks]);
   const folders = useMemo(
     () => organizeFolders(templateTasks, { adminMode, userRole, currentUserId: user?.id ?? null }),
     [templateTasks, adminMode, userRole, user?.id],
@@ -790,15 +1128,25 @@ export default function TasksScreen() {
     setCategoryFilterOpen(false);
   }, []);
 
+  const toggleFocusTagFilterOpen = useCallback(() => {
+    setFocusTagFilterOpen((current) => !current);
+  }, []);
+
+  const toggleFocusTagFilter = useCallback((tag: string) => {
+    const key = normalizeCardTagKey(tag);
+    setSelectedFocusTags((current) =>
+      current.some((selected) => normalizeCardTagKey(selected) === key)
+        ? current.filter((selected) => normalizeCardTagKey(selected) !== key)
+        : [...current, tag]
+    );
+  }, []);
+
   const openTaskModal = useCallback((task: Task | null, creating: boolean = false) => {
     const normalizedTask = task
       ? ({
           ...(task as any),
           reminder: normalizeReminderValue((task as any).reminder),
-          taskDurationEnabled: !!(task as any).taskDurationEnabled,
-          taskDurationMinutes: normalizeTaskDurationValue((task as any).taskDurationMinutes),
           autoAddToActivities: !!((task as any).autoAddToActivities ?? (task as any).auto_add_to_activities),
-          subtasks: normalizeModalSubtasks((task as any).subtasks),
         } as Task)
       : task;
 
@@ -811,6 +1159,7 @@ export default function TasksScreen() {
     setMediaNames(normalizeTaskMediaNames((task as any)?.mediaNames ?? (task as any)?.media_names, taskMediaUrls));
     setVideoUrlInput('');
     setMediaNameInput('');
+    setTaskFocusTagInput('');
     setIsModalVisible(true);
   }, []);
 
@@ -823,6 +1172,7 @@ export default function TasksScreen() {
     setVideoUrlInput('');
     setMediaNames([]);
     setMediaNameInput('');
+    setTaskFocusTagInput('');
     setIsSaving(false);
     setIsUploadingVideo(false);
     setIsMediaDragging(false);
@@ -849,41 +1199,39 @@ export default function TasksScreen() {
     setSelectedTask(prev => (prev ? ({ ...(prev as any), description: text } as Task) : prev));
   }, []);
 
+  const updateSelectedTaskFocusTags = useCallback((tags: string[]) => {
+    const normalizedTags = normalizeCardTags(tags);
+    setSelectedTask(prev =>
+      prev
+        ? ({
+            ...(prev as any),
+            focusAreas: normalizedTags,
+            focus_areas: normalizedTags,
+          } as Task)
+        : prev
+    );
+  }, []);
+
+  const addSelectedTaskFocusTag = useCallback((value: string) => {
+    const nextTags = normalizeTaskFocusInput(value);
+    if (!nextTags.length) return;
+    const currentTags = getTaskFocusTags(selectedTask);
+    const currentKeys = new Set(currentTags.map(normalizeCardTagKey));
+    updateSelectedTaskFocusTags([
+      ...currentTags,
+      ...nextTags.filter((tag) => !currentKeys.has(normalizeCardTagKey(tag))),
+    ]);
+    setTaskFocusTagInput('');
+  }, [selectedTask, updateSelectedTaskFocusTags]);
+
+  const removeSelectedTaskFocusTag = useCallback((value: string) => {
+    const key = normalizeCardTagKey(value);
+    updateSelectedTaskFocusTags(getTaskFocusTags(selectedTask).filter((tag) => normalizeCardTagKey(tag) !== key));
+  }, [selectedTask, updateSelectedTaskFocusTags]);
+
   const updateVideoUrlInput = useCallback((text: string) => {
     setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
     setVideoUrlInput(text);
-  }, []);
-
-  const addSubtask = useCallback(() => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      const subtasks = normalizeModalSubtasks((prev as any).subtasks);
-      return {
-        ...(prev as any),
-        subtasks: [...subtasks, { id: createLocalSubtaskId(), title: '', completed: false }],
-      } as Task;
-    });
-  }, []);
-
-  const updateSubtask = useCallback((subtaskId: string, title: string) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      return {
-        ...(prev as any),
-        subtasks: normalizeModalSubtasks((prev as any).subtasks).map((subtask) =>
-          subtask.id === subtaskId ? { ...subtask, title } : subtask
-        ),
-      } as Task;
-    });
-  }, []);
-
-  const removeSubtask = useCallback((subtaskId: string) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      const subtasks = normalizeModalSubtasks((prev as any).subtasks);
-      const next = subtasks.filter((subtask) => subtask.id !== subtaskId);
-      return { ...(prev as any), subtasks: next.length ? next : subtasks } as Task;
-    });
   }, []);
 
   const executeSaveTask = useCallback(async () => {
@@ -900,7 +1248,6 @@ export default function TasksScreen() {
     }
 
     const normalizedReminder = normalizeReminderValue((selectedTask as any).reminder);
-    const normalizedSubtasks = normalizeSubtasksForSave((selectedTask as any).subtasks);
     const successMessage = isCreating ? 'Task template created' : 'Task template updated';
     const mediaForSave = videoUrlInput.trim()
       ? mergeTaskMedia(videoUrls, mediaNames, videoUrlInput, mediaNameInput)
@@ -911,25 +1258,28 @@ export default function TasksScreen() {
 
     try {
       const categoryIds = Array.from(new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean)));
+      const focusTags = getTaskFocusTags(selectedTask);
       const taskToSave = {
         ...selectedTask,
         title: String((selectedTask as any).title ?? '').trim(),
         reminder: normalizedReminder,
-        subtasks: normalizedSubtasks,
+        subtasks: [],
         videoUrl: videoPayload.videoUrl,
         videoUrls: videoPayload.videoUrls,
         video_url: videoPayload.video_url,
         video_urls: videoPayload.video_urls,
         mediaNames: mediaNamePayload.mediaNames,
         media_names: mediaNamePayload.media_names,
+        focusAreas: focusTags,
+        focus_areas: focusTags,
         categoryIds,
         afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
         afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
         afterTrainingFeedbackEnableScore: selectedTask.afterTrainingFeedbackEnableScore ?? true,
         afterTrainingFeedbackScoreExplanation: selectedTask.afterTrainingFeedbackScoreExplanation ?? null,
         afterTrainingFeedbackEnableNote: selectedTask.afterTrainingFeedbackEnableNote ?? true,
-        taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
-        taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
+        taskDurationEnabled: false,
+        taskDurationMinutes: null,
         afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
         autoAddToActivities: !!(selectedTask as any).autoAddToActivities,
         auto_add_to_activities: !!(selectedTask as any).autoAddToActivities,
@@ -938,7 +1288,7 @@ export default function TasksScreen() {
       if (isCreating) {
         await taskService.createTask({
           task: taskToSave,
-          subtasks: normalizedSubtasks,
+          subtasks: [],
           adminMode,
           adminTargetType,
           adminTargetId,
@@ -950,18 +1300,20 @@ export default function TasksScreen() {
           ...selectedTask,
           title: String((selectedTask as any).title ?? '').trim(),
           reminder: normalizedReminder,
-          subtasks: normalizedSubtasks,
+          subtasks: [],
           videoUrl: videoPayload.videoUrl,
           videoUrls: videoPayload.videoUrls,
           video_url: videoPayload.video_url,
           video_urls: videoPayload.video_urls,
           mediaNames: mediaNamePayload.mediaNames,
           media_names: mediaNamePayload.media_names,
+          focusAreas: focusTags,
+          focus_areas: focusTags,
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
-          taskDurationEnabled: selectedTask.taskDurationEnabled ?? false,
-          taskDurationMinutes: selectedTask.taskDurationEnabled ? (selectedTask.taskDurationMinutes ?? 0) : null,
+          taskDurationEnabled: false,
+          taskDurationMinutes: null,
           afterTrainingFeedbackEnableIntensity: !!selectedTask.afterTrainingEnabled,
           autoAddToActivities: !!(selectedTask as any).autoAddToActivities,
           auto_add_to_activities: !!(selectedTask as any).autoAddToActivities,
@@ -1240,18 +1592,6 @@ export default function TasksScreen() {
     });
   }, []);
 
-  const handleTaskDurationToggle = useCallback((value: boolean) => {
-    setSelectedTask(prev => {
-      if (!prev) return prev;
-      const current = normalizeTaskDurationValue((prev as any).taskDurationMinutes);
-      return {
-        ...(prev as any),
-        taskDurationEnabled: value,
-        taskDurationMinutes: value ? (current ?? 0) : null,
-      } as Task;
-    });
-  }, []);
-
   const handleAutoAddToggle = useCallback((value: boolean) => {
     setSelectedTask(prev =>
       prev
@@ -1273,9 +1613,11 @@ export default function TasksScreen() {
         completed: false,
         isTemplate: true,
         categoryIds: [],
-        subtasks: [{ id: createLocalSubtaskId(), title: '', completed: false }],
+        subtasks: [],
         videoUrl: undefined,
         videoUrls: [],
+        focusAreas: [],
+        focus_areas: [],
         afterTrainingEnabled: false,
         afterTrainingDelayMinutes: 0,
         afterTrainingFeedbackEnableScore: true,
@@ -1293,12 +1635,19 @@ export default function TasksScreen() {
 
   const reminderEnabled =
     !!selectedTask && (selectedTask as any).reminder !== null && (selectedTask as any).reminder !== undefined;
-  const taskDurationEnabled = !!selectedTask?.taskDurationEnabled;
 
   const afterTrainingScoreEnabled = selectedTask?.afterTrainingFeedbackEnableScore ?? true;
   const afterTrainingScoreExplanation = selectedTask?.afterTrainingFeedbackScoreExplanation ?? '';
 
   // Memoized render functions for FlatList
+  const canAssignTemplates = userRole === 'trainer' || userRole === 'admin';
+  const handleAssignTask = useCallback((task: Task) => {
+    Alert.alert(
+      'Assign task',
+      `The Assign button is ready on the card. The final assignment flow for "${String((task as any)?.title ?? 'the task')}" requires the backend link to Plan templates.`,
+    );
+  }, []);
+
   const renderTaskCard = useCallback(
     (task: Task) => (
       <TaskCard
@@ -1308,19 +1657,29 @@ export default function TasksScreen() {
         onDuplicate={() => handleDuplicateTask(String((task as any).id))}
         onArchive={() => void handleArchiveTask(task)}
         onDelete={() => handleDeleteTask(task)}
-        onVideoPress={openVideoModal}
+        onAssign={() => handleAssignTask(task)}
         getCategoryItems={getCategoryItems}
         isArchived={typeof (task as any)?.archivedAt === 'string' && String((task as any).archivedAt).trim().length > 0}
+        canAssign={canAssignTemplates}
       />
     ),
-    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, openVideoModal, getCategoryItems],
+    [isDark, openTaskModal, handleDuplicateTask, handleArchiveTask, handleDeleteTask, handleAssignTask, getCategoryItems, canAssignTemplates],
   );
 
   const bgColor = isDark ? '#1a1a1a' : colors.background;
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const selectedTaskFocusTags = getTaskFocusTags(selectedTask);
   const isTrainerProfile = userRole === 'trainer';
+  const isPlayerPlan = userRole === 'player' && !embedded;
+  const showFlatTemplateList = embedded || isPlayerPlan;
+  const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Tasks' : 'Tasks';
+  const screenSubtitleText = isPlayerPlan
+    ? `${templateTasks.length} templates`
+    : embedded
+      ? `${templateTasks.length} task templates`
+      : `${templateTasks.length} templates`;
 
   const renderFolder = useCallback(
     ({ item }: { item: FolderItem }) => {
@@ -1339,10 +1698,33 @@ export default function TasksScreen() {
     },
     [expandedFolders, toggleFolder, renderTaskCard, textColor, textSecondaryColor, cardBgColor],
   );
+  const renderFlatTask = useCallback(
+    ({ item }: { item: Task }) => renderTaskCard(item),
+    [renderTaskCard],
+  );
 
   const ListHeaderComponent = useMemo(() => {
     return (
       <>
+        {isPlayerPlan ? (
+          <View style={[styles.planSectionSelector, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}>
+            <View style={[styles.planSectionIcon, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
+              <IconSymbol ios_icon_name="rectangle.3.group" android_material_icon_name="dashboard" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.planSectionTextBlock}>
+              <Text style={[styles.planSectionTitle, { color: textColor }]}>Templates</Text>
+              <Text style={[styles.planSectionSubtitle, { color: textSecondaryColor }]} numberOfLines={2}>
+                {isPlayerPlan
+                  ? 'Your own templates and templates shared by your coach.'
+                  : 'Task and exercise templates collected in Plan.'}
+              </Text>
+            </View>
+            <View style={[styles.planSectionBadge, { borderColor: colors.primary }]}>
+              <Text style={[styles.planSectionBadgeText, { color: colors.primary }]}>{templateTasks.length}</Text>
+            </View>
+          </View>
+        ) : null}
+
         {adminMode === 'self' && userRole === 'player' && (
           <View style={[styles.infoBox, { backgroundColor: isDark ? '#2a3a4a' : '#e3f2fd' }]}>
             <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.secondary} />
@@ -1352,7 +1734,7 @@ export default function TasksScreen() {
           </View>
         )}
 
-        {isTrainerProfile ? (
+        {isTrainerProfile && !embedded ? (
           <TrainerScopeFilter
             testIDPrefix="tasks.scopeFilter"
             modalTitle="Tasks"
@@ -1392,6 +1774,97 @@ export default function TasksScreen() {
           ) : null}
         </View>
 
+        {taskSourceOptions.length > 1 ? (
+          <TaskSourceSelector
+            options={taskSourceOptions}
+            selected={effectiveTaskSourceFilter}
+            onSelect={setTaskSourceFilter}
+            isDark={isDark}
+            cardBgColor={cardBgColor}
+            textColor={textColor}
+            textSecondaryColor={textSecondaryColor}
+          />
+        ) : null}
+
+        {taskFocusTagOptions.length ? (
+          <>
+            <View style={styles.categoryFilterHeader}>
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterButton,
+                  {
+                    backgroundColor: effectiveSelectedFocusTags.length ? colors.primary : cardBgColor,
+                    borderColor: effectiveSelectedFocusTags.length ? colors.primary : isDark ? '#333' : colors.highlight,
+                  },
+                ]}
+                onPress={toggleFocusTagFilterOpen}
+                activeOpacity={0.85}
+                testID="tasks.focusTagFilter.button"
+              >
+                <IconSymbol
+                  ios_icon_name="tag.fill"
+                  android_material_icon_name="label"
+                  size={18}
+                  color={effectiveSelectedFocusTags.length ? '#fff' : textSecondaryColor}
+                />
+                <Text
+                  style={[
+                    styles.categoryFilterButtonText,
+                    { color: effectiveSelectedFocusTags.length ? '#fff' : textColor },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {effectiveSelectedFocusTags.length ? effectiveSelectedFocusTags.join(', ') : 'Focus tags'}
+                </Text>
+                <IconSymbol
+                  ios_icon_name={focusTagFilterOpen ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={focusTagFilterOpen ? 'expand_less' : 'expand_more'}
+                  size={16}
+                  color={effectiveSelectedFocusTags.length ? '#fff' : textSecondaryColor}
+                />
+              </TouchableOpacity>
+
+              {effectiveSelectedFocusTags.length ? (
+                <TouchableOpacity
+                  style={[styles.categoryFilterClearButton, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}
+                  onPress={() => setSelectedFocusTags([])}
+                  activeOpacity={0.85}
+                  testID="tasks.focusTagFilter.clearButton"
+                >
+                  <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={textSecondaryColor} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {focusTagFilterOpen ? (
+              <View style={[styles.categoryFilterPanel, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]} testID="tasks.focusTagFilter.panel">
+                {taskFocusTagOptions.map((option) => {
+                  const isSelected = effectiveSelectedFocusTags.some((tag) => normalizeCardTagKey(tag) === normalizeCardTagKey(option.value));
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.categoryFilterChip,
+                        {
+                          backgroundColor: isSelected ? withAlpha(colors.primary, 0.18) : 'transparent',
+                          borderColor: colors.primary,
+                        },
+                      ]}
+                      onPress={() => toggleFocusTagFilter(option.value)}
+                      activeOpacity={0.85}
+                      testID={`tasks.focusTagFilter.option.${sanitizeTestIdSegment(option.value)}`}
+                    >
+                      <Text style={[styles.categoryFilterChipText, { color: isSelected ? colors.primary : textColor }]} numberOfLines={1}>
+                        {option.label} ({option.count})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
         <View style={styles.categoryFilterHeader}>
           <TouchableOpacity
             style={[
@@ -1422,7 +1895,7 @@ export default function TasksScreen() {
             >
               {selectedCategoryFilter
                 ? `${String((selectedCategoryFilter as any).emoji ?? '').trim()} ${String((selectedCategoryFilter as any).name ?? '')}`.trim()
-                : 'Filter'}
+                : 'Category'}
             </Text>
             <IconSymbol
               ios_icon_name={categoryFilterOpen ? 'chevron.up' : 'chevron.down'}
@@ -1492,7 +1965,9 @@ export default function TasksScreen() {
         ) : null}
 
         <View style={styles.sectionDivider}>
-          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>Folders</Text>
+          <Text style={[styles.sectionDividerText, { color: textSecondaryColor }]}>
+            {showFlatTemplateList ? 'Tasks' : 'Folders'}
+          </Text>
           <LinearGradient
             colors={[withAlpha(colors.highlight, 0), withAlpha(colors.highlight, 0.92), withAlpha(colors.primary, 0.35)]}
             start={{ x: 0, y: 0.5 }}
@@ -1545,13 +2020,24 @@ export default function TasksScreen() {
     searchQuery,
     cardBgColor,
     isTrainerProfile,
+    isPlayerPlan,
+    embedded,
     templateView,
+    focusTagFilterOpen,
+    effectiveSelectedFocusTags,
     categoryFilterOpen,
     selectedCategoryFilter,
     selectedCategoryFilterId,
+    effectiveTaskSourceFilter,
+    showFlatTemplateList,
+    taskFocusTagOptions,
+    taskSourceOptions,
     uniqueCategories,
+    toggleFocusTagFilterOpen,
+    toggleFocusTagFilter,
     toggleCategoryFilterOpen,
     selectCategoryFilter,
+    templateTasks.length,
   ]);
 
   const ListEmptyComponent = useMemo(() => {
@@ -1559,7 +2045,7 @@ export default function TasksScreen() {
       <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
         <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={48} color={textSecondaryColor} />
         <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
-          {searchQuery || selectedCategoryFilterId
+          {searchQuery || selectedCategoryFilterId || effectiveTaskSourceFilter !== 'all' || effectiveSelectedFocusTags.length
             ? 'No tasks match your filter'
             : templateView === 'active'
               ? 'No active task templates'
@@ -1567,14 +2053,9 @@ export default function TasksScreen() {
         </Text>
       </View>
     );
-  }, [searchQuery, selectedCategoryFilterId, cardBgColor, textSecondaryColor, templateView]);
+  }, [searchQuery, selectedCategoryFilterId, effectiveTaskSourceFilter, effectiveSelectedFocusTags.length, cardBgColor, textSecondaryColor, templateView]);
 
-  const ListFooterComponent = useMemo(() => <View style={{ height: 100 }} />, []);
-
-  const modalSubtasks = useMemo(
-    () => normalizeModalSubtasks((selectedTask as any)?.subtasks),
-    [selectedTask],
-  );
+  const ListFooterComponent = useMemo(() => <View style={{ height: embedded ? 132 : 100 }} />, [embedded]);
 
   const isPlayerAdmin = adminMode !== 'self' && adminTargetType === 'player';
   const isTeamAdmin = adminMode !== 'self' && adminTargetType === 'team';
@@ -1590,9 +2071,13 @@ export default function TasksScreen() {
         presentation="none"
       >
         <View style={[styles.screen, { backgroundColor: bgColor }]}>
-          <View style={styles.topBar}>
-            <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">Tasks</Text>
-          </View>
+          {!embedded ? (
+            <View style={styles.topBar}>
+              <Text style={[styles.screenTitle, { color: textColor }]} testID="tasks.header.title">
+                {screenTitleText}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
@@ -1609,46 +2094,65 @@ export default function TasksScreen() {
       presentation="none"
     >
       <View style={[styles.screen, { backgroundColor: bgColor }]} testID="tasks.screen">
-        <View style={styles.topBar}>
-          <View style={styles.topBarTitleWrap}>
-            <Text
-              style={[styles.screenTitle, { color: textColor }]}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              testID="tasks.header.title"
+        {!embedded ? (
+          <View style={styles.topBar}>
+            <View style={styles.topBarTitleWrap}>
+              <Text
+                style={[styles.screenTitle, { color: textColor }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                testID="tasks.header.title"
+              >
+                {screenTitleText}
+              </Text>
+              <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
+                {screenSubtitleText}
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.createButton, { backgroundColor: colors.primary }]}
+              onPress={openNewTaskModal}
+              testID="tasks.header.newTaskButton"
             >
-              Tasks
-            </Text>
-            <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]} numberOfLines={1}>
-              {templateTasks.length} templates
-            </Text>
+              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
+              <Text style={styles.createButtonText}>{isPlayerPlan ? 'New template' : 'New task'}</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={[styles.createButton, { backgroundColor: colors.primary }]}
-            onPress={openNewTaskModal}
-            testID="tasks.header.newTaskButton"
-          >
-            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#fff" />
-            <Text style={styles.createButtonText}>New task</Text>
-          </TouchableOpacity>
-        </View>
+        ) : null}
 
-        <FlatList
-          ref={listRef}
-          data={folders}
-          keyExtractor={(f) => f.id}
-          renderItem={renderFolder}
-          contentContainerStyle={styles.contentContainer}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          removeClippedSubviews={Platform.OS !== 'web'}
-          initialNumToRender={8}
-          maxToRenderPerBatch={6}
-          windowSize={10}
-          ListHeaderComponent={ListHeaderComponent}
-          ListEmptyComponent={ListEmptyComponent}
-          ListFooterComponent={ListFooterComponent}
-        />
+        {showFlatTemplateList ? (
+          <FlatList
+            data={templateTasks}
+            keyExtractor={(item) => String((item as any).id)}
+            renderItem={renderFlatTask}
+            contentContainerStyle={[styles.contentContainer, embedded ? styles.embeddedContentContainer : null, contentContainerStyle]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={10}
+            ListHeaderComponent={ListHeaderComponent}
+            ListEmptyComponent={ListEmptyComponent}
+            ListFooterComponent={ListFooterComponent}
+          />
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={folders}
+            keyExtractor={(f) => f.id}
+            renderItem={renderFolder}
+            contentContainerStyle={[styles.contentContainer, embedded ? styles.embeddedContentContainer : null, contentContainerStyle]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            windowSize={10}
+            ListHeaderComponent={ListHeaderComponent}
+            ListEmptyComponent={ListEmptyComponent}
+            ListFooterComponent={ListFooterComponent}
+          />
+        )}
       </View>
 
       <Modal
@@ -1699,6 +2203,21 @@ export default function TasksScreen() {
                     numberOfLines={4}
                     editable={!isSaving}
                     testID="tasks.modal.descriptionInput"
+                  />
+
+                  <TaskFocusTagEditor
+                    selectedTags={selectedTaskFocusTags}
+                    availableTags={allTaskFocusTags}
+                    inputValue={taskFocusTagInput}
+                    disabled={isSaving}
+                    isDark={isDark}
+                    bgColor={bgColor}
+                    cardBgColor={cardBgColor}
+                    textColor={textColor}
+                    textSecondaryColor={textSecondaryColor}
+                    onInputChange={setTaskFocusTagInput}
+                    onAddTag={addSelectedTaskFocusTag}
+                    onRemoveTag={removeSelectedTaskFocusTag}
                   />
 
                   <View style={styles.videoSection}>
@@ -1807,47 +2326,6 @@ export default function TasksScreen() {
                         {formErrors.videoUrl || 'Invalid media. Use a video, image, or PDF link.'}
                       </Text>
                     )}
-                  </View>
-
-                  <View style={styles.subtasksSection}>
-                    <View style={styles.subtasksHeader}>
-                      <Text style={[styles.label, { color: textColor, marginBottom: 0 }]}>Subtasks</Text>
-                      <TouchableOpacity
-                        style={[styles.addSubtaskButton, { borderColor: colors.primary }]}
-                        onPress={addSubtask}
-                        disabled={isSaving}
-                        testID="tasks.modal.addSubtaskButton"
-                      >
-                        <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color={colors.primary} />
-                        <Text style={[styles.addSubtaskButtonText, { color: colors.primary }]}>Add</Text>
-                      </TouchableOpacity>
-                    </View>
-                    {modalSubtasks.map((subtask) => {
-                      const canRemove = modalSubtasks.length > 1;
-                      return (
-                        <View key={subtask.id} style={styles.subtaskRow}>
-                          <TextInput
-                            style={[styles.input, styles.subtaskInput, { backgroundColor: bgColor, color: textColor }]}
-                            value={subtask.title}
-                            onChangeText={(value) => updateSubtask(subtask.id, value)}
-                            placeholder="Subtask"
-                            placeholderTextColor={textSecondaryColor}
-                            editable={!isSaving}
-                            testID={`tasks.modal.subtaskInput.${sanitizeTestIdSegment(subtask.id)}`}
-                          />
-                          {canRemove ? (
-                            <TouchableOpacity
-                              style={styles.removeSubtaskButton}
-                              onPress={() => removeSubtask(subtask.id)}
-                              disabled={isSaving}
-                              testID={`tasks.modal.removeSubtask.${sanitizeTestIdSegment(subtask.id)}`}
-                            >
-                              <IconSymbol ios_icon_name="minus.circle.fill" android_material_icon_name="remove_circle" size={24} color={colors.error} />
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
-                      );
-                    })}
                   </View>
 
                   <View
@@ -2016,59 +2494,6 @@ export default function TasksScreen() {
                             />
                           </>
                         ) : null}
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.reminderSectionSpacing} />
-
-                  <View
-                    style={[
-                      styles.reminderSectionCard,
-                      {
-                        backgroundColor: bgColor,
-                        borderColor: isDark ? '#333' : '#dfe5f2',
-                      },
-                    ]}
-                  >
-                    <View style={styles.reminderSectionHeader}>
-                      <View style={styles.toggleTextWrapper}>
-                        <Text style={[styles.toggleLabel, { color: textColor }]}>Task time</Text>
-                        <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
-                          When switched on, the task time counts in the performance card instead of the activity time.
-                        </Text>
-                      </View>
-                      <Switch
-                        value={taskDurationEnabled}
-                        onValueChange={handleTaskDurationToggle}
-                        trackColor={{ false: isDark ? '#555' : '#d0d7e3', true: colors.primary }}
-                        thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                        ios_backgroundColor={isDark ? '#555' : '#d0d7e3'}
-                        disabled={isSaving}
-                        testID="tasks.template.durationToggle"
-                      />
-                    </View>
-
-                    {taskDurationEnabled && (
-                      <View style={styles.reminderSectionBody}>
-                        <Text style={[styles.label, { color: textColor }]}>Duration (minutes)</Text>
-                        <TextInput
-                          style={[styles.input, { backgroundColor: bgColor, color: textColor, marginBottom: 0 }]}
-                          value={String(selectedTask?.taskDurationMinutes ?? 0)}
-                          onChangeText={(text) =>
-                            setSelectedTask(prev =>
-                              prev
-                                ? ({
-                                    ...prev,
-                                    taskDurationMinutes: normalizeTaskDurationValue(text) ?? 0,
-                                  } as Task)
-                                : prev
-                            )
-                          }
-                          keyboardType="number-pad"
-                          editable={!isSaving}
-                          testID="tasks.template.durationMinutesInput"
-                        />
                       </View>
                     )}
                   </View>
@@ -2273,10 +2698,15 @@ export default function TasksScreen() {
   );
 }
 
+export default function TasksScreen() {
+  return <TaskLibrarySection />;
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   contentContainer: { paddingHorizontal: 18, paddingBottom: 24 },
+  embeddedContentContainer: { paddingHorizontal: 16, paddingBottom: 132 },
   scopeFilterContainer: {
     marginBottom: 12,
   },
@@ -2308,6 +2738,51 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   createButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  planSectionSelector: {
+    minHeight: 72,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  planSectionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  planSectionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planSectionTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  planSectionSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  planSectionBadge: {
+    minWidth: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  planSectionBadgeText: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
   infoBox: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 12, borderRadius: 16 },
   infoText: { flex: 1, fontSize: 14, lineHeight: 20 },
   searchBarWrap: {
@@ -2321,6 +2796,111 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '600' },
+  sourceFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: -4,
+    marginBottom: 14,
+  },
+  sourceFilterChip: {
+    minHeight: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sourceFilterText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  sourceFilterCount: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  focusEditorCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 14,
+    marginBottom: 4,
+    gap: 10,
+  },
+  focusEditorHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  focusEditorHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  focusEditorTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  focusEditorSelectedChip: {
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  focusEditorSelectedText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    maxWidth: 180,
+  },
+  focusEditorInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  focusEditorInput: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  focusEditorAddButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  focusEditorSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  focusEditorSuggestionChip: {
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  focusEditorSuggestionText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
   categoryFilterHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 14 },
   categoryFilterButton: {
     flex: 1,
@@ -2409,24 +2989,127 @@ const styles = StyleSheet.create({
   emptyState: { padding: 48, borderRadius: 16, alignItems: 'center', gap: 16 },
   emptyStateText: { fontSize: 16, textAlign: 'center' },
 
-  taskCard: { borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.28)' },
+  taskCard: { borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.2)' },
   taskCardShadow: {
     shadowColor: '#64748b',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  taskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 },
-  taskHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, minWidth: 0 },
-  taskIconWrap: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(59,130,246,0.12)' },
+  taskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8 },
+  taskHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10, minWidth: 0 },
+  taskIconWrap: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   taskTitleWrap: { flex: 1, minWidth: 0, gap: 5 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  taskTitle: { fontSize: 16, fontWeight: '800', flex: 1, lineHeight: 21 },
-  taskDescription: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
-  taskDescriptionIndented: { marginLeft: 46, marginTop: -4, marginBottom: 10 },
-  taskActions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
-  actionButton: { padding: 4 },
+  taskTitle: { fontSize: 17, fontWeight: '800', flex: 1, lineHeight: 22 },
+  taskMeta: { fontSize: 11, fontWeight: '800' },
+  taskDescription: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
+  taskDescriptionIndented: { marginLeft: 42, marginTop: -2, marginBottom: 10 },
+  taskActions: { flexDirection: 'row', gap: 3, flexShrink: 0 },
+  actionButton: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', padding: 0 },
+  sourceActionButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 0 },
+  taskMetadataGroup: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, marginBottom: 0, rowGap: 4 },
+  taskMetadataRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  taskMetadataKey: { width: 86, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  taskMetadataLabel: { flex: 1, fontSize: 12, fontWeight: '600' },
+  taskMetadataValue: { flex: 1, fontSize: 12, fontWeight: '700' },
+  taskStatusBadge: { minHeight: 25, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, justifyContent: 'center' },
+  taskStatusBadgeText: { fontSize: 12, fontWeight: '700' },
+  cardFactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  cardFactChip: {
+    minHeight: 42,
+    maxWidth: '100%',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  cardFactLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  cardFactValue: {
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  cardLabeledSection: {
+    marginBottom: 10,
+    gap: 4,
+  },
+  cardTagSection: {
+    marginBottom: 10,
+    gap: 6,
+  },
+  cardTagRow: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  cardTagChip: {
+    minHeight: 27,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 0,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    justifyContent: 'center',
+  },
+  cardTagChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cardSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 7,
+  },
+  cardSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  cardSectionMeta: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cardMediaSection: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  cardMediaPlayer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  taskAssignButton: {
+    minHeight: 44,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginTop: 12,
+    marginBottom: 0,
+  },
+  taskAssignButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
 
   videoThumbnailWrapper: { height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#000' },
   videoThumbnail: { width: '100%', height: '100%' },
@@ -2516,23 +3199,23 @@ const styles = StyleSheet.create({
   },
   autoAddBadgeText: { fontSize: 12, fontWeight: '800' },
 
-  categoriesBlock: { marginTop: 6, gap: 8 },
-  categoriesLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  categoriesLabelText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
-  taskCategoryBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoriesBlock: { marginTop: 8, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  categoriesLabelRow: { width: 86, minHeight: 27, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  categoriesLabelText: { fontSize: 11, fontWeight: '700' },
+  taskCategoryBadges: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   taskCategoryBadge: {
-    minHeight: 30,
+    minHeight: 27,
     maxWidth: '100%',
     borderRadius: 999,
-    borderWidth: 1.5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderWidth: 0,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
   taskCategoryBadgeEmoji: { fontSize: 13 },
-  taskCategoryBadgeText: { fontSize: 12, fontWeight: '800' },
+  taskCategoryBadgeText: { fontSize: 12, fontWeight: '700' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '92%', overflow: 'hidden' },
@@ -2544,22 +3227,6 @@ const styles = StyleSheet.create({
   textArea: { height: 100, textAlignVertical: 'top' },
   errorText: { fontSize: 13, fontWeight: '600', marginTop: -10, marginBottom: 12 },
 
-
-  subtasksSection: { marginBottom: 18 },
-  subtasksHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  addSubtaskButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addSubtaskButtonText: { fontSize: 13, fontWeight: '800' },
-  subtaskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  subtaskInput: { flex: 1, marginBottom: 0 },
-  removeSubtaskButton: { padding: 4 },
 
   categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5 },

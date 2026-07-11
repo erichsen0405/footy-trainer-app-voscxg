@@ -519,7 +519,7 @@ export default function ExerciseDetailsScreen() {
                       activeOpacity={0.9}
                       style={[styles.assignButton, { backgroundColor: colors.success }]}
                     >
-                      <Text style={styles.assignButtonText}>Tildel</Text>
+                      <Text style={styles.assignButtonText}>Assign</Text>
                     </TouchableOpacity>
                   ) : null}
 

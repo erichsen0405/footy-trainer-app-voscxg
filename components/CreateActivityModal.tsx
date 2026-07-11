@@ -1196,7 +1196,7 @@ export default function CreateActivityModal({
               activeOpacity={0.85}
               testID="activity.create.intensityScopeModal.single"
             >
-              <Text style={[styles.intensityScopeModalSecondaryText, { color: textColor }]}>Nej, kun denne</Text>
+              <Text style={[styles.intensityScopeModalSecondaryText, { color: textColor }]}>No, only this one</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

@@ -24,8 +24,8 @@ const mockPlayers = [
 const mockTeams = [
   {
     id: 'team-1',
-    name: 'Hold Test',
-    description: 'Beskrivelse',
+    name: 'Team Test',
+    description: 'Description',
   },
 ];
 

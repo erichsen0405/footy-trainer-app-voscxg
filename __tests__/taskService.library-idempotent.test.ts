@@ -12,6 +12,7 @@ type TaskTemplateRow = {
   video_url: string | null;
   video_urls: string[] | null;
   media_names: string[] | null;
+  focus_areas: string[];
   source_folder: string | null;
   after_training_enabled: boolean;
   after_training_delay_minutes: number | null;
@@ -74,6 +75,7 @@ jest.mock('@/integrations/supabase/client', () => {
             video_url: payload.video_url ?? null,
             video_urls: payload.video_urls ?? null,
             media_names: payload.media_names ?? null,
+            focus_areas: payload.focus_areas ?? [],
             source_folder: payload.source_folder ?? null,
             after_training_enabled: payload.after_training_enabled ?? false,
             after_training_delay_minutes: payload.after_training_delay_minutes ?? null,
@@ -222,6 +224,20 @@ describe('taskService.createTask library idempotency', () => {
 
     expect(db.taskTemplates).toHaveLength(1);
     expect(db.taskTemplates[0].auto_add_to_activities).toBe(true);
+  });
+
+  it('saves deduplicated focus areas when creating a task template', async () => {
+    const created = await taskService.createTask({
+      title: 'Focus drill',
+      description: 'Tagged drill',
+      categoryIds: [],
+      focusAreas: [' Teknik ', 'Afslutning', 'teknik', 'Afslutning'],
+    });
+
+    expect(db.taskTemplates).toHaveLength(1);
+    expect(db.taskTemplates[0].focus_areas).toEqual(['Teknik', 'Afslutning']);
+    expect(created.focusAreas).toEqual(['Teknik', 'Afslutning']);
+    expect(created.focus_areas).toEqual(['Teknik', 'Afslutning']);
   });
 
   it('clamps task duration minutes to 600 before save', async () => {

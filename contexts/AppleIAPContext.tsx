@@ -1389,8 +1389,8 @@ export function AppleIAPProvider({
         const alertKey = flowMatch && activeFlow ? activeFlow.key : purchaseEventKey;
         const alertTitle = receiptOrToken ? 'Purchase completed! 🎉' : 'Purchase registered';
         const alertMessage = receiptOrToken
-          ? 'Dit abonnement er nu aktivt. Du kan nu bruge alle funktioner.'
-          : 'Vi kunne ikke verificere kvitteringen endnu. Tjek dit abonnement lidt senere.';
+          ? 'Your subscription is now active. You can now use all features.'
+          : 'We could not verify the receipt yet. Check your subscription again shortly.';
         showAlertOnceByKey(alertKey, alertTitle, alertMessage);
       } else {
         console.log('[AppleIAP] Suppressing purchase alert (silent update)', {

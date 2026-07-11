@@ -140,7 +140,7 @@ export default function TeamManagement() {
     } catch (error: any) {
       console.error('Error adding player to team:', error);
       if (error.message.includes('duplicate')) {
-        Alert.alert('Error', 'Spilleren er allerede medlem af dette team');
+        Alert.alert('Error', 'The player is already a member of this team');
       } else {
         Alert.alert('Error', 'Could not add player:' + error.message);
       }

@@ -75,6 +75,22 @@ Expiry, cancellation or revocation must not delete users, owner accounts,
 memberships, players or historical data. It only changes the active commercial
 state used by effective seats and feature gating.
 
+## Provisioning Boundary
+
+Owner/coach workspaces must not be created just because legacy trainer/team
+data, direct table writes or helper functions touch coach-scoped rows.
+
+New `owner_accounts` and new personal `coach_accounts` for private coach
+businesses may only be provisioned by:
+
+- active Apple trainer subscription sync through
+  `sync_private_coach_owner_subscription(...)`
+- platform admin/super admin provisioning through
+  `create_owner_account_as_platform_admin(...)`
+
+Legacy/default helpers may return existing workspaces and repair memberships,
+but they must not create a new workspace automatically.
+
 ## Super Admin Provisioning
 
 Super admin provisioning uses:

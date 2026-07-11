@@ -2094,7 +2094,7 @@ export default function ProfileScreen() {
                     ]}
                     value={editName}
                     onChangeText={setEditName}
-                    placeholder="Dit navn"
+	                    placeholder="Your name"
                     placeholderTextColor={textSecondaryColor}
                   />
 
@@ -2142,7 +2142,7 @@ export default function ProfileScreen() {
 	                        })}
 	                      </View>
 
-	                      <Text style={[styles.label, { color: textColor }]}>Klub</Text>
+	                      <Text style={[styles.label, { color: textColor }]}>Club</Text>
 	                      <TextInput
 	                        style={[
 	                          styles.input,
@@ -2153,11 +2153,11 @@ export default function ProfileScreen() {
 	                        ]}
 	                        value={editClubName}
 	                        onChangeText={setEditClubName}
-	                        placeholder="Klubnavn"
+	                        placeholder="Club name"
 	                        placeholderTextColor={textSecondaryColor}
 	                      />
 
-	                      <Text style={[styles.label, { color: textColor }]}>Niveau</Text>
+	                      <Text style={[styles.label, { color: textColor }]}>Level</Text>
 	                      <TextInput
 	                        style={[
 	                          styles.input,
@@ -2395,7 +2395,7 @@ export default function ProfileScreen() {
                     size={20}
                     color="#fff"
                   />
-                  <Text style={styles.addPlayerButtonText}>Open Spiller CRM</Text>
+                  <Text style={styles.addPlayerButtonText}>Open Player CRM</Text>
                 </TouchableOpacity>
               </CollapsibleSection>
             </CardWrapper>
@@ -2899,7 +2899,7 @@ export default function ProfileScreen() {
                   ]}
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="din@email.dk"
+                  placeholder="your@email.com"
                   placeholderTextColor={textSecondaryColor}
                   autoCapitalize="none"
                   keyboardType="email-address"

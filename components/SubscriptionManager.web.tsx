@@ -149,9 +149,9 @@ export default function SubscriptionManager({
               'Persistent error\n\n' +
               'There are problems creating your subscription. This may be due to:\n\n' +
               '• Bad internet connection' +
-              '• Server problemer\n\n' +
+              '• Server issues\n\n' +
               'Please try:' +
-              '1. Tjek din internetforbindelse\n' +
+              '1. Check your internet connection\n' +
               '2. Sign out and sign back in\n' +
               '3. Reload the page' +
               'If the problem persists, contact support.'
@@ -311,7 +311,7 @@ export default function SubscriptionManager({
             </View>
             <View style={styles.currentPlanBadge}>
               <Text style={styles.currentPlanBadgeText}>
-                {subscriptionStatus.status === 'trial' ? 'Trial period' : 'Aktiv'}
+                {subscriptionStatus.status === 'trial' ? 'Trial period' : 'Active'}
               </Text>
             </View>
           </View>
@@ -507,7 +507,7 @@ export default function SubscriptionManager({
                       color={isCurrentPlan ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
-                      Fuld adgang til alle funktioner
+                      Full access to all features
                     </Text>
                   </View>
 
@@ -534,7 +534,7 @@ export default function SubscriptionManager({
                     onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                     disabled={isCreating}
                     testID="paywall.primaryCtaButton"
-                    accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
+                    accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Switch to this plan'}
                   >
                     {isCreating ? (
                       <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -545,7 +545,7 @@ export default function SubscriptionManager({
                           { color: isPopular ? '#fff' : colors.primary },
                         ]}
                       >
-                        {isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
+                        {isSignupFlow ? 'Choose this plan' : 'Switch to this plan'}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -559,7 +559,7 @@ export default function SubscriptionManager({
                       size={20}
                       color="#fff"
                     />
-                    <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
+                    <Text style={styles.currentPlanIndicatorText}>Your active plan</Text>
                   </View>
                 )}
               </TouchableOpacity>

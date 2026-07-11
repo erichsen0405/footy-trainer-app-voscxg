@@ -863,7 +863,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
 
         <View style={[styles.footer, { borderTopColor: theme.highlight, backgroundColor: theme.card }]}> 
           <View>
-            <Text style={[styles.footerLabel, { color: theme.textSecondary }]}>Valgt</Text>
+            <Text style={[styles.footerLabel, { color: theme.textSecondary }]}>Selected</Text>
             <Text style={[styles.footerValue, { color: theme.text }]}>{selectionCount}</Text>
           </View>
           <TouchableOpacity
@@ -882,7 +882,7 @@ export function AssignExerciseModal({ visible, exercise, trainerId, onClose, onS
             {assigning ? (
               <ActivityIndicator size="small" color={theme.text} />
             ) : (
-              <Text style={styles.assignButtonText}>Tildel</Text>
+              <Text style={styles.assignButtonText}>Assign</Text>
             )}
           </TouchableOpacity>
         </View>

@@ -32,4 +32,17 @@ describe('SwipeVideoPlayer', () => {
     expect(getAllByTestId('mock.smartVideoPlayer')).toHaveLength(1);
     expect(queryByText('Swipe for next file')).toBeNull();
   });
+
+  it('can render a compact counter-only hint for card previews', () => {
+    const { getByText, queryByText } = render(
+      <SwipeVideoPlayer
+        urls={['focus/one.mp4', 'focus/two.mp4']}
+        hintVariant="counter"
+        surfaceColor="#F8FAFC"
+      />
+    );
+
+    expect(queryByText('Swipe for next file')).toBeNull();
+    expect(getByText('1/2')).toBeTruthy();
+  });
 });

@@ -242,7 +242,7 @@ export default function SubscriptionManager({
       if (result.success) {
         setShowPlans(false);
         setRetryCount(0);
-        Alert.alert('Plan opdateret', `Dit abonnement er opdateret til ${planName}.`);
+        Alert.alert('Plan updated', `Your subscription has been updated to ${planName}.`);
         return;
       }
 
@@ -276,7 +276,7 @@ export default function SubscriptionManager({
       const normalizedSelected = (planName ?? '').trim().toLowerCase();
 
       if (normalizedCurrent.length > 0 && normalizedCurrent === normalizedSelected) {
-        Alert.alert('Allerede aktiv', 'You are already on this plane.');
+        Alert.alert('Already active', 'You are already on this plan.');
         return;
       }
 
@@ -341,14 +341,14 @@ export default function SubscriptionManager({
                 
                 if (newRetryCount >= 3) {
                   Alert.alert(
-                    'Vedvarende fejl',
+                    'Persistent error',
                     'There are problems creating your subscription. This may be due to:\n\n' +
                     '• Bad internet connection' +
                     '• Server issues\n\n' +
                     'Please try:' +
                     '1. Check your internet connection\n' +
                     '2. Log out and back in\n' +
-                    '3. Genstart appen\n\n' +
+                    '3. Restart the app\n\n' +
                     'If the problem persists, contact support.',
                     [{ text: 'OK', onPress: () => setRetryCount(0) }]
                   );
@@ -363,7 +363,7 @@ export default function SubscriptionManager({
     } catch (error: any) {
       console.error('[SubscriptionManager] Unexpected error:', error);
       Alert.alert(
-        'Uventet fejl',
+        'Unexpected error',
         'An unexpected error occurred. Please try again.',
         [
           { text: 'OK', onPress: () => setRetryCount(0) }
@@ -391,16 +391,16 @@ export default function SubscriptionManager({
       case 'trial':
         return 'Trial period';
       case 'active':
-        return 'Aktiv';
+        return 'Active';
       case 'past_due':
-        return 'Betaling afventer';
+        return 'Payment pending';
       case 'canceled':
       case 'cancelled':
-        return 'Cancelet';
+        return 'Canceled';
       case 'incomplete':
         return 'Incomplete payment';
       default:
-        return subscriptionStatus?.hasSubscription ? 'Aktivt abonnement' : 'No subscription';
+        return subscriptionStatus?.hasSubscription ? 'Active subscription' : 'No subscription';
     }
   }, [isLifetime, normalizedStatus, subscriptionStatus?.hasSubscription]);
 
@@ -482,7 +482,7 @@ const statusTone = useMemo(() => {
               <View style={styles.currentPlanTextGroup}>
                 <Text style={[styles.currentPlanLabel, { color: textSecondaryColor }]}>Current plan</Text>
                 <Text style={[styles.currentPlanName, { color: textColor }]}>
-                  {subscriptionStatus.planName ?? 'Aktivt abonnement'}
+                  {subscriptionStatus.planName ?? 'Active subscription'}
                 </Text>
               </View>
             </View>
@@ -689,7 +689,7 @@ const statusTone = useMemo(() => {
                       color={isPlanCurrent ? colors.success : colors.primary}
                     />
                     <Text style={[styles.featureText, { color: textColor }]}>
-                      Fuld adgang til alle funktioner
+                      Full access to all features
                     </Text>
                   </View>
 
@@ -716,7 +716,7 @@ const statusTone = useMemo(() => {
                     onPress={() => handleSelectPlan(plan.id, plan.name, plan.max_players)}
                     disabled={isCreating}
                     testID="paywall.primaryCtaButton"
-                    accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
+                    accessibilityLabel={isSignupFlow ? 'Choose this plan' : 'Switch to this plan'}
                   >
                     {isCreating ? (
                       <ActivityIndicator color={isPopular ? '#fff' : colors.primary} size="small" />
@@ -727,7 +727,7 @@ const statusTone = useMemo(() => {
                           { color: isPopular ? '#fff' : colors.primary },
                         ]}
                       >
-                        {isSignupFlow ? 'Choose this plan' : 'Skift til denne plan'}
+                        {isSignupFlow ? 'Choose this plan' : 'Switch to this plan'}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -741,7 +741,7 @@ const statusTone = useMemo(() => {
                       size={20}
                       color="#fff"
                     />
-                    <Text style={styles.currentPlanIndicatorText}>Din aktive plan</Text>
+                    <Text style={styles.currentPlanIndicatorText}>Your active plan</Text>
                   </View>
                 )}
               </TouchableOpacity>

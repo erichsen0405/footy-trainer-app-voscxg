@@ -31,6 +31,7 @@ import {
 } from '@/services/ownerCoachDashboardService';
 
 type DashboardScopeType = 'all' | 'team' | 'player';
+type DashboardFilterPicker = 'attention' | 'status' | 'team' | 'tag' | 'position' | 'level';
 
 type DashboardFilters = {
   scopeType: DashboardScopeType;
@@ -102,6 +103,17 @@ function hasActiveFilters(filters: DashboardFilters): boolean {
       filters.position ||
       filters.alertOnly
   );
+}
+
+function countActivePlayerFilters(filters: DashboardFilters): number {
+  return [
+    filters.alertOnly,
+    filters.status,
+    filters.teamId,
+    filters.tagId,
+    filters.level,
+    filters.position,
+  ].filter(Boolean).length;
 }
 
 function playerMatchesFilters(player: OwnerCoachDashboardPlayer, filters: DashboardFilters): boolean {
@@ -208,7 +220,7 @@ export default function CoachDashboardScreen() {
   const colors = getColors(colorScheme);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { startAdminPlayer } = useAdmin();
+  const { startAdminPlayer, exitAdmin } = useAdmin();
   const { userRole, loading: roleLoading } = useUserRole();
   const [context, setContext] = useState<OwnerPlayerCrmContext | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
@@ -216,6 +228,7 @@ export default function CoachDashboardScreen() {
   const [filters, setFilters] = useState<DashboardFilters>(emptyFilters);
   const [savedFilters, setSavedFilters] = useState<DashboardFilters | null>(null);
   const [scopeSelectorVisible, setScopeSelectorVisible] = useState(false);
+  const [filterPickerVisible, setFilterPickerVisible] = useState<DashboardFilterPicker | null>(null);
   const [loading, setLoading] = useState(true);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -339,14 +352,20 @@ export default function CoachDashboardScreen() {
       };
     }
 
-    const players = getFilteredDashboardPlayers(dashboard, filters);
-    const playerIds = new Set(players.map((player) => player.playerId));
-    const alerts = dashboard.alerts.filter((alert) => alertMatchesDashboardFilters(alert, playerIds));
+    const scopedPlayers = getScopedPlayers(dashboard, filters);
+    const scopedPlayerIds = new Set(scopedPlayers.map((player) => player.playerId));
+    const players = scopedPlayers.filter((player) => playerMatchesFilters(player, filters));
+    const scopeOnlyFilters = {
+      ...emptyFilters,
+      scopeType: filters.scopeType,
+      scopeId: filters.scopeId,
+    };
+    const alerts = dashboard.alerts.filter((alert) => alertMatchesDashboardFilters(alert, scopedPlayerIds));
     const todayActivities = dashboard.today.activities.filter((activity) =>
-      activityMatchesDashboardFilters(activity, filters, playerIds)
+      activityMatchesDashboardFilters(activity, scopeOnlyFilters, scopedPlayerIds)
     );
     const weekActivities = dashboard.week.activities.filter((activity) =>
-      activityMatchesDashboardFilters(activity, filters, playerIds)
+      activityMatchesDashboardFilters(activity, scopeOnlyFilters, scopedPlayerIds)
     );
 
     return {
@@ -354,7 +373,7 @@ export default function CoachDashboardScreen() {
       alerts,
       todayActivities,
       weekActivities,
-      metrics: getFilteredDashboardMetrics(players, todayActivities, weekActivities),
+      metrics: getFilteredDashboardMetrics(scopedPlayers, todayActivities, weekActivities),
     };
   }, [dashboard, filters]);
 
@@ -452,6 +471,23 @@ export default function CoachDashboardScreen() {
     [activeOwnerAccountId, router, startAdminPlayer]
   );
 
+  const openActivities = useCallback(() => {
+    exitAdmin();
+    router.push({
+      pathname: '/(tabs)/(home)',
+      params: activeOwnerAccountId ? { ownerAccountId: activeOwnerAccountId } : {},
+    } as any);
+  }, [activeOwnerAccountId, exitAdmin, router]);
+
+  const openProgress = useCallback(() => {
+    exitAdmin();
+    router.push('/(tabs)/performance' as any);
+  }, [exitAdmin, router]);
+
+  const openProfile = useCallback(() => {
+    router.push('/(tabs)/profile' as any);
+  }, [router]);
+
   const handleAlertPress = useCallback(
     (alert: OwnerCoachDashboardAlert) => {
       if (alert.type === 'no_plan') {
@@ -462,14 +498,6 @@ export default function CoachDashboardScreen() {
       openPlayerCrm(alert.playerId);
     },
     [openPlayerActivities, openPlayerCrm]
-  );
-
-  const openPlayerTasks = useCallback(
-    (playerId: string) => {
-      startAdminPlayer(playerId);
-      router.push('/(tabs)/tasks' as any);
-    },
-    [router, startAdminPlayer]
   );
 
   const openPlayerProgress = useCallback(
@@ -516,94 +544,309 @@ export default function CoachDashboardScreen() {
     );
   };
 
-  const renderFilterRow = () => {
-    if (!dashboard) return null;
+  const getFilterPickerTitle = (picker: DashboardFilterPicker | null): string => {
+    if (picker === 'attention') return 'Attention';
+    if (picker === 'status') return 'Status';
+    if (picker === 'team') return 'Team';
+    if (picker === 'tag') return 'Tags';
+    if (picker === 'position') return 'Position';
+    if (picker === 'level') return 'Level';
+    return 'Filter';
+  };
+
+  const renderFilterPicker = () => {
+    if (!dashboard || !filterPickerVisible) return null;
+
+    const close = () => setFilterPickerVisible(null);
+    const options =
+      filterPickerVisible === 'attention'
+        ? [
+            {
+              id: 'all',
+              label: 'All players',
+              detail: 'Show the full player list',
+              active: !filters.alertOnly,
+              onPress: () => {
+                setFilters((current) => ({ ...current, alertOnly: false }));
+                close();
+              },
+            },
+            {
+              id: 'alerts',
+              label: 'Alerts only',
+              detail: 'Players needing attention',
+              active: filters.alertOnly,
+              onPress: () => {
+                setFilters((current) => ({ ...current, alertOnly: true }));
+                close();
+              },
+            },
+          ]
+        : filterPickerVisible === 'status'
+          ? [
+              {
+                id: 'all',
+                label: 'All statuses',
+                detail: 'No status filter',
+                active: !filters.status,
+                onPress: () => {
+                  setFilters((current) => ({ ...current, status: null }));
+                  close();
+                },
+              },
+              ...dashboard.filters.statuses.map((status) => ({
+                id: status.value,
+                label: status.label,
+                detail: 'CRM status',
+                active: filters.status === status.value,
+                onPress: () => {
+                  setFilters((current) => ({ ...current, status: status.value }));
+                  close();
+                },
+              })),
+            ]
+          : filterPickerVisible === 'team'
+            ? [
+                {
+                  id: 'all',
+                  label: 'All teams',
+                  detail: 'No team filter',
+                  active: !filters.teamId,
+                  onPress: () => {
+                    setFilters((current) => ({ ...current, teamId: null }));
+                    close();
+                  },
+                },
+                ...dashboard.filters.teams.map((team) => ({
+                  id: team.id,
+                  label: team.name,
+                  detail: `${team.memberCount} players`,
+                  active: filters.teamId === team.id,
+                  onPress: () => {
+                    setFilters((current) => ({ ...current, teamId: team.id }));
+                    close();
+                  },
+                })),
+              ]
+            : filterPickerVisible === 'tag'
+              ? [
+                  {
+                    id: 'all',
+                    label: 'All tags',
+                    detail: 'No tag filter',
+                    active: !filters.tagId,
+                    onPress: () => {
+                      setFilters((current) => ({ ...current, tagId: null }));
+                      close();
+                    },
+                  },
+                  ...dashboard.filters.tags.map((tag) => ({
+                    id: tag.id,
+                    label: tag.name,
+                    detail: 'Player tag',
+                    active: filters.tagId === tag.id,
+                    onPress: () => {
+                      setFilters((current) => ({ ...current, tagId: tag.id }));
+                      close();
+                    },
+                  })),
+                ]
+              : filterPickerVisible === 'position'
+                ? [
+                    {
+                      id: 'all',
+                      label: 'All positions',
+                      detail: 'No position filter',
+                      active: !filters.position,
+                      onPress: () => {
+                        setFilters((current) => ({ ...current, position: null }));
+                        close();
+                      },
+                    },
+                    ...dashboard.filters.positions.map((position) => ({
+                      id: position,
+                      label: position,
+                      detail: 'Position',
+                      active: filters.position === position,
+                      onPress: () => {
+                        setFilters((current) => ({ ...current, position }));
+                        close();
+                      },
+                    })),
+                  ]
+                : [
+                    {
+                      id: 'all',
+                      label: 'All levels',
+                      detail: 'No level filter',
+                      active: !filters.level,
+                      onPress: () => {
+                        setFilters((current) => ({ ...current, level: null }));
+                        close();
+                      },
+                    },
+                    ...dashboard.filters.levels.map((level) => ({
+                      id: level,
+                      label: level,
+                      detail: 'Level',
+                      active: filters.level === level,
+                      onPress: () => {
+                        setFilters((current) => ({ ...current, level }));
+                        close();
+                      },
+                    })),
+                  ];
+
     return (
-      <View style={styles.filterBlock} testID="coachDashboard.filters">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          <FilterChip
-            label="Alerts"
-            active={filters.alertOnly}
-            onPress={() => setFilters((current) => ({ ...current, alertOnly: !current.alertOnly }))}
-            colors={colors}
-          />
-          {savedFilters ? (
-            <FilterChip label="Saved" active={false} onPress={handleApplySavedFilters} colors={colors} />
-          ) : null}
-          {dashboard.filters.statuses.map((status) => (
-            <FilterChip
-              key={status.value}
-              label={status.label}
-              active={filters.status === status.value}
-              onPress={() =>
-                setFilters((current) => ({
-                  ...current,
-                  status: current.status === status.value ? null : status.value,
-                }))
-              }
-              colors={colors}
-            />
-          ))}
-          {dashboard.filters.teams.map((team) => (
-            <FilterChip
-              key={team.id}
-              label={team.name}
-              active={filters.teamId === team.id}
-              onPress={() =>
-                setFilters((current) => ({
-                  ...current,
-                  teamId: current.teamId === team.id ? null : team.id,
-                }))
-              }
-              colors={colors}
-            />
-          ))}
-          {dashboard.filters.tags.map((tag) => (
-            <FilterChip
-              key={tag.id}
-              label={tag.name}
-              active={filters.tagId === tag.id}
-              onPress={() =>
-                setFilters((current) => ({
-                  ...current,
-                  tagId: current.tagId === tag.id ? null : tag.id,
-                }))
-              }
-              colors={colors}
-            />
-          ))}
-          {dashboard.filters.positions.map((position) => (
-            <FilterChip
-              key={position}
-              label={position}
-              active={filters.position === position}
-              onPress={() =>
-                setFilters((current) => ({
-                  ...current,
-                  position: current.position === position ? null : position,
-                }))
-              }
-              colors={colors}
-            />
-          ))}
-          {dashboard.filters.levels.map((level) => (
-            <FilterChip
-              key={level}
-              label={level}
-              active={filters.level === level}
-              onPress={() =>
-                setFilters((current) => ({
-                  ...current,
-                  level: current.level === level ? null : level,
-                }))
-              }
-              colors={colors}
-            />
-          ))}
-        </ScrollView>
-        <View style={styles.filterActions}>
+      <Modal visible transparent animationType="fade" onRequestClose={close}>
+        <View style={styles.modalRoot}>
           <TouchableOpacity
-            style={[styles.smallActionButton, { borderColor: colors.border }]}
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={close}
+            accessibilityLabel="Close player filter"
+          />
+          <View style={[styles.scopeSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.scopeSheetHeader}>
+              <View>
+                <Text style={[styles.scopeSheetTitle, { color: colors.text }]}>{getFilterPickerTitle(filterPickerVisible)}</Text>
+                <Text style={[styles.scopeSheetSubtitle, { color: colors.textSecondary }]}>
+                  Choose how the player list should be filtered.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.scopeCloseButton, { borderColor: colors.border }]}
+                onPress={close}
+                accessibilityLabel="Close player filter"
+              >
+                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.scopeSheetList} showsVerticalScrollIndicator={false}>
+              {options.map((option) => (
+                <DropdownOption
+                  key={option.id}
+                  label={option.label}
+                  detail={option.detail}
+                  active={option.active}
+                  onPress={option.onPress}
+                  colors={colors}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderPlayerFilters = () => {
+    if (!dashboard) return null;
+    const statusValue = filters.status
+      ? dashboard.filters.statuses.find((status) => status.value === filters.status)?.label ?? statusLabel(filters.status)
+      : 'All statuses';
+    const teamValue = filters.teamId
+      ? dashboard.filters.teams.find((team) => team.id === filters.teamId)?.name ?? 'Selected team'
+      : 'All teams';
+    const tagValue = filters.tagId
+      ? dashboard.filters.tags.find((tag) => tag.id === filters.tagId)?.name ?? 'Selected tag'
+      : 'All tags';
+    const positionValue = filters.position ?? 'All positions';
+    const levelValue = filters.level ?? 'All levels';
+    const activeCount = countActivePlayerFilters(filters);
+
+    return (
+      <View style={styles.filterBlock} testID="coachDashboard.playerFilters">
+        <View style={styles.playerFilterHeader}>
+          <View style={styles.playerFilterTitleBlock}>
+            <Text style={[styles.playerFilterTitle, { color: colors.text }]}>Player filters</Text>
+            <Text style={[styles.playerFilterSubtitle, { color: colors.textSecondary }]}>
+              Use the filters below.
+            </Text>
+          </View>
+          <View style={[styles.playerFilterCountBadge, { borderColor: activeCount ? colors.primary : colors.border }]}>
+            <Text style={[styles.playerFilterCountText, { color: activeCount ? colors.primary : colors.textSecondary }]}>
+              {activeCount}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.filterSelectGrid}>
+          <FilterSelectButton
+            label="Attention"
+            value={filters.alertOnly ? 'Alerts only' : 'All players'}
+            icon="bell.fill"
+            materialIcon="notifications"
+            active={filters.alertOnly}
+            onPress={() => setFilterPickerVisible('attention')}
+            colors={colors}
+            testID="coachDashboard.playerFilters.attention"
+          />
+          <FilterSelectButton
+            label="Status"
+            value={statusValue}
+            icon="checkmark.circle.fill"
+            materialIcon="check_circle"
+            active={Boolean(filters.status)}
+            onPress={() => setFilterPickerVisible('status')}
+            colors={colors}
+            testID="coachDashboard.playerFilters.status"
+          />
+          <FilterSelectButton
+            label="Team"
+            value={teamValue}
+            icon="person.3.fill"
+            materialIcon="groups"
+            active={Boolean(filters.teamId)}
+            onPress={() => setFilterPickerVisible('team')}
+            colors={colors}
+            testID="coachDashboard.playerFilters.team"
+          />
+          <FilterSelectButton
+            label="Tag"
+            value={tagValue}
+            icon="tag.fill"
+            materialIcon="sell"
+            active={Boolean(filters.tagId)}
+            onPress={() => setFilterPickerVisible('tag')}
+            colors={colors}
+            testID="coachDashboard.playerFilters.tag"
+          />
+          <FilterSelectButton
+            label="Position"
+            value={positionValue}
+            icon="figure.soccer"
+            materialIcon="sports_soccer"
+            active={Boolean(filters.position)}
+            onPress={() => setFilterPickerVisible('position')}
+            colors={colors}
+            testID="coachDashboard.playerFilters.position"
+          />
+          <FilterSelectButton
+            label="Level"
+            value={levelValue}
+            icon="chart.line.uptrend.xyaxis"
+            materialIcon="trending_up"
+            active={Boolean(filters.level)}
+            onPress={() => setFilterPickerVisible('level')}
+            colors={colors}
+            testID="coachDashboard.playerFilters.level"
+          />
+        </View>
+
+        <View style={styles.filterActions}>
+          {savedFilters ? (
+            <TouchableOpacity
+              style={[styles.smallActionButton, { borderColor: colors.border }]}
+              onPress={handleApplySavedFilters}
+            >
+              <IconSymbol ios_icon_name="arrow.down.doc.fill" android_material_icon_name="file_download" size={16} color={colors.text} />
+              <Text style={[styles.smallActionText, { color: colors.text }]}>Hent</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.smallActionButton, { borderColor: colors.border, opacity: hasActiveFilters(filters) ? 1 : 0.48 }]}
             onPress={handleSaveFilters}
             disabled={!hasActiveFilters(filters)}
           >
@@ -611,14 +854,15 @@ export default function CoachDashboardScreen() {
             <Text style={[styles.smallActionText, { color: colors.text }]}>Save</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.smallActionButton, { borderColor: colors.border }]}
+            style={[styles.smallActionButton, { borderColor: colors.border, opacity: hasActiveFilters(filters) ? 1 : 0.48 }]}
             onPress={handleClearFilters}
             disabled={!hasActiveFilters(filters)}
           >
             <IconSymbol ios_icon_name="xmark.circle.fill" android_material_icon_name="close" size={16} color={colors.text} />
-            <Text style={[styles.smallActionText, { color: colors.text }]}>Clear</Text>
+            <Text style={[styles.smallActionText, { color: colors.text }]}>Ryd</Text>
           </TouchableOpacity>
         </View>
+        {renderFilterPicker()}
       </View>
     );
   };
@@ -783,8 +1027,19 @@ export default function CoachDashboardScreen() {
       >
         <View style={styles.header}>
           <View style={styles.headerTitleRow}>
-            <Text style={[styles.title, { color: colors.text }]}>Coach Dashboard</Text>
-            {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+            <Text style={[styles.title, { color: colors.text }]}>Overview</Text>
+            <View style={styles.headerActions}>
+              {dashboardLoading ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+              <TouchableOpacity
+                style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+                onPress={openProfile}
+                activeOpacity={0.84}
+                accessibilityLabel="Open profile and settings"
+                testID="coachDashboard.profileButton"
+              >
+                <IconSymbol ios_icon_name="person.crop.circle" android_material_icon_name="account_circle" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
             {activeWorkspace?.name ?? dashboard?.ownerAccount.name ?? 'Owner workspace'}
@@ -810,6 +1065,25 @@ export default function CoachDashboardScreen() {
           <>
             {renderScopeSelector()}
 
+            <View style={styles.shortcutGrid} testID="coachDashboard.shortcuts">
+              <ShortcutButton
+                label="Activities"
+                icon="calendar"
+                materialIcon="event"
+                colors={colors}
+                onPress={openActivities}
+                testID="coachDashboard.shortcut.activities"
+              />
+              <ShortcutButton
+                label="Progress"
+                icon="chart.bar.fill"
+                materialIcon="bar_chart"
+                colors={colors}
+                onPress={openProgress}
+                testID="coachDashboard.shortcut.progress"
+              />
+            </View>
+
             <View style={styles.metricGrid}>
               {metricCards.map((metric) => (
                 <View key={metric.label} style={[styles.metricCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -822,8 +1096,6 @@ export default function CoachDashboardScreen() {
                 </View>
               ))}
             </View>
-
-            {renderFilterRow()}
 
             <SectionTitle title="Alerts" count={filteredDashboard.alerts.length} colors={colors} />
             {filteredDashboard.alerts.length ? (
@@ -858,6 +1130,8 @@ export default function CoachDashboardScreen() {
             <SectionTitle title="This Week" count={filteredDashboard.weekActivities.length} colors={colors} />
             <ActivityList activities={filteredDashboard.weekActivities.slice(0, 8)} colors={colors} />
 
+            {renderPlayerFilters()}
+
             <SectionTitle title="Players" count={filteredDashboard.players.length} colors={colors} />
             {filteredDashboard.players.length ? (
               <View style={styles.sectionStack}>
@@ -867,7 +1141,7 @@ export default function CoachDashboardScreen() {
                     player={player}
                     colors={colors}
                     onOpenCrm={() => openPlayerCrm(player.playerId)}
-                    onOpenTasks={() => openPlayerTasks(player.playerId)}
+                    onOpenActivities={() => openPlayerActivities(player.playerId)}
                     onOpenProgress={() => openPlayerProgress(player.playerId)}
                   />
                 ))}
@@ -891,13 +1165,63 @@ function SectionTitle({ title, count, colors }: { title: string; count: number; 
   );
 }
 
-function FilterChip({
+function FilterSelectButton({
   label,
+  value,
+  icon,
+  materialIcon,
+  active,
+  onPress,
+  colors,
+  testID,
+}: {
+  label: string;
+  value: string;
+  icon: string;
+  materialIcon: string;
+  active: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof getColors>;
+  testID: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.filterSelectButton,
+        {
+          backgroundColor: active ? `${colors.primary}12` : colors.card,
+          borderColor: active ? colors.primary : colors.border,
+        },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.84}
+      testID={testID}
+    >
+      <View style={[styles.filterSelectIcon, { backgroundColor: active ? `${colors.primary}18` : colors.background, borderColor: active ? colors.primary : colors.border }]}>
+        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={17} color={active ? colors.primary : colors.textSecondary} />
+      </View>
+      <View style={styles.filterSelectTextBlock}>
+        <Text style={[styles.filterSelectLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[styles.filterSelectValue, { color: colors.text }]} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+      <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="expand_more" size={16} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
+
+function DropdownOption({
+  label,
+  detail,
   active,
   onPress,
   colors,
 }: {
   label: string;
+  detail: string;
   active: boolean;
   onPress: () => void;
   colors: ReturnType<typeof getColors>;
@@ -905,17 +1229,26 @@ function FilterChip({
   return (
     <TouchableOpacity
       style={[
-        styles.filterChip,
+        styles.dropdownOption,
         {
-          backgroundColor: active ? colors.primary : colors.card,
+          backgroundColor: active ? `${colors.primary}12` : colors.background,
           borderColor: active ? colors.primary : colors.border,
         },
       ]}
       onPress={onPress}
+      activeOpacity={0.86}
     >
-      <Text style={[styles.filterChipText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-        {label}
-      </Text>
+      <View style={styles.dropdownOptionTextBlock}>
+        <Text style={[styles.dropdownOptionLabel, { color: colors.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[styles.dropdownOptionDetail, { color: colors.textSecondary }]} numberOfLines={1}>
+          {detail}
+        </Text>
+      </View>
+      {active ? (
+        <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={19} color={colors.primary} />
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -988,6 +1321,38 @@ function EmptyInline({ text, colors }: { text: string; colors: ReturnType<typeof
   );
 }
 
+function ShortcutButton({
+  label,
+  icon,
+  materialIcon,
+  colors,
+  onPress,
+  testID,
+}: {
+  label: string;
+  icon: string;
+  materialIcon: string;
+  colors: ReturnType<typeof getColors>;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.shortcutButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.84}
+      testID={testID}
+    >
+      <View style={[styles.shortcutIcon, { backgroundColor: `${colors.primary}14`, borderColor: `${colors.primary}33` }]}>
+        <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={18} color={colors.primary} />
+      </View>
+      <Text style={[styles.shortcutLabel, { color: colors.text }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function ActivityList({
   activities,
   colors,
@@ -1031,13 +1396,13 @@ function PlayerCard({
   player,
   colors,
   onOpenCrm,
-  onOpenTasks,
+  onOpenActivities,
   onOpenProgress,
 }: {
   player: OwnerCoachDashboardPlayer;
   colors: ReturnType<typeof getColors>;
   onOpenCrm: () => void;
-  onOpenTasks: () => void;
+  onOpenActivities: () => void;
   onOpenProgress: () => void;
 }) {
   const primaryAlert = player.alertTypes[0] ? statusLabel(player.alertTypes[0]) : 'On track';
@@ -1045,7 +1410,7 @@ function PlayerCard({
 
   return (
     <View style={[styles.playerCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID="coachDashboard.playerCard">
-      <View style={styles.playerHeader}>
+      <TouchableOpacity style={styles.playerHeader} onPress={onOpenCrm} activeOpacity={0.84}>
         <View style={styles.playerNameBlock}>
           <Text style={[styles.playerName, { color: colors.text }]} numberOfLines={1}>
             {player.displayName}
@@ -1059,7 +1424,7 @@ function PlayerCard({
             {primaryAlert}
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
       <View style={styles.playerStats}>
         <StatPill label="Open" value={String(player.openTasks)} colors={colors} />
@@ -1072,8 +1437,7 @@ function PlayerCard({
       </Text>
 
       <View style={styles.playerActions}>
-        <IconAction icon="person.crop.circle" materialIcon="person" label="CRM" onPress={onOpenCrm} colors={colors} />
-        <IconAction icon="checklist" materialIcon="checklist" label="Tasks" onPress={onOpenTasks} colors={colors} />
+        <IconAction icon="calendar" materialIcon="event" label="Activities" onPress={onOpenActivities} colors={colors} />
         <IconAction icon="chart.bar.fill" materialIcon="bar_chart" label="Progress" onPress={onOpenProgress} colors={colors} />
       </View>
     </View>
@@ -1137,6 +1501,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 38,
+    columnGap: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  headerIconButton: {
+    width: 38,
+    height: 38,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 29,
@@ -1207,27 +1585,140 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  filterBlock: {
+  shortcutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 8,
     marginBottom: 14,
   },
-  filterRow: {
+  shortcutButton: {
+    width: '48.8%',
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
     columnGap: 8,
-    paddingBottom: 8,
   },
-  filterChip: {
+  shortcutIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  filterBlock: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  playerFilterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 10,
+    marginBottom: 10,
+  },
+  playerFilterTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  playerFilterTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  playerFilterSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  playerFilterCountBadge: {
+    minWidth: 32,
+    height: 32,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  playerFilterCountText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  filterSelectGrid: {
+    rowGap: 8,
+  },
+  filterSelectButton: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 9,
+  },
+  filterSelectIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterSelectTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  filterSelectLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  filterSelectValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  dropdownOption: {
+    minHeight: 54,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 11,
     paddingVertical: 8,
-    maxWidth: 170,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+    marginBottom: 7,
   },
-  filterChipText: {
+  dropdownOptionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dropdownOptionLabel: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  dropdownOptionDetail: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
+    marginTop: 2,
   },
   filterActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     columnGap: 8,
+    rowGap: 8,
+    marginTop: 10,
   },
   scopeFilterBlock: {
     marginBottom: 14,

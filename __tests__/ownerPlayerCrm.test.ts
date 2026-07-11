@@ -201,7 +201,7 @@ describe('owner player CRM contract', () => {
 
   it('moves mobile player/team management into the dedicated CRM tab', () => {
     expect(tabLayout).toContain("name: 'player-crm'");
-    expect(tabLayout).toContain("label: 'CRM'");
+    expect(tabLayout).toContain("label: 'Players'");
     expect(tabLayout).toContain('<Stack.Screen name="player-crm" />');
     expect(mobileCrm).toContain('TeamManagement');
     expect(mobileCrm).toContain('CreatePlayerModal');
@@ -209,6 +209,15 @@ describe('owner player CRM contract', () => {
     expect(mobileCrm).toContain('inviteOwnerPlayerGuardianContact');
     expect(mobileCrm).toContain('resendOwnerPlayerGuardianInvite');
     expect(mobileCrm).toContain('revokeOwnerPlayerGuardianAccess');
+    expect(mobileCrm.indexOf('<FilterChips')).toBeGreaterThan(mobileCrm.indexOf('styles.sectionHeader'));
+    expect(mobileCrm).toContain('useAdmin');
+    expect(mobileCrm).toContain("pathname: '/(tabs)/(home)'");
+    expect(mobileCrm).toContain("router.push('/(tabs)/tasks'");
+    expect(mobileCrm).toContain("router.push('/(tabs)/performance'");
+    expect(mobileCrm).toContain('PlayerCardAction');
+    expect(mobileCrm).toContain('.activities`');
+    expect(mobileCrm).toContain('.tasks`');
+    expect(mobileCrm).toContain('.progress`');
     expect(profile).toContain("router.push('/(tabs)/player-crm'");
     expect(profile).toContain('profile.openPlayerCrmButton');
     expect(profile).not.toContain('<PlayersList');

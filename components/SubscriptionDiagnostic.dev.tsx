@@ -95,7 +95,7 @@ export default function SubscriptionDiagnostic() {
                 Admin ID: {sub.admin_id}
               </Text>
               <Text style={[styles.text, { fontWeight: 'bold', color: sub.admin_id === currentUser?.id ? colors.success : colors.error }]}>
-                {sub.admin_id === currentUser?.id ? '✅ Dette er DIT abonnement' : '❌ This subscription belongs to another user'}
+                {sub.admin_id === currentUser?.id ? '✅ This is YOUR subscription' : '❌ This subscription belongs to another user'}
               </Text>
             </View>
           ))
@@ -123,8 +123,8 @@ export default function SubscriptionDiagnostic() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>In-App Purchases</Text>
-        <Text style={styles.text}>Hermes enabled: {iapDiagnostics.hermesEnabled ? 'Ja' : 'Nej'}</Text>
-        <Text style={styles.text}>IAP ready: {iapReady ? 'Ja' : 'Nej'}</Text>
+        <Text style={styles.text}>Hermes enabled: {iapDiagnostics.hermesEnabled ? 'Yes' : 'No'}</Text>
+        <Text style={styles.text}>IAP ready: {iapReady ? 'Yes' : 'No'}</Text>
         {iapUnavailableReason && (
           <Text style={[styles.text, { color: colors.warning }]}>{iapUnavailableReason}</Text>
         )}

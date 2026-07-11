@@ -40,6 +40,7 @@ type TaskTemplateRow = {
   id: string;
   user_id: string;
   auto_add_to_activities: boolean;
+  focus_areas?: string[];
 };
 
 const db = {
@@ -377,6 +378,14 @@ describe('taskService.updateTask category sync cleanup', () => {
         p_dry_run: false,
       },
     });
+  });
+
+  it('updates focus areas on a task template', async () => {
+    await taskService.updateTask('template-1', 'user-1', {
+      focusAreas: [' Teknik ', 'Afslutning', 'teknik'],
+    });
+
+    expect(db.taskTemplates[0].focus_areas).toEqual(['Teknik', 'Afslutning']);
   });
 
   it('does not sync matching activities when category changes and auto-add is off', async () => {
