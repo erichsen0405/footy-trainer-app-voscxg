@@ -2428,32 +2428,69 @@ function TemplateCard({
   const timer = getTemplateTimer(template);
   const templateFacts = getTemplateFacts(template, sourceLabel, timer);
   const focusTags = normalizeFocusTags(template.focusAreas);
+  const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType);
   return (
-    <View style={[styles.templateCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID={`plan.template.${template.templateType}`}>
+    <View
+      style={[
+        styles.templateCard,
+        styles.templateCardShadow,
+        { backgroundColor: colors.card, borderColor: 'rgba(148,163,184,0.28)' },
+      ]}
+      testID={`plan.template.${template.templateType}`}
+    >
       <View style={styles.templateHeader}>
-        <View style={[styles.templateIcon, { backgroundColor: `${tone}18`, borderColor: tone }]}>
-          <IconSymbol
-            ios_icon_name={TEMPLATE_TYPES.find((type) => type.value === template.templateType)?.icon as any}
-            android_material_icon_name={TEMPLATE_TYPES.find((type) => type.value === template.templateType)?.materialIcon as any}
-            size={20}
-            color={tone}
-          />
-        </View>
-        <View style={styles.templateTitleBlock}>
-          <Text style={[styles.templateTitle, { color: colors.text }]} numberOfLines={1}>
-            {template.title}
-          </Text>
-          <Text style={[styles.templateMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-            {templateTypeLabel(template.templateType)} skabelon
-          </Text>
-        </View>
-        {showStatusControls ? (
-          <View style={[styles.statusBadge, { borderColor: template.status === 'archived' ? colors.textSecondary : colors.success }]}>
-            <Text style={[styles.statusBadgeText, { color: template.status === 'archived' ? colors.textSecondary : colors.success }]}>
-              {template.status}
+        <View style={styles.templateHeaderLeft}>
+          <View style={[styles.templateIcon, { backgroundColor: `${tone}18` }]}>
+            <IconSymbol
+              ios_icon_name={typeMeta?.icon as any}
+              android_material_icon_name={typeMeta?.materialIcon as any}
+              size={18}
+              color={tone}
+            />
+          </View>
+          <View style={styles.templateTitleBlock}>
+            <Text style={[styles.templateTitle, { color: colors.text }]} numberOfLines={2}>
+              {template.title}
             </Text>
           </View>
-        ) : null}
+        </View>
+
+        <View style={styles.templateActions}>
+          <TouchableOpacity
+            style={[styles.templateActionButton, { opacity: busy ? 0.5 : 1 }]}
+            onPress={onDuplicate}
+            disabled={busy}
+            activeOpacity={0.84}
+            testID={`plan.template.duplicate.${template.templateType}`}
+          >
+            <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.templateActionButton, { opacity: busy ? 0.5 : 1 }]}
+            onPress={onEdit}
+            disabled={busy}
+            activeOpacity={0.84}
+            testID={`plan.template.edit.${template.templateType}`}
+          >
+            <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.warning} />
+          </TouchableOpacity>
+          {showStatusControls ? (
+            <TouchableOpacity
+              style={[styles.templateActionButton, { opacity: busy ? 0.5 : 1 }]}
+              onPress={onArchive}
+              disabled={busy}
+              activeOpacity={0.84}
+              testID={`plan.template.archive.${template.templateType}`}
+            >
+              <IconSymbol
+                ios_icon_name={template.status === 'archived' ? 'arrow.uturn.backward.circle' : 'archivebox'}
+                android_material_icon_name={template.status === 'archived' ? 'unarchive' : 'archive'}
+                size={20}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {templateFacts.length ? (
@@ -2512,21 +2549,16 @@ function TemplateCard({
         </View>
       ) : null}
 
-      <View style={styles.cardActions}>
-        <TemplateAction label="Tildel" icon="person.badge.plus" materialIcon="assignment_ind" colors={colors} onPress={onAssign} disabled={busy} />
-        <TemplateAction label="Edit" icon="pencil" materialIcon="edit" colors={colors} onPress={onEdit} disabled={busy} />
-        <TemplateAction label="Copy" icon="doc.on.doc" materialIcon="content_copy" colors={colors} onPress={onDuplicate} disabled={busy} />
-        {showStatusControls ? (
-          <TemplateAction
-            label={template.status === 'archived' ? 'Restore' : 'Archive'}
-            icon={template.status === 'archived' ? 'arrow.uturn.backward.circle' : 'archivebox'}
-            materialIcon={template.status === 'archived' ? 'unarchive' : 'archive'}
-            colors={colors}
-            onPress={onArchive}
-            disabled={busy}
-          />
-        ) : null}
-      </View>
+      <TouchableOpacity
+        style={[styles.templateAssignButton, { backgroundColor: colors.primary, opacity: busy ? 0.65 : 1 }]}
+        onPress={onAssign}
+        disabled={busy}
+        activeOpacity={0.86}
+        testID={`plan.template.assign.${template.templateType}`}
+      >
+        <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
+        <Text style={styles.templateAssignButtonText}>Tildel</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -2538,36 +2570,6 @@ function InfoPill({ text, colors }: { text: string; colors: ReturnType<typeof ge
         {text}
       </Text>
     </View>
-  );
-}
-
-function TemplateAction({
-  label,
-  icon,
-  materialIcon,
-  colors,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  icon: string;
-  materialIcon: string;
-  colors: ReturnType<typeof getColors>;
-  onPress: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.cardActionButton, { borderColor: colors.border, opacity: disabled ? 0.5 : 1 }]}
-      onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.84}
-    >
-      <IconSymbol ios_icon_name={icon as any} android_material_icon_name={materialIcon as any} size={16} color={colors.primary} />
-      <Text style={[styles.cardActionText, { color: colors.text }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 
@@ -3290,19 +3292,35 @@ const styles = StyleSheet.create({
   },
   templateCard: {
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 24,
+    padding: 14,
+    marginBottom: 12,
+  },
+  templateCardShadow: {
+    shadowColor: '#64748b',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 6,
   },
   templateHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     columnGap: 10,
+    marginBottom: 8,
+  },
+  templateHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    columnGap: 12,
+    minWidth: 0,
   },
   templateIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    borderWidth: 1,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3312,7 +3330,16 @@ const styles = StyleSheet.create({
   },
   templateTitle: {
     fontSize: 16,
-    fontWeight: '900',
+    lineHeight: 21,
+    fontWeight: '800',
+  },
+  templateActions: {
+    flexDirection: 'row',
+    columnGap: 8,
+    flexShrink: 0,
+  },
+  templateActionButton: {
+    padding: 4,
   },
   templateMeta: {
     fontSize: 12,
@@ -3336,20 +3363,21 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   templateLabeledBlock: {
-    marginTop: 10,
+    marginBottom: 10,
     rowGap: 4,
   },
   templateFactGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 7,
-    marginTop: 10,
+    marginTop: 2,
+    marginBottom: 10,
   },
   templateFactChip: {
     minHeight: 42,
     maxWidth: '100%',
-    borderRadius: 8,
-    paddingHorizontal: 9,
+    borderRadius: 12,
+    paddingHorizontal: 10,
     paddingVertical: 7,
     justifyContent: 'center',
   },
@@ -3365,7 +3393,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   templateTagSection: {
-    marginTop: 10,
+    marginBottom: 10,
     rowGap: 6,
   },
   templateTagRow: {
@@ -3398,12 +3426,26 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   templateMediaSection: {
-    marginTop: 12,
+    marginBottom: 12,
   },
   templateMediaPlayer: {
-    borderRadius: 8,
+    borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#000',
+  },
+  templateAssignButton: {
+    minHeight: 42,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    columnGap: 7,
+    marginBottom: 10,
+  },
+  templateAssignButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
   templatePills: {
     flexDirection: 'row',

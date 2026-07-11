@@ -457,7 +457,10 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('getTemplateMediaUrls');
     expect(plan).toContain('SwipeVideoPlayer');
     expect(plan).toContain('plan.template.mediaPlayer');
-    expect(plan).toContain('TemplateAction label="Tildel"');
+    expect(plan).toContain('plan.template.assign.${template.templateType}');
+    expect(plan).toContain('plan.template.duplicate.${template.templateType}');
+    expect(plan).toContain('plan.template.edit.${template.templateType}');
+    expect(plan).not.toContain('TemplateAction label="Tildel"');
     expect(plan).toContain('Beskrivelse');
     expect(plan).toContain('FocusTagEditor');
     expect(plan).toContain('plan.templates.focusTagFilter');
