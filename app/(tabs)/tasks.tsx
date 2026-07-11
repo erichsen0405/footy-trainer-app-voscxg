@@ -552,13 +552,11 @@ export const TaskCard = React.memo(
         </TouchableOpacity>
 
         {videoUrls.length ? (
-          <View style={styles.cardMediaSection} testID={`tasks.taskInlineMedia.${sanitizeTestIdSegment(taskId)}`}>
-            <View style={styles.cardSectionHeader}>
-              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Media</Text>
-              <Text style={[styles.cardSectionMeta, { color: isDark ? '#999' : colors.textSecondary }]}>
-                {videoUrls.length} {videoUrls.length === 1 ? 'file' : 'files'}
-              </Text>
-            </View>
+          <View
+            style={styles.cardMediaSection}
+            testID={`tasks.taskInlineMedia.${sanitizeTestIdSegment(taskId)}`}
+            accessibilityLabel={`${videoUrls.length} ${videoUrls.length === 1 ? 'media file' : 'media files'}`}
+          >
             <View style={styles.cardMediaPlayer}>
               <SwipeVideoPlayer
                 urls={videoUrls}
@@ -3011,7 +3009,7 @@ const styles = StyleSheet.create({
   taskActions: { flexDirection: 'row', gap: 3, flexShrink: 0 },
   actionButton: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', padding: 0 },
   sourceActionButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 0 },
-  taskMetadataGroup: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, marginBottom: 4 },
+  taskMetadataGroup: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, marginBottom: 0, rowGap: 4 },
   taskMetadataRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 10 },
   taskMetadataKey: { width: 86, flexDirection: 'row', alignItems: 'center', gap: 7 },
   taskMetadataLabel: { flex: 1, fontSize: 12, fontWeight: '600' },
@@ -3089,7 +3087,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   cardMediaSection: {
-    marginTop: 4,
+    marginTop: 8,
     marginBottom: 12,
   },
   cardMediaPlayer: {

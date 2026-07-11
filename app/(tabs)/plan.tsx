@@ -2636,13 +2636,11 @@ function TemplateCard({
       ) : null}
 
       {mediaUrls.length ? (
-        <View style={styles.templateMediaSection} testID={`plan.template.media.${template.templateType}`}>
-          <View style={styles.templateSectionHeader}>
-            <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Media</Text>
-            <Text style={[styles.templateSectionMeta, { color: colors.textSecondary }]}>
-              {mediaUrls.length} {mediaUrls.length === 1 ? 'file' : 'files'}
-            </Text>
-          </View>
+        <View
+          style={styles.templateMediaSection}
+          testID={`plan.template.media.${template.templateType}`}
+          accessibilityLabel={`${mediaUrls.length} ${mediaUrls.length === 1 ? 'media file' : 'media files'}`}
+        >
           <View style={styles.templateMediaPlayer}>
             <SwipeVideoPlayer
               urls={mediaUrls}
@@ -3672,8 +3670,9 @@ const styles = StyleSheet.create({
   templateMetadataRows: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(148,163,184,0.24)',
-    paddingTop: 8,
-    marginBottom: 2,
+    paddingTop: 10,
+    marginBottom: 0,
+    rowGap: 4,
   },
   templateMetadataRow: {
     minHeight: 28,
@@ -3756,7 +3755,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   templateMediaSection: {
-    marginTop: 4,
+    marginTop: 8,
     marginBottom: 12,
   },
   templateMediaPlayer: {
