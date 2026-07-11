@@ -476,9 +476,6 @@ export const TaskCard = React.memo(
     const taskDurationMinutes = Number((task as any)?.taskDurationMinutes ?? (task as any)?.task_duration_minutes);
     const reminderMinutes = normalizeReminderValue((task as any)?.reminder);
     const feedbackEnabled = (task as any)?.afterTrainingEnabled === true || (task as any)?.after_training_enabled === true;
-    const feedbackDelayMinutes = Number(
-      (task as any)?.afterTrainingDelayMinutes ?? (task as any)?.after_training_delay_minutes,
-    );
 
     return (
       <View
@@ -578,43 +575,57 @@ export const TaskCard = React.memo(
         <View style={[styles.taskMetadataGroup, { borderColor: isDark ? '#3a3a3a' : colors.highlight }]}>
           {taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0 ? (
             <View style={styles.taskMetadataRow} testID={`tasks.task.duration.${sanitizeTestIdSegment(taskId)}`}>
-              <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color={colors.textSecondary} />
-              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Task time</Text>
+              <View style={styles.taskMetadataKey}>
+                <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color={colors.textSecondary} />
+                <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Task time</Text>
+              </View>
               <Text style={[styles.taskMetadataValue, { color: colors.text }]}>{taskDurationMinutes} min</Text>
             </View>
           ) : null}
 
           {reminderMinutes !== null ? (
             <View style={styles.taskMetadataRow}>
-              <IconSymbol ios_icon_name="bell" android_material_icon_name="notifications_none" size={14} color={colors.textSecondary} />
-              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Reminder</Text>
+              <View style={styles.taskMetadataKey}>
+                <IconSymbol ios_icon_name="bell" android_material_icon_name="notifications_none" size={14} color={colors.textSecondary} />
+                <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Reminder</Text>
+              </View>
               <Text style={[styles.taskMetadataValue, { color: colors.text }]}>{reminderMinutes} min before</Text>
             </View>
           ) : null}
 
-          {feedbackEnabled ? (
-            <View style={styles.taskMetadataRow}>
+          <View
+            style={styles.taskMetadataRow}
+            testID={`tasks.template.feedbackBadge.${sanitizeTestIdSegment(taskId)}`}
+            accessibilityLabel={`Feedback: ${feedbackEnabled ? 'On' : 'Off'}`}
+          >
+            <View style={styles.taskMetadataKey}>
               <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat_bubble_outline" size={14} color={colors.textSecondary} />
               <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Feedback</Text>
-              <Text style={[styles.taskMetadataValue, { color: colors.text }]}>
-                {Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0 ? `${feedbackDelayMinutes} min after` : 'After activity'}
+            </View>
+            <View style={[styles.taskStatusBadge, { backgroundColor: withAlpha(feedbackEnabled ? colors.primary : colors.textSecondary, 0.08) }]}>
+              <Text style={[styles.taskStatusBadgeText, { color: feedbackEnabled ? colors.primary : colors.textSecondary }]}>
+                {feedbackEnabled ? 'On' : 'Off'}
               </Text>
             </View>
-          ) : null}
+          </View>
 
           <View
             style={styles.taskMetadataRow}
             testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
             accessibilityLabel={`Auto-add to activities: ${autoAdd ? 'On' : 'Off'}`}
           >
-            <IconSymbol
-              ios_icon_name={autoAdd ? 'checkmark.circle.fill' : 'minus.circle'}
-              android_material_icon_name={autoAdd ? 'check_circle' : 'remove_circle_outline'}
-              size={14}
-              color={autoAdd ? colors.primary : colors.textSecondary}
-            />
-            <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Auto-add</Text>
-            <Text style={[styles.taskMetadataValue, { color: autoAdd ? colors.primary : colors.textSecondary }]}>{autoAdd ? 'On' : 'Off'}</Text>
+            <View style={styles.taskMetadataKey}>
+              <IconSymbol
+                ios_icon_name={autoAdd ? 'checkmark.circle.fill' : 'minus.circle'}
+                android_material_icon_name={autoAdd ? 'check_circle' : 'remove_circle_outline'}
+                size={14}
+                color={autoAdd ? colors.primary : colors.textSecondary}
+              />
+              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Auto-add</Text>
+            </View>
+            <View style={[styles.taskStatusBadge, { backgroundColor: withAlpha(autoAdd ? colors.primary : colors.textSecondary, 0.08) }]}>
+              <Text style={[styles.taskStatusBadgeText, { color: autoAdd ? colors.primary : colors.textSecondary }]}>{autoAdd ? 'On' : 'Off'}</Text>
+            </View>
           </View>
         </View>
 
@@ -3001,9 +3012,12 @@ const styles = StyleSheet.create({
   actionButton: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', padding: 0 },
   sourceActionButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 0 },
   taskMetadataGroup: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, marginBottom: 4 },
-  taskMetadataRow: { minHeight: 26, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  taskMetadataRow: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  taskMetadataKey: { width: 86, flexDirection: 'row', alignItems: 'center', gap: 7 },
   taskMetadataLabel: { flex: 1, fontSize: 12, fontWeight: '600' },
-  taskMetadataValue: { fontSize: 12, fontWeight: '700' },
+  taskMetadataValue: { flex: 1, fontSize: 12, fontWeight: '700' },
+  taskStatusBadge: { minHeight: 25, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, justifyContent: 'center' },
+  taskStatusBadgeText: { fontSize: 12, fontWeight: '700' },
   cardFactGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -2529,8 +2529,9 @@ function TemplateCard({
   const categoryItems = getTemplateCategoryItems(template, categories);
   const categoryFact = templateFacts.find((fact) => fact.label === 'Category');
   const autoAddFact = templateFacts.find((fact) => fact.label === 'Auto-add');
+  const feedbackFact = templateFacts.find((fact) => fact.label === 'Feedback');
   const visibleMetadataFacts = templateFacts.filter(
-    (fact) => !['Category', 'Auto-add'].includes(fact.label) && !['Off', 'Not set'].includes(fact.value),
+    (fact) => !['Category', 'Auto-add', 'Feedback'].includes(fact.label) && !['Off', 'Not set'].includes(fact.value),
   );
   const focusTags = normalizeFocusTags(template.focusAreas);
   const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType);
@@ -2655,7 +2656,7 @@ function TemplateCard({
         </View>
       ) : null}
 
-      {visibleMetadataFacts.length ? (
+      {visibleMetadataFacts.length || feedbackFact || autoAddFact ? (
         <View style={styles.templateMetadataRows} testID={`plan.template.facts.${template.templateType}`}>
           {visibleMetadataFacts.map((fact) => {
             const icon = fact.label === 'Task duration'
@@ -2675,44 +2676,63 @@ function TemplateCard({
                   ? `${fact.value} sessions`
                   : fact.label === 'Reminder'
                     ? `Reminder: ${fact.value}`
-                    : fact.label === 'Feedback'
-                      ? `Feedback: ${fact.value}`
-                      : fact.value;
+                    : fact.value;
             return (
               <View key={`${fact.label}-${fact.value}`} style={styles.templateMetadataRow}>
-                <IconSymbol
-                  ios_icon_name={icon.ios as any}
-                  android_material_icon_name={icon.android as any}
-                  size={15}
-                  color={icon.color}
-                />
-                <Text style={[styles.templateMetadataText, { color: icon.color }]}>{value}</Text>
+                <View style={styles.templateMetadataKey}>
+                  <IconSymbol
+                    ios_icon_name={icon.ios as any}
+                    android_material_icon_name={icon.android as any}
+                    size={14}
+                    color={icon.color}
+                  />
+                  <Text style={[styles.templateMetadataLabel, { color: colors.textSecondary }]}>{fact.label}</Text>
+                </View>
+                <Text style={[styles.templateMetadataText, { color: colors.text }]}>{value}</Text>
               </View>
             );
           })}
-        </View>
-      ) : null}
 
-      {autoAddFact ? (
-        <View
-          style={[
-            styles.templateAutoAddBadge,
-            {
-              backgroundColor: autoAddFact.value === 'On' ? `${colors.primary}1F` : `${colors.textSecondary}1F`,
-              borderColor: 'transparent',
-            },
-          ]}
-          testID={`plan.template.autoAdd.${template.templateType}`}
-        >
-          <IconSymbol
-            ios_icon_name={autoAddFact.value === 'On' ? 'checkmark.circle.fill' : 'minus.circle'}
-            android_material_icon_name={autoAddFact.value === 'On' ? 'check_circle' : 'remove_circle_outline'}
-            size={15}
-            color={autoAddFact.value === 'On' ? colors.primary : colors.textSecondary}
-          />
-          <Text style={[styles.templateAutoAddText, { color: autoAddFact.value === 'On' ? colors.primary : colors.textSecondary }]}>
-            Auto-add to activities: {autoAddFact.value}
-          </Text>
+          {feedbackFact ? (
+            <View
+              style={styles.templateMetadataRow}
+              testID={`plan.template.feedback.${template.templateType}`}
+              accessibilityLabel={`Feedback: ${feedbackFact.value === 'Off' ? 'Off' : 'On'}`}
+            >
+              <View style={styles.templateMetadataKey}>
+                <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat_bubble_outline" size={14} color={colors.textSecondary} />
+                <Text style={[styles.templateMetadataLabel, { color: colors.textSecondary }]}>Feedback</Text>
+              </View>
+              <View style={[styles.templateStatusBadge, { backgroundColor: `${feedbackFact.value === 'Off' ? colors.textSecondary : colors.primary}14` }]}>
+                <Text style={[styles.templateStatusBadgeText, { color: feedbackFact.value === 'Off' ? colors.textSecondary : colors.primary }]}>
+                  {feedbackFact.value === 'Off' ? 'Off' : 'On'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {autoAddFact ? (
+            <View
+              style={styles.templateMetadataRow}
+              testID={`plan.template.autoAdd.${template.templateType}`}
+              accessibilityLabel={`Auto-add to activities: ${autoAddFact.value}`}
+            >
+              <View style={styles.templateMetadataKey}>
+                <IconSymbol
+                  ios_icon_name={autoAddFact.value === 'On' ? 'checkmark.circle.fill' : 'minus.circle'}
+                  android_material_icon_name={autoAddFact.value === 'On' ? 'check_circle' : 'remove_circle_outline'}
+                  size={14}
+                  color={autoAddFact.value === 'On' ? colors.primary : colors.textSecondary}
+                />
+                <Text style={[styles.templateMetadataLabel, { color: colors.textSecondary }]}>Auto-add</Text>
+              </View>
+              <View style={[styles.templateStatusBadge, { backgroundColor: `${autoAddFact.value === 'On' ? colors.primary : colors.textSecondary}14` }]}>
+                <Text style={[styles.templateStatusBadgeText, { color: autoAddFact.value === 'On' ? colors.primary : colors.textSecondary }]}>
+                  {autoAddFact.value}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -3656,14 +3676,37 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   templateMetadataRow: {
-    minHeight: 26,
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  templateMetadataKey: {
+    width: 86,
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 7,
   },
-  templateMetadataText: {
+  templateMetadataLabel: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '600',
+  },
+  templateMetadataText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  templateStatusBadge: {
+    minHeight: 25,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    justifyContent: 'center',
+  },
+  templateStatusBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   templateAutoAddBadge: {
     alignSelf: 'flex-start',

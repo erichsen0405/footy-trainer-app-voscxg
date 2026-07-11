@@ -297,7 +297,7 @@ describe('Tasks redesigned template screen', () => {
   it('shows compact auto-add status badges on task cards', () => {
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
-        baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true }),
+        baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true, afterTrainingEnabled: true }),
         baseTask({ id: 'auto-off', title: 'Auto inaktiv', autoAddToActivities: false }),
       ],
     }));
@@ -310,6 +310,8 @@ describe('Tasks redesigned template screen', () => {
     expect(getByText('Auto inaktiv')).toBeTruthy();
     expect(getByTestId('tasks.template.autoAddBadge.auto-on').props.accessibilityLabel).toBe('Auto-add to activities: On');
     expect(getByTestId('tasks.template.autoAddBadge.auto-off').props.accessibilityLabel).toBe('Auto-add to activities: Off');
+    expect(getByTestId('tasks.template.feedbackBadge.auto-on').props.accessibilityLabel).toBe('Feedback: On');
+    expect(getByTestId('tasks.template.feedbackBadge.auto-off').props.accessibilityLabel).toBe('Feedback: Off');
   });
 
   it('validates required title and video URL in the modal', () => {

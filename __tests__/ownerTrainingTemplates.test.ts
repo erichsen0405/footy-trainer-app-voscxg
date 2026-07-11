@@ -469,6 +469,7 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("label: 'Task duration'");
     expect(plan).toContain("label: 'Reminder'");
     expect(plan).toContain("label: 'Feedback'");
+    expect(plan).toContain('plan.template.feedback.${template.templateType}');
     expect(plan).not.toContain('TemplateAction label="Assign"');
     expect(plan).toContain('Description');
     expect(plan).toContain('FocusTagEditor');
@@ -508,6 +509,7 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain('focus_areas: focusTags');
     expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Active'");
     expect(tasks).toContain('tasks.template.autoAddBadge');
+    expect(tasks).toContain('tasks.template.feedbackBadge');
     expect(tasks).toContain('tasks.taskCard.media');
     expect(tasks).toContain('tasks.task.assign');
     expect(tasks).toContain('SwipeVideoPlayer');
