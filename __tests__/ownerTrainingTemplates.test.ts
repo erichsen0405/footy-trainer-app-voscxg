@@ -23,6 +23,7 @@ const tasksPath = path.join(process.cwd(), 'app/(tabs)/tasks.tsx');
 const tabLayoutPath = path.join(process.cwd(), 'app/(tabs)/_layout.tsx');
 const libraryPath = path.join(process.cwd(), 'app/(tabs)/library.tsx');
 const base44PromptPath = path.join(process.cwd(), 'docs/base44-owner-training-templates-prompt.md');
+const completeBase44PromptPath = path.join(process.cwd(), 'docs/base44-issue-286-complete-prompt.md');
 
 describe('owner training templates contract', () => {
   const migration = fs.readFileSync(migrationPath, 'utf8');
@@ -37,6 +38,7 @@ describe('owner training templates contract', () => {
   const tabLayout = fs.readFileSync(tabLayoutPath, 'utf8');
   const library = fs.readFileSync(libraryPath, 'utf8');
   const base44Prompt = fs.readFileSync(base44PromptPath, 'utf8');
+  const completeBase44Prompt = fs.readFileSync(completeBase44PromptPath, 'utf8');
 
   it('creates owner-scoped training template storage with version snapshots', () => {
     expect(migration).toContain('create table if not exists public.training_template_folders');
@@ -543,5 +545,18 @@ describe('owner training templates contract', () => {
     expect(base44Prompt).toContain('Week builderen maa ikke tilbyde `New`, `Library`');
     expect(base44Prompt).toContain('vis ikke starttid eller varighed paa');
     expect(base44Prompt).toContain('supabase functions list --project-ref lhpczofddvwcyrgotzha');
+  });
+
+  it('documents the complete Base44 issue 286 handoff', () => {
+    expect(completeBase44Prompt).toContain('Base44 Complete Prompt: Issue 286');
+    expect(completeBase44Prompt).toContain('manageTrainingTemplates');
+    expect(completeBase44Prompt).toContain('Session-kortet skal vise navnene');
+    expect(completeBase44Prompt).toContain('Feedback` viser et lille `On` eller `Off` badge');
+    expect(completeBase44Prompt).toContain('Vis ikke de synlige tekster `Media`, `2 files`');
+    expect(completeBase44Prompt).toContain('Activity Integration');
+    expect(completeBase44Prompt).toContain('deleteOwnerAccount');
+    expect(completeBase44Prompt).toContain('Ingen Automatisk Coach/Owner Provisioning');
+    expect(completeBase44Prompt).toContain('ACTIVE version 6');
+    expect(completeBase44Prompt).toContain('ACTIVE version 3');
   });
 });
