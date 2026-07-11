@@ -9,6 +9,7 @@ const ownerAccountId = '22222222-2222-4222-8222-222222222222';
 const templateId = '33333333-3333-4333-8333-333333333333';
 const folderId = '44444444-4444-4444-8444-444444444444';
 const taskTemplateId = '55555555-5555-4555-8555-555555555555';
+const categoryId = '66666666-6666-4666-8666-666666666666';
 
 const migrationPath = path.join(process.cwd(), 'supabase/migrations/20260709150000_owner_training_templates.sql');
 const itemLogicMigrationPath = path.join(process.cwd(), 'supabase/migrations/20260709162000_training_template_item_logic.sql');
@@ -218,7 +219,13 @@ describe('owner training templates contract', () => {
         templateType: 'exercise',
         title: ' Repeat sprints ',
         taskConfig: {
+          categoryIds: [categoryId],
           videoUrls: ['https://example.com/sprint.mp4'],
+          reminderMinutes: 20,
+          afterTrainingEnabled: true,
+          afterTrainingDelayMinutes: 30,
+          afterTrainingFeedbackScoreExplanation: 'Rate sprint quality',
+          autoAddToActivities: true,
           taskDurationEnabled: true,
           taskDurationMinutes: 16,
         },
@@ -235,7 +242,13 @@ describe('owner training templates contract', () => {
       metadata: {
         task: {
           title: 'Repeat sprints',
+          categoryIds: [categoryId],
           videoUrls: ['https://example.com/sprint.mp4'],
+          reminderMinutes: 20,
+          afterTrainingEnabled: true,
+          afterTrainingDelayMinutes: 30,
+          afterTrainingFeedbackScoreExplanation: 'Rate sprint quality',
+          autoAddToActivities: true,
           subtasks: [],
           taskDurationEnabled: false,
           taskDurationMinutes: null,
@@ -409,6 +422,10 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('LibraryPickerCard');
     expect(plan).toContain('selectedReusableTemplateId');
     expect(plan).toContain('selectedLibraryItemId');
+    expect(plan).toContain('Auto-add to matching activities');
+    expect(plan).toContain('Activity categories');
+    expect(plan).toContain('plan.template.taskCategories');
+    expect(plan).toContain('categoryIds: Array.from(new Set(config.categoryIds.filter(Boolean)))');
     expect(plan).not.toContain('sessionStartTimeInput');
     expect(plan).not.toContain('Session start time');
     expect(plan).not.toContain('Duration minutes');

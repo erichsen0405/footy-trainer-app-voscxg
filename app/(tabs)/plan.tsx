@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
+import { useFootball } from '@/contexts/FootballContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { getColors } from '@/styles/commonStyles';
 import { TaskLibrarySection } from './tasks';
@@ -64,11 +65,19 @@ type PlanSourceFilterOption = {
   count: number;
 };
 
+type TemplateCategoryOption = {
+  id: string;
+  name: string;
+  color: string;
+  emoji: string;
+};
+
 type DraftItem = TrainingTemplateItemInput & {
   localId: string;
 };
 
 type TaskConfigDraft = {
+  categoryIds: string[];
   videoUrls: string[];
   mediaNames: string[];
   videoUrlInput: string;
@@ -200,6 +209,7 @@ const createLocalId = () => `item:${Date.now()}:${Math.random().toString(36).sli
 
 function createEmptyTaskConfigDraft(): TaskConfigDraft {
   return {
+    categoryIds: [],
     videoUrls: [],
     mediaNames: [],
     videoUrlInput: '',
@@ -263,8 +273,13 @@ function createTaskConfigDraftFromConfig(config: unknown): TaskConfigDraft {
   const record = asRecord(config);
   const videoUrls = normalizeTaskVideoUrls(record.videoUrls ?? record.video_urls ?? record.videoUrl ?? record.video_url);
   const mediaNames = normalizeTaskMediaNames(record.mediaNames ?? record.media_names, videoUrls);
+  const rawCategoryIds = record.categoryIds ?? record.category_ids;
+  const categoryIds = Array.isArray(rawCategoryIds)
+    ? rawCategoryIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
 
   return {
+    categoryIds: Array.from(new Set(categoryIds)),
     videoUrls,
     mediaNames,
     videoUrlInput: '',
@@ -317,7 +332,7 @@ function buildTaskConfigPayload(title: string, description: string | null, confi
   return {
     title,
     description,
-    categoryIds: [],
+    categoryIds: Array.from(new Set(config.categoryIds.filter(Boolean))),
     subtasks: [],
     videoUrl: videoPayload.videoUrl,
     videoUrls: videoPayload.videoUrls,
@@ -471,6 +486,7 @@ export default function PlanScreen() {
   const colors = getColors(colorScheme);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const footballData = useFootball() as any;
   const { userRole, loading: roleLoading } = useUserRole();
   const [context, setContext] = useState<{ workspaces: OwnerPlayerCrmWorkspace[]; defaultOwnerAccountId: string | null } | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
@@ -503,6 +519,22 @@ export default function PlanScreen() {
   const { user } = useAuthSession();
 
   const canAccessPlan = userRole === 'admin' || userRole === 'trainer';
+  const contextCategories = footballData?.categories;
+  const templateCategories = useMemo<TemplateCategoryOption[]>(() => {
+    const seen = new Set<string>();
+    return ((contextCategories ?? []) as any[]).reduce<TemplateCategoryOption[]>((acc, category) => {
+      const id = String(category?.id ?? '').trim();
+      if (!id || seen.has(id)) return acc;
+      seen.add(id);
+      acc.push({
+        id,
+        name: String(category?.name ?? ''),
+        color: category?.color || colors.primary,
+        emoji: String(category?.emoji ?? ''),
+      });
+      return acc;
+    }, []);
+  }, [colors.primary, contextCategories]);
 
   const activeWorkspace = useMemo(
     () => context?.workspaces.find((workspace) => workspace.ownerAccountId === activeOwnerAccountId) ?? null,
@@ -1289,6 +1321,7 @@ export default function PlanScreen() {
                   onAddMediaLink={() => addTaskMediaLink('template')}
                   onPickMedia={() => pickTaskMedia('template')}
                   onRemoveMedia={(index) => removeTaskMedia('template', index)}
+                  categories={templateCategories}
                 />
                 {draft.templateType === 'exercise' ? (
                   <ExerciseTimerEditor
@@ -1426,6 +1459,7 @@ export default function PlanScreen() {
                       onAddMediaLink={() => addTaskMediaLink('item')}
                       onPickMedia={() => pickTaskMedia('item')}
                       onRemoveMedia={(index) => removeTaskMedia('item', index)}
+                      categories={templateCategories}
                     />
                   ) : null}
 
@@ -2290,6 +2324,7 @@ function TaskFieldsEditor({
   onAddMediaLink,
   onPickMedia,
   onRemoveMedia,
+  categories,
 }: {
   title: string;
   config: TaskConfigDraft;
@@ -2299,9 +2334,21 @@ function TaskFieldsEditor({
   onAddMediaLink: () => void;
   onPickMedia: () => void;
   onRemoveMedia: (index: number) => void;
+  categories: TemplateCategoryOption[];
 }) {
   const update = useCallback((patch: Partial<TaskConfigDraft>) => {
     onChange((current) => ({ ...current, ...patch }));
+  }, [onChange]);
+  const toggleCategory = useCallback((categoryId: string) => {
+    onChange((current) => {
+      const selected = new Set(current.categoryIds);
+      if (selected.has(categoryId)) {
+        selected.delete(categoryId);
+      } else {
+        selected.add(categoryId);
+      }
+      return { ...current, categoryIds: Array.from(selected) };
+    });
   }, [onChange]);
 
   return (
@@ -2390,6 +2437,47 @@ function TaskFieldsEditor({
           multiline
         />
       ) : null}
+      <View style={[styles.taskFeatureRow, { borderColor: colors.border }]}>
+        <Text style={[styles.toggleNumberText, { color: colors.text }]} numberOfLines={1}>
+          Auto-add to matching activities
+        </Text>
+        <Switch
+          value={config.autoAddToActivities}
+          onValueChange={(value) => update({ autoAddToActivities: value })}
+        />
+      </View>
+      <View style={[styles.categoryPickerBlock, { borderColor: colors.border }]}>
+        <Text style={[styles.taskFieldsSubtitle, { color: colors.textSecondary }]}>Activity categories</Text>
+        <View style={styles.categoryPillGrid} testID="plan.template.taskCategories">
+          {categories.length ? (
+            categories.map((category, index) => {
+              const selected = config.categoryIds.includes(category.id);
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.categoryPill,
+                    {
+                      backgroundColor: selected ? category.color : colors.card,
+                      borderColor: category.color,
+                    },
+                  ]}
+                  onPress={() => toggleCategory(category.id)}
+                  activeOpacity={0.84}
+                  testID={`plan.template.taskCategory.${index}`}
+                >
+                  {category.emoji ? <Text style={styles.categoryPillEmoji}>{category.emoji}</Text> : null}
+                  <Text style={[styles.categoryPillText, { color: selected ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <Text style={[styles.emptyCategoryText, { color: colors.textSecondary }]}>No categories</Text>
+          )}
+        </View>
+      </View>
     </View>
   );
 }
@@ -3171,6 +3259,46 @@ const styles = StyleSheet.create({
   toggleNumberInput: {
     width: 82,
     minHeight: 40,
+  },
+  taskFeatureRow: {
+    minHeight: 48,
+    borderTopWidth: 1,
+    paddingTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  categoryPickerBlock: {
+    borderTopWidth: 1,
+    paddingTop: 8,
+    rowGap: 8,
+  },
+  categoryPillGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryPill: {
+    minHeight: 36,
+    maxWidth: '100%',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 5,
+  },
+  categoryPillEmoji: {
+    fontSize: 14,
+  },
+  categoryPillText: {
+    maxWidth: 190,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  emptyCategoryText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   timerEditor: {
     borderWidth: 1,

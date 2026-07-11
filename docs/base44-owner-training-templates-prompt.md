@@ -230,7 +230,16 @@ Exercise template:
   "templateType": "exercise",
   "title": "Repeat sprints",
   "taskConfig": {
-    "videoUrls": ["https://example.com/sprint.mp4"]
+    "categoryIds": ["<activity_category uuid>"],
+    "videoUrls": ["https://example.com/sprint.mp4"],
+    "mediaNames": ["Sprint demo"],
+    "reminderMinutes": 20,
+    "afterTrainingEnabled": true,
+    "afterTrainingDelayMinutes": 30,
+    "afterTrainingFeedbackEnableScore": true,
+    "afterTrainingFeedbackScoreExplanation": "Rate sprint quality",
+    "afterTrainingFeedbackEnableNote": true,
+    "autoAddToActivities": true
   },
   "exerciseTimer": {
     "activeSeconds": 30,
@@ -244,8 +253,9 @@ Session templates er selve aktivitets-/traeningssessionen. Brug
 `defaultActivityCategoryId` eller `defaultActivityCategoryName` paa sessionen,
 ikke et `activity` item.
 
-Exercise er en opgave med samme opgavefelter som normale tasks plus
-intervaltimer:
+Exercise er en opgave med praecis samme opgavefelter som normale tasks plus
+intervaltimer. Det inkluderer `categoryIds`, medier, reminder,
+post-training feedback og `autoAddToActivities`:
 
 ```json
 {
@@ -502,7 +512,7 @@ Session-template:
 - task og exercise items kan oprettes som nye inline items, vaelges fra gemte
   task/exercise templates eller vaelges fra `libraryItems`
 - task og exercise items skal have samme opgavefelter som normale task
-  templates: medier, reminder og feedback
+  templates: kategorier, auto-add, medier, reminder og feedback
 - exercise items skal ogsaa have intervaltimer med aktiv tid, pause og runder
 
 Week-template:

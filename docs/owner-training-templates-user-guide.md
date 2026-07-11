@@ -111,6 +111,8 @@ opgaver:
 - video-, billede- og PDF-link
 - upload af billede, video eller PDF
 - medienavne og sortering
+- aktivitetskategorier
+- auto-add til matchende aktiviteter
 - reminder foer start
 - post-training feedback
 - score-forklaring til feedback
