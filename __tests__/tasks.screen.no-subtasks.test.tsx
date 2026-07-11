@@ -195,11 +195,11 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByTestId, getByText } = render(<TasksScreen />);
+    const { getByTestId } = render(<TasksScreen />);
 
     expect(getByTestId('tasks.sourceFilter.coach')).toBeTruthy();
     expect(getByTestId('tasks.taskCard.trainer-task-1')).toBeTruthy();
-    expect(getByText('From Coach Mads')).toBeTruthy();
+    expect(getByTestId('tasks.task.source.trainer-task-1').props.accessibilityLabel).toBe('Source: From Coach Mads');
   });
 
   it('shows selected admin context templates under personal tasks', () => {
