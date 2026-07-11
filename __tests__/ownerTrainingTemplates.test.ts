@@ -462,6 +462,8 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('plan.template.edit.${template.templateType}');
     expect(plan).toContain('plan.template.source.${template.templateType}');
     expect(plan).toContain("Alert.alert('Source', sourceLabel)");
+    expect(plan).toContain("iosIcon: 'person.2.fill'");
+    expect(plan).toContain("iosIcon: 'person.crop.circle.fill'");
     expect(plan).toContain("{ label: 'Category', value: categoryLabel ?? 'None' }");
     expect(plan).toContain("{ label: 'Auto-add', value: autoAdd ? 'On' : 'Off' }");
     expect(plan).toContain("label: 'Task duration'");
@@ -491,14 +493,13 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain('tasks.categoryFilter.button');
     expect(tasks).toContain(": 'Category'");
     expect(tasks).toContain('Your own templates and templates shared by your coach.');
-    expect(tasks).toContain('taskFacts');
     expect(tasks).toContain('tasks.task.source.${taskId}');
     expect(tasks).toContain("Alert.alert('Source', sourceLabel)");
-    expect(tasks).toContain("{ label: 'Category', value: categoryLabel || 'None' }");
-    expect(tasks).toContain("{ label: 'Auto-add', value: autoAdd ? 'On' : 'Off' }");
-    expect(tasks).toContain("label: 'Task duration'");
-    expect(tasks).toContain("label: 'Reminder'");
-    expect(tasks).toContain("label: 'Feedback'");
+    expect(tasks).toContain("iosIcon: 'person.2.fill'");
+    expect(tasks).toContain("iosIcon: 'person.crop.circle.fill'");
+    expect(tasks).toContain('tasks.task.duration.${sanitizeTestIdSegment(taskId)}');
+    expect(tasks).toContain("Auto-add to activities: {autoAdd ? 'On' : 'Off'}");
+    expect(tasks).toContain('tasks.taskCategoryBadge');
     expect(tasks).toContain('tasks.taskFocusTags');
     expect(tasks).toContain('tasks.focusTagFilter.button');
     expect(tasks).toContain('TaskFocusTagEditor');
@@ -506,7 +507,7 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain('focusAreas: focusTags');
     expect(tasks).toContain('focus_areas: focusTags');
     expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Active'");
-    expect(tasks).not.toContain('tasks.template.autoAddBadge');
+    expect(tasks).toContain('tasks.template.autoAddBadge');
     expect(tasks).toContain('tasks.taskCard.media');
     expect(tasks).toContain('tasks.task.assign');
     expect(tasks).toContain('SwipeVideoPlayer');

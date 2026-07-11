@@ -494,6 +494,19 @@ function getTemplateSourceKind(template: TrainingTemplateSummary, actorUserId: s
   return actorUserId && template.createdBy === actorUserId ? 'mine' : 'workspace';
 }
 
+function getTemplateCategoryItems(
+  template: TrainingTemplateSummary,
+  categories: TemplateCategoryOption[],
+): TemplateCategoryOption[] {
+  const task = getTemplateTaskConfig(template);
+  const rawCategoryIds = task.categoryIds ?? task.category_ids;
+  if (!Array.isArray(rawCategoryIds)) return [];
+  const selectedIds = new Set(
+    rawCategoryIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
+  );
+  return categories.filter((category) => selectedIds.has(category.id));
+}
+
 function getTemplateFacts(
   template: TrainingTemplateSummary,
   timer: TrainingTemplateExerciseTimer | null = getTemplateTimer(template),
@@ -504,9 +517,7 @@ function getTemplateFacts(
   const categoryIds = Array.isArray(rawCategoryIds)
     ? rawCategoryIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
     : [];
-  const categoryNames = categoryIds
-    .map((id) => categories.find((category) => category.id === id))
-    .filter((category): category is TemplateCategoryOption => Boolean(category))
+  const categoryNames = getTemplateCategoryItems(template, categories)
     .map((category) => `${category.emoji ? `${category.emoji} ` : ''}${category.name}`.trim());
   const categoryLabel = categoryNames.length
     ? categoryNames.join(', ')
@@ -2515,8 +2526,20 @@ function TemplateCard({
   const mediaUrls = getTemplateMediaUrls(template);
   const timer = getTemplateTimer(template);
   const templateFacts = getTemplateFacts(template, timer, categories);
+  const categoryItems = getTemplateCategoryItems(template, categories);
+  const categoryFact = templateFacts.find((fact) => fact.label === 'Category');
+  const autoAddFact = templateFacts.find((fact) => fact.label === 'Auto-add');
+  const visibleMetadataFacts = templateFacts.filter(
+    (fact) => !['Category', 'Auto-add'].includes(fact.label) && !['Off', 'Not set'].includes(fact.value),
+  );
   const focusTags = normalizeFocusTags(template.focusAreas);
   const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType);
+  const normalizedSourceLabel = sourceLabel?.toLowerCase() ?? '';
+  const sourceVisual = normalizedSourceLabel.includes('coach') || normalizedSourceLabel.includes('trainer') || normalizedSourceLabel.startsWith('from')
+    ? { iosIcon: 'person.2.fill', materialIcon: 'sports', color: colors.secondary }
+    : normalizedSourceLabel.includes('workspace')
+      ? { iosIcon: 'building.2.fill', materialIcon: 'business', color: colors.accent }
+      : { iosIcon: 'person.crop.circle.fill', materialIcon: 'account_circle', color: colors.primary };
   return (
     <View
       style={[
@@ -2546,15 +2569,24 @@ function TemplateCard({
         <View style={styles.templateActions}>
           {sourceLabel ? (
             <TouchableOpacity
-              style={styles.templateActionButton}
+              style={[
+                styles.templateActionButton,
+                styles.templateSourceButton,
+                { backgroundColor: `${sourceVisual.color}1F` },
+              ]}
               onPress={() => Alert.alert('Source', sourceLabel)}
               activeOpacity={0.84}
               accessibilityRole="button"
               accessibilityLabel={`Source: ${sourceLabel}`}
-              accessibilityHint="Shows where this template comes from"
+              accessibilityHint="Shows whether this is your own, coach, or workspace template"
               testID={`plan.template.source.${template.templateType}`}
             >
-              <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info_outline" size={20} color={colors.textSecondary} />
+              <IconSymbol
+                ios_icon_name={sourceVisual.iosIcon as any}
+                android_material_icon_name={sourceVisual.materialIcon as any}
+                size={18}
+                color={sourceVisual.color}
+              />
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
@@ -2594,37 +2626,8 @@ function TemplateCard({
         </View>
       </View>
 
-      {templateFacts.length ? (
-        <View style={styles.templateFactGrid} testID={`plan.template.facts.${template.templateType}`}>
-          {templateFacts.map((fact) => (
-            <View key={`${fact.label}-${fact.value}`} style={[styles.templateFactChip, { backgroundColor: colors.background }]}>
-              <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>{fact.label}</Text>
-              <Text style={[styles.templateFactValue, { color: colors.text }]} numberOfLines={1}>
-                {fact.value}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-
-      {focusTags.length ? (
-        <View style={styles.templateTagSection} testID={`plan.template.focusTags.${template.templateType}`}>
-          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Focus</Text>
-          <View style={styles.templateTagRow}>
-            {focusTags.map((tag) => (
-              <View key={tag} style={[styles.templateTagChip, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
-                <Text style={[styles.templateTagChipText, { color: colors.primary }]} numberOfLines={1}>
-                  {tag}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      ) : null}
-
       {template.description ? (
-        <View style={styles.templateLabeledBlock}>
-          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Description</Text>
+        <View style={styles.templateDescriptionIndented}>
           <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={3}>
             {template.description}
           </Text>
@@ -2648,6 +2651,110 @@ function TemplateCard({
               surfaceColor={colors.background}
               testID={`plan.template.mediaPlayer.${template.templateType}`}
             />
+          </View>
+        </View>
+      ) : null}
+
+      {visibleMetadataFacts.length ? (
+        <View style={styles.templateMetadataRows} testID={`plan.template.facts.${template.templateType}`}>
+          {visibleMetadataFacts.map((fact) => {
+            const icon = fact.label === 'Task duration'
+              ? { ios: 'clock.fill', android: 'schedule', color: colors.primary }
+              : fact.label === 'Timer'
+                ? { ios: 'timer', android: 'timer', color: colors.primary }
+                : fact.label === 'Reminder'
+                  ? { ios: 'bell.fill', android: 'notifications', color: colors.warning }
+                  : fact.label === 'Feedback'
+                    ? { ios: 'bubble.left.and.bubble.right.fill', android: 'forum', color: colors.secondary }
+                    : { ios: 'list.bullet', android: 'format_list_bulleted', color: tone };
+            const value = fact.label === 'Task duration'
+              ? `${fact.value} task time`
+              : fact.label === 'Items'
+                ? `${fact.value} items`
+                : fact.label === 'Sessions'
+                  ? `${fact.value} sessions`
+                  : fact.label === 'Reminder'
+                    ? `Reminder: ${fact.value}`
+                    : fact.label === 'Feedback'
+                      ? `Feedback: ${fact.value}`
+                      : fact.value;
+            return (
+              <View key={`${fact.label}-${fact.value}`} style={styles.templateMetadataRow}>
+                <IconSymbol
+                  ios_icon_name={icon.ios as any}
+                  android_material_icon_name={icon.android as any}
+                  size={15}
+                  color={icon.color}
+                />
+                <Text style={[styles.templateMetadataText, { color: icon.color }]}>{value}</Text>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {autoAddFact ? (
+        <View
+          style={[
+            styles.templateAutoAddBadge,
+            {
+              backgroundColor: autoAddFact.value === 'On' ? `${colors.primary}1F` : `${colors.textSecondary}1F`,
+              borderColor: autoAddFact.value === 'On' ? colors.primary : colors.textSecondary,
+            },
+          ]}
+          testID={`plan.template.autoAdd.${template.templateType}`}
+        >
+          <IconSymbol
+            ios_icon_name={autoAddFact.value === 'On' ? 'checkmark.circle.fill' : 'minus.circle'}
+            android_material_icon_name={autoAddFact.value === 'On' ? 'check_circle' : 'remove_circle_outline'}
+            size={15}
+            color={autoAddFact.value === 'On' ? colors.primary : colors.textSecondary}
+          />
+          <Text style={[styles.templateAutoAddText, { color: autoAddFact.value === 'On' ? colors.primary : colors.textSecondary }]}>
+            Auto-add to activities: {autoAddFact.value}
+          </Text>
+        </View>
+      ) : null}
+
+      {categoryItems.length || (categoryFact && categoryFact.value !== 'None') ? (
+        <View style={styles.templateTaxonomySection} testID={`plan.template.categories.${template.templateType}`}>
+          <View style={styles.templateTaxonomyLabelRow}>
+            <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={colors.textSecondary} />
+            <Text style={[styles.templateTaxonomyLabel, { color: colors.textSecondary }]}>Categories</Text>
+          </View>
+          <View style={styles.templateTagRow}>
+            {categoryItems.length ? categoryItems.map((category) => (
+              <View
+                key={category.id}
+                style={[
+                  styles.templateTagChip,
+                  { backgroundColor: `${category.color}1F`, borderColor: category.color },
+                ]}
+              >
+                {category.emoji ? <Text style={styles.templateCategoryEmoji}>{category.emoji}</Text> : null}
+                <Text style={[styles.templateTagChipText, { color: category.color }]} numberOfLines={1}>{category.name}</Text>
+              </View>
+            )) : (
+              <View style={[styles.templateTagChip, { backgroundColor: `${tone}1F`, borderColor: tone }]}>
+                <Text style={[styles.templateTagChipText, { color: tone }]} numberOfLines={1}>{categoryFact?.value}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : null}
+
+      {focusTags.length ? (
+        <View style={styles.templateTaxonomySection} testID={`plan.template.focusTags.${template.templateType}`}>
+          <View style={styles.templateTaxonomyLabelRow}>
+            <IconSymbol ios_icon_name="scope" android_material_icon_name="track_changes" size={14} color={colors.textSecondary} />
+            <Text style={[styles.templateTaxonomyLabel, { color: colors.textSecondary }]}>Focus</Text>
+          </View>
+          <View style={styles.templateTagRow}>
+            {focusTags.map((tag) => (
+              <View key={tag} style={[styles.templateTagChip, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+                <Text style={[styles.templateTagChipText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
+              </View>
+            ))}
           </View>
         </View>
       ) : null}
@@ -3444,6 +3551,14 @@ const styles = StyleSheet.create({
   templateActionButton: {
     padding: 4,
   },
+  templateSourceButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  },
   templateMeta: {
     fontSize: 12,
     fontWeight: '700',
@@ -3464,6 +3579,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     lineHeight: 18,
+  },
+  templateDescriptionIndented: {
+    marginLeft: 46,
+    marginTop: -4,
+    marginBottom: 10,
   },
   templateLabeledBlock: {
     marginBottom: 10,
@@ -3511,11 +3631,63 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 9,
     paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 5,
     justifyContent: 'center',
   },
   templateTagChipText: {
     fontSize: 12,
     fontWeight: '900',
+  },
+  templateCategoryEmoji: {
+    fontSize: 13,
+  },
+  templateMetadataRows: {
+    marginBottom: 2,
+  },
+  templateMetadataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+    marginBottom: 8,
+  },
+  templateMetadataText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  templateAutoAddBadge: {
+    alignSelf: 'flex-start',
+    minHeight: 30,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  templateAutoAddText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  templateTaxonomySection: {
+    marginTop: 6,
+    marginBottom: 8,
+    rowGap: 8,
+  },
+  templateTaxonomyLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+  },
+  templateTaxonomyLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   templateSectionHeader: {
     flexDirection: 'row',
@@ -3543,6 +3715,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     columnGap: 7,
+    marginTop: 8,
     marginBottom: 10,
   },
   templateAssignButtonText: {

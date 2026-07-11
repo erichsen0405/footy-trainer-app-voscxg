@@ -195,11 +195,12 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByTestId } = render(<TasksScreen />);
+    const { getByTestId, getByText } = render(<TasksScreen />);
 
     expect(getByTestId('tasks.sourceFilter.coach')).toBeTruthy();
     expect(getByTestId('tasks.taskCard.trainer-task-1')).toBeTruthy();
     expect(getByTestId('tasks.task.source.trainer-task-1').props.accessibilityLabel).toBe('Source: From Coach Mads');
+    expect(getByText('person.2.fill')).toBeTruthy();
   });
 
   it('shows selected admin context templates under personal tasks', () => {
@@ -269,7 +270,7 @@ describe('Tasks redesigned template screen', () => {
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByText('Pasning')).toBeTruthy();
-    expect(queryByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeNull();
+    expect(queryByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeTruthy();
     expect(queryByText('Sprint')).toBeNull();
   });
 
@@ -284,16 +285,16 @@ describe('Tasks redesigned template screen', () => {
     const { getAllByText, getByTestId, getByText, queryByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.focusTagFilter.button'));
-    fireEvent.press(getByTestId('tasks.focusTagFilter.option.teknik'));
+    fireEvent.press(getByTestId('tasks.focusTagFilter.option.technique'));
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByTestId('tasks.taskFocusTags.tag-pass')).toBeTruthy();
-    expect(getAllByText('Teknik').length).toBeGreaterThan(0);
+    expect(getAllByText('Technique').length).toBeGreaterThan(0);
     expect(getByText('Pasning')).toBeTruthy();
     expect(queryByText('Sprint')).toBeNull();
   });
 
-  it('keeps compact task cards free of auto-add status badges', () => {
+  it('shows compact auto-add status badges on task cards', () => {
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
         baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true }),
@@ -301,16 +302,16 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByTestId, getByText, queryByTestId, queryByText } = render(<TasksScreen />);
+    const { getByTestId, getByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByText('Auto aktiv')).toBeTruthy();
     expect(getByText('Auto inaktiv')).toBeTruthy();
-    expect(queryByTestId('tasks.template.autoAddBadge.auto-on')).toBeNull();
-    expect(queryByTestId('tasks.template.autoAddBadge.auto-off')).toBeNull();
-    expect(queryByText('Auto-add to activities: On')).toBeNull();
-    expect(queryByText('Auto-add to activities: Off')).toBeNull();
+    expect(getByTestId('tasks.template.autoAddBadge.auto-on')).toBeTruthy();
+    expect(getByTestId('tasks.template.autoAddBadge.auto-off')).toBeTruthy();
+    expect(getByText('Auto-add to activities: On')).toBeTruthy();
+    expect(getByText('Auto-add to activities: Off')).toBeTruthy();
   });
 
   it('validates required title and video URL in the modal', () => {
@@ -368,15 +369,15 @@ describe('Tasks redesigned template screen', () => {
 
     fireEvent.press(getByTestId('tasks.header.newTaskButton'));
     fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med fokus');
-    fireEvent.press(getByTestId('tasks.modal.focusTag.suggestion.teknik'));
+    fireEvent.press(getByTestId('tasks.modal.focusTag.suggestion.technique'));
     fireEvent.changeText(getByTestId('tasks.modal.focusTag.input'), 'Afslutning');
     fireEvent.press(getByTestId('tasks.modal.focusTag.add'));
     fireEvent.press(getByTestId('tasks.modal.saveButton'));
 
     await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
     const createArg = mockCreateTask.mock.calls[0][0];
-    expect(createArg.task.focusAreas).toEqual(['Teknik', 'Afslutning']);
-    expect(createArg.task.focus_areas).toEqual(['Teknik', 'Afslutning']);
+    expect(createArg.task.focusAreas).toEqual(['Technique', 'Finishing']);
+    expect(createArg.task.focus_areas).toEqual(['Technique', 'Finishing']);
   });
 
   it('saves auto-add setting when editing a task template', async () => {

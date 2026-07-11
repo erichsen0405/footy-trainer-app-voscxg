@@ -115,11 +115,30 @@ const sanitizeTestIdSegment = (value: unknown): string =>
     .replace(/[^a-z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'unknown';
 
+const LEGACY_TASK_FOCUS_TAG_TRANSLATIONS: Record<string, string> = {
+  afslutning: 'Finishing',
+  afslutninger: 'Finishing',
+  analyse: 'Analysis',
+  boldkontrol: 'Ball control',
+  forsvar: 'Defense',
+  forsvarsspil: 'Defense',
+  fysisk: 'Physical',
+  fysik: 'Physical',
+  hurtighed: 'Speed',
+  midtbane: 'Midfielder',
+  modtagelser: 'First touch',
+  pasning: 'Passing',
+  pasninger: 'Passing',
+  skudtræning: 'Shooting',
+  teknik: 'Technique',
+};
+
 const normalizeCardTags = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value.reduce<string[]>((acc, item) => {
-    const tag = String(item ?? '').trim();
+    const rawTag = String(item ?? '').trim();
+    const tag = LEGACY_TASK_FOCUS_TAG_TRANSLATIONS[rawTag.toLowerCase()] ?? rawTag;
     const key = tag.toLowerCase();
     if (!tag || seen.has(key)) return acc;
     seen.add(key);
@@ -423,21 +442,34 @@ export const TaskCard = React.memo(
     const focusTags = normalizeCardTags((task as any)?.focusAreas ?? (task as any)?.focus_areas ?? (task as any)?.tags);
     const sourceFolder = getTaskSourceFolder(task);
     const trainerNameFromSource = parseTrainerNameFromSource(sourceFolder);
+    const normalizedSource = sourceFolder.toLowerCase();
+    const isCoachTemplate = Boolean(
+      trainerNameFromSource ||
+      normalizedSource.includes('coach') ||
+      normalizedSource.includes('trainer') ||
+      normalizedSource.includes('træner'),
+    );
     const sourceLabel = isFootballCoachSource(sourceFolder)
       ? 'FootballCoach'
       : trainerNameFromSource
         ? `From ${trainerNameFromSource}`
+        : isCoachTemplate
+          ? 'From coach'
         : sourceFolder.toLowerCase().includes('personal') || !sourceFolder
           ? 'My template'
           : sourceFolder;
+    const sourceVisual = isFootballCoachSource(sourceFolder)
+      ? { iosIcon: 'books.vertical.fill', materialIcon: 'menu_book', color: colors.secondary }
+      : isCoachTemplate
+        ? { iosIcon: 'person.2.fill', materialIcon: 'sports', color: colors.secondary }
+        : normalizedSource && !normalizedSource.includes('personal')
+          ? { iosIcon: 'building.2.fill', materialIcon: 'business', color: colors.accent }
+          : { iosIcon: 'person.crop.circle.fill', materialIcon: 'account_circle', color: colors.primary };
     const categoryIds = Array.from(new Set(
       (((task as any)?.categoryIds ?? (task as any)?.category_ids ?? []) as unknown[])
         .filter((id): id is string => typeof id === 'string' && id.trim().length > 0),
     ));
-    const categoryLabel = getCategoryItems(categoryIds)
-      .map((category) => `${category.emoji ? `${category.emoji} ` : ''}${category.name}`.trim())
-      .filter(Boolean)
-      .join(', ');
+    const categoryItems = getCategoryItems(categoryIds);
     const autoAdd = (task as any)?.autoAddToActivities === true || (task as any)?.auto_add_to_activities === true;
     const taskDurationEnabled =
       (task as any)?.taskDurationEnabled === true || (task as any)?.task_duration_enabled === true;
@@ -447,25 +479,6 @@ export const TaskCard = React.memo(
     const feedbackDelayMinutes = Number(
       (task as any)?.afterTrainingDelayMinutes ?? (task as any)?.after_training_delay_minutes,
     );
-    const taskFacts = [
-      { label: 'Category', value: categoryLabel || 'None' },
-      { label: 'Auto-add', value: autoAdd ? 'On' : 'Off' },
-      {
-        label: 'Task duration',
-        value: taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0
-          ? `${taskDurationMinutes} min`
-          : 'Not set',
-      },
-      { label: 'Reminder', value: reminderMinutes !== null ? `${reminderMinutes} min before` : 'Off' },
-      {
-        label: 'Feedback',
-        value: feedbackEnabled
-          ? Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0
-            ? `${feedbackDelayMinutes} min after`
-            : 'After activity'
-          : 'Off',
-      },
-    ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 
     return (
       <View
@@ -491,14 +504,19 @@ export const TaskCard = React.memo(
             <View style={styles.taskActions}>
               <TouchableOpacity
                 onPress={() => Alert.alert('Source', sourceLabel)}
-                style={styles.actionButton}
+                style={[styles.actionButton, styles.sourceActionButton, { backgroundColor: withAlpha(sourceVisual.color, 0.12) }]}
                 activeOpacity={0.84}
                 accessibilityRole="button"
                 accessibilityLabel={`Source: ${sourceLabel}`}
-                accessibilityHint="Shows where this task comes from"
+                accessibilityHint="Shows whether this is your own, coach, workspace, or library template"
                 testID={`tasks.task.source.${taskId}`}
               >
-                <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info_outline" size={20} color={colors.textSecondary} />
+                <IconSymbol
+                  ios_icon_name={sourceVisual.iosIcon as any}
+                  android_material_icon_name={sourceVisual.materialIcon as any}
+                  size={18}
+                  color={sourceVisual.color}
+                />
               </TouchableOpacity>
               <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
                 <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
@@ -524,37 +542,8 @@ export const TaskCard = React.memo(
             </View>
           </View>
 
-          {taskFacts.length ? (
-            <View style={styles.cardFactGrid} testID={`tasks.taskFacts.${sanitizeTestIdSegment(taskId)}`}>
-              {taskFacts.map((fact) => (
-                <View key={`${fact.label}-${fact.value}`} style={[styles.cardFactChip, { backgroundColor: isDark ? '#222' : colors.background }]}>
-                  <Text style={[styles.cardFactLabel, { color: isDark ? '#999' : colors.textSecondary }]}>{fact.label}</Text>
-                  <Text style={[styles.cardFactValue, { color: isDark ? '#e3e3e3' : colors.text }]} numberOfLines={1}>
-                    {fact.value}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {focusTags.length ? (
-            <View style={styles.cardTagSection} testID={`tasks.taskFocusTags.${sanitizeTestIdSegment(taskId)}`}>
-              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Focus</Text>
-              <View style={styles.cardTagRow}>
-                {focusTags.map((tag) => (
-                  <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
-                    <Text style={[styles.cardTagChipText, { color: colors.primary }]} numberOfLines={1}>
-                      {tag}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
           {description ? (
-            <View style={styles.cardLabeledSection}>
-              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Description</Text>
+            <View style={styles.taskDescriptionIndented}>
               <Text
                 style={[styles.taskDescription, { color: isDark ? '#b8b8b8' : colors.textSecondary }]}
                 numberOfLines={3}
@@ -576,10 +565,104 @@ export const TaskCard = React.memo(
             <View style={styles.cardMediaPlayer}>
               <SwipeVideoPlayer
                 urls={videoUrls}
-                minHeight={124}
+                minHeight={92}
                 showHint={videoUrls.length > 1}
+                hintVariant="counter"
+                surfaceColor={isDark ? '#222' : colors.background}
                 testID={`tasks.taskCard.media.${sanitizeTestIdSegment(taskId)}`}
               />
+            </View>
+          </View>
+        ) : null}
+
+        {taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0 ? (
+          <View style={styles.taskMetadataRow} testID={`tasks.task.duration.${sanitizeTestIdSegment(taskId)}`}>
+            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={15} color={colors.primary} />
+            <Text style={[styles.taskMetadataText, { color: colors.primary }]}>{taskDurationMinutes} min task time</Text>
+          </View>
+        ) : null}
+
+        {reminderMinutes !== null ? (
+          <View style={styles.taskMetadataRow}>
+            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={15} color={colors.accent} />
+            <Text style={[styles.taskMetadataText, { color: colors.accent }]}>{reminderMinutes} min before start</Text>
+          </View>
+        ) : null}
+
+        {feedbackEnabled ? (
+          <View style={styles.taskMetadataRow}>
+            <IconSymbol ios_icon_name="bubble.left.and.bubble.right.fill" android_material_icon_name="forum" size={15} color={colors.secondary} />
+            <Text style={[styles.taskMetadataText, { color: colors.secondary }]}>
+              Feedback {Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0 ? `${feedbackDelayMinutes} min after` : 'after activity'}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={[
+            styles.autoAddBadge,
+            {
+              backgroundColor: autoAdd ? withAlpha(colors.primary, 0.12) : withAlpha(colors.textSecondary, 0.12),
+              borderColor: autoAdd ? colors.primary : colors.textSecondary,
+            },
+          ]}
+          testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
+        >
+          <IconSymbol
+            ios_icon_name={autoAdd ? 'checkmark.circle.fill' : 'minus.circle'}
+            android_material_icon_name={autoAdd ? 'check_circle' : 'remove_circle_outline'}
+            size={15}
+            color={autoAdd ? colors.primary : colors.textSecondary}
+          />
+          <Text style={[styles.autoAddBadgeText, { color: autoAdd ? colors.primary : colors.textSecondary }]}>
+            Auto-add to activities: {autoAdd ? 'On' : 'Off'}
+          </Text>
+        </View>
+
+        {categoryItems.length ? (
+          <View style={styles.categoriesBlock} testID={`tasks.taskCategories.${sanitizeTestIdSegment(taskId)}`}>
+            <View style={styles.categoriesLabelRow}>
+              <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
+              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Categories</Text>
+            </View>
+            <View style={styles.taskCategoryBadges}>
+              {categoryItems.map((category: any) => {
+                const categoryId = String(category.id);
+                const categoryColor = category.color || colors.primary;
+                return (
+                  <View
+                    key={categoryId}
+                    style={[
+                      styles.taskCategoryBadge,
+                      { backgroundColor: withAlpha(categoryColor, 0.14), borderColor: categoryColor },
+                    ]}
+                    testID={`tasks.taskCategoryBadge.${sanitizeTestIdSegment(taskId)}.${sanitizeTestIdSegment(categoryId)}`}
+                  >
+                    {String(category.emoji ?? '').trim() ? (
+                      <Text style={styles.taskCategoryBadgeEmoji}>{String(category.emoji).trim()}</Text>
+                    ) : null}
+                    <Text style={[styles.taskCategoryBadgeText, { color: categoryColor }]} numberOfLines={1}>
+                      {String(category.name ?? '')}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {focusTags.length ? (
+          <View style={styles.categoriesBlock} testID={`tasks.taskFocusTags.${sanitizeTestIdSegment(taskId)}`}>
+            <View style={styles.categoriesLabelRow}>
+              <IconSymbol ios_icon_name="scope" android_material_icon_name="track_changes" size={14} color={isDark ? '#999' : colors.textSecondary} />
+              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Focus</Text>
+            </View>
+            <View style={styles.cardTagRow}>
+              {focusTags.map((tag) => (
+                <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
+                  <Text style={[styles.cardTagChipText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
+                </View>
+              ))}
             </View>
           </View>
         ) : null}
@@ -2917,6 +3000,9 @@ const styles = StyleSheet.create({
   taskDescriptionIndented: { marginLeft: 46, marginTop: -4, marginBottom: 10 },
   taskActions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
   actionButton: { padding: 4 },
+  sourceActionButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 0 },
+  taskMetadataRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  taskMetadataText: { fontSize: 12, fontWeight: '800' },
   cardFactGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
