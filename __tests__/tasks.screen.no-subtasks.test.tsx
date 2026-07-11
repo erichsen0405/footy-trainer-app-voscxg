@@ -273,6 +273,26 @@ describe('Tasks redesigned template screen', () => {
     expect(queryByText('Sprint')).toBeNull();
   });
 
+  it('filters task templates by selected focus tags', () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'tag-pass', title: 'Pasning', focusAreas: ['Teknik', 'Boldkontrol'] }),
+        baseTask({ id: 'tag-speed', title: 'Sprint', focus_areas: ['Fysisk'] }),
+      ],
+    }));
+
+    const { getAllByText, getByTestId, getByText, queryByText } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.focusTagFilter.button'));
+    fireEvent.press(getByTestId('tasks.focusTagFilter.option.teknik'));
+    fireEvent.press(getByTestId('tasks.folder.personal'));
+
+    expect(getByTestId('tasks.taskFocusTags.tag-pass')).toBeTruthy();
+    expect(getAllByText('Teknik').length).toBeGreaterThan(0);
+    expect(getByText('Pasning')).toBeTruthy();
+    expect(queryByText('Sprint')).toBeNull();
+  });
+
   it('keeps compact task cards free of auto-add status badges', () => {
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
@@ -335,6 +355,28 @@ describe('Tasks redesigned template screen', () => {
     const createArg = mockCreateTask.mock.calls[0][0];
     expect(createArg.task.autoAddToActivities).toBe(true);
     expect(createArg.task.auto_add_to_activities).toBe(true);
+  });
+
+  it('saves focus tags when creating a task template', async () => {
+    mockUseFootball.mockReturnValue(baseFootball({
+      tasks: [
+        baseTask({ id: 'existing-focus', title: 'Eksisterende', focusAreas: ['Teknik'] }),
+      ],
+    }));
+
+    const { getByTestId } = render(<TasksScreen />);
+
+    fireEvent.press(getByTestId('tasks.header.newTaskButton'));
+    fireEvent.changeText(getByTestId('tasks.modal.titleInput'), 'Template med fokus');
+    fireEvent.press(getByTestId('tasks.modal.focusTag.suggestion.teknik'));
+    fireEvent.changeText(getByTestId('tasks.modal.focusTag.input'), 'Afslutning');
+    fireEvent.press(getByTestId('tasks.modal.focusTag.add'));
+    fireEvent.press(getByTestId('tasks.modal.saveButton'));
+
+    await waitFor(() => expect(mockCreateTask).toHaveBeenCalledTimes(1));
+    const createArg = mockCreateTask.mock.calls[0][0];
+    expect(createArg.task.focusAreas).toEqual(['Teknik', 'Afslutning']);
+    expect(createArg.task.focus_areas).toEqual(['Teknik', 'Afslutning']);
   });
 
   it('saves auto-add setting when editing a task template', async () => {

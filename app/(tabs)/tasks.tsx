@@ -130,6 +130,9 @@ const normalizeCardTags = (value: unknown): string[] => {
 
 const normalizeCardTagKey = (value: string): string => value.trim().toLowerCase();
 
+const normalizeTaskFocusInput = (value: string): string[] =>
+  normalizeCardTags(value.split(','));
+
 const getTaskFocusTags = (task: any): string[] =>
   normalizeCardTags(task?.focusAreas ?? task?.focus_areas ?? task?.tags);
 
@@ -667,6 +670,110 @@ function TaskSourceSelector({
   );
 }
 
+function TaskFocusTagEditor({
+  selectedTags,
+  availableTags,
+  inputValue,
+  disabled,
+  isDark,
+  bgColor,
+  cardBgColor,
+  textColor,
+  textSecondaryColor,
+  onInputChange,
+  onAddTag,
+  onRemoveTag,
+}: {
+  selectedTags: string[];
+  availableTags: string[];
+  inputValue: string;
+  disabled: boolean;
+  isDark: boolean;
+  bgColor: string;
+  cardBgColor: string;
+  textColor: string;
+  textSecondaryColor: string;
+  onInputChange: (value: string) => void;
+  onAddTag: (value: string) => void;
+  onRemoveTag: (value: string) => void;
+}) {
+  const selectedKeys = new Set(selectedTags.map(normalizeCardTagKey));
+  const suggestions = availableTags.filter((tag) => !selectedKeys.has(normalizeCardTagKey(tag)));
+
+  return (
+    <View
+      style={[styles.focusEditorCard, { backgroundColor: bgColor, borderColor: isDark ? '#333' : '#dfe5f2' }]}
+      testID="tasks.modal.focusTagEditor"
+    >
+      <View style={styles.focusEditorHeader}>
+        <View style={styles.focusEditorHeaderText}>
+          <Text style={[styles.toggleLabel, { color: textColor }]}>Fokus tags</Text>
+          <Text style={[styles.toggleHelperText, { color: textSecondaryColor }]}>
+            Brug tags til at gruppere opgaver efter teknisk, fysisk eller taktisk fokus.
+          </Text>
+        </View>
+      </View>
+
+      {selectedTags.length ? (
+        <View style={styles.focusEditorTagRow}>
+          {selectedTags.map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.focusEditorSelectedChip, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: disabled ? 0.65 : 1 }]}
+              onPress={() => onRemoveTag(tag)}
+              disabled={disabled}
+              activeOpacity={0.84}
+              testID={`tasks.modal.focusTag.remove.${sanitizeTestIdSegment(tag)}`}
+            >
+              <Text style={styles.focusEditorSelectedText} numberOfLines={1}>{tag}</Text>
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={13} color="#FFFFFF" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.focusEditorInputRow}>
+        <TextInput
+          style={[styles.focusEditorInput, { backgroundColor: cardBgColor, color: textColor, borderColor: isDark ? '#444' : '#d0d7e3' }]}
+          value={inputValue}
+          onChangeText={onInputChange}
+          placeholder="Tilføj fokus tag"
+          placeholderTextColor={textSecondaryColor}
+          editable={!disabled}
+          autoCapitalize="sentences"
+          testID="tasks.modal.focusTag.input"
+        />
+        <TouchableOpacity
+          style={[styles.focusEditorAddButton, { backgroundColor: colors.primary, opacity: disabled || !inputValue.trim() ? 0.55 : 1 }]}
+          onPress={() => onAddTag(inputValue)}
+          disabled={disabled || !inputValue.trim()}
+          activeOpacity={0.84}
+          testID="tasks.modal.focusTag.add"
+        >
+          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+
+      {suggestions.length ? (
+        <View style={styles.focusEditorSuggestions}>
+          {suggestions.slice(0, 12).map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.focusEditorSuggestionChip, { backgroundColor: cardBgColor, borderColor: colors.primary, opacity: disabled ? 0.65 : 1 }]}
+              onPress={() => onAddTag(tag)}
+              disabled={disabled}
+              activeOpacity={0.84}
+              testID={`tasks.modal.focusTag.suggestion.${sanitizeTestIdSegment(tag)}`}
+            >
+              <Text style={[styles.focusEditorSuggestionText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 type TaskLibrarySectionProps = {
   embedded?: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -748,6 +855,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [mediaNames, setMediaNames] = useState<string[]>([]);
   const [mediaNameInput, setMediaNameInput] = useState('');
+  const [taskFocusTagInput, setTaskFocusTagInput] = useState('');
 
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [selectedVideoUrls, setSelectedVideoUrls] = useState<string[]>([]);
@@ -821,6 +929,10 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const taskFocusTagOptions = useMemo(
     () => buildTaskFocusTagOptions(sourceFilteredTemplateTasks),
     [sourceFilteredTemplateTasks],
+  );
+  const allTaskFocusTags = useMemo(
+    () => buildTaskFocusTagOptions(scopedTasks).map((option) => option.value),
+    [scopedTasks],
   );
   const effectiveSelectedFocusTags = useMemo(() => {
     const availableKeys = new Set(taskFocusTagOptions.map((option) => normalizeCardTagKey(option.value)));
@@ -911,6 +1023,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     setMediaNames(normalizeTaskMediaNames((task as any)?.mediaNames ?? (task as any)?.media_names, taskMediaUrls));
     setVideoUrlInput('');
     setMediaNameInput('');
+    setTaskFocusTagInput('');
     setIsModalVisible(true);
   }, []);
 
@@ -923,6 +1036,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     setVideoUrlInput('');
     setMediaNames([]);
     setMediaNameInput('');
+    setTaskFocusTagInput('');
     setIsSaving(false);
     setIsUploadingVideo(false);
     setIsMediaDragging(false);
@@ -948,6 +1062,36 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const updateTaskDescription = useCallback((text: string) => {
     setSelectedTask(prev => (prev ? ({ ...(prev as any), description: text } as Task) : prev));
   }, []);
+
+  const updateSelectedTaskFocusTags = useCallback((tags: string[]) => {
+    const normalizedTags = normalizeCardTags(tags);
+    setSelectedTask(prev =>
+      prev
+        ? ({
+            ...(prev as any),
+            focusAreas: normalizedTags,
+            focus_areas: normalizedTags,
+          } as Task)
+        : prev
+    );
+  }, []);
+
+  const addSelectedTaskFocusTag = useCallback((value: string) => {
+    const nextTags = normalizeTaskFocusInput(value);
+    if (!nextTags.length) return;
+    const currentTags = getTaskFocusTags(selectedTask);
+    const currentKeys = new Set(currentTags.map(normalizeCardTagKey));
+    updateSelectedTaskFocusTags([
+      ...currentTags,
+      ...nextTags.filter((tag) => !currentKeys.has(normalizeCardTagKey(tag))),
+    ]);
+    setTaskFocusTagInput('');
+  }, [selectedTask, updateSelectedTaskFocusTags]);
+
+  const removeSelectedTaskFocusTag = useCallback((value: string) => {
+    const key = normalizeCardTagKey(value);
+    updateSelectedTaskFocusTags(getTaskFocusTags(selectedTask).filter((tag) => normalizeCardTagKey(tag) !== key));
+  }, [selectedTask, updateSelectedTaskFocusTags]);
 
   const updateVideoUrlInput = useCallback((text: string) => {
     setFormErrors(prev => ({ ...prev, videoUrl: undefined }));
@@ -978,6 +1122,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
 
     try {
       const categoryIds = Array.from(new Set((((selectedTask as any)?.categoryIds ?? []) as string[]).filter(Boolean)));
+      const focusTags = getTaskFocusTags(selectedTask);
       const taskToSave = {
         ...selectedTask,
         title: String((selectedTask as any).title ?? '').trim(),
@@ -989,6 +1134,8 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         video_urls: videoPayload.video_urls,
         mediaNames: mediaNamePayload.mediaNames,
         media_names: mediaNamePayload.media_names,
+        focusAreas: focusTags,
+        focus_areas: focusTags,
         categoryIds,
         afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
         afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -1024,6 +1171,8 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           video_urls: videoPayload.video_urls,
           mediaNames: mediaNamePayload.mediaNames,
           media_names: mediaNamePayload.media_names,
+          focusAreas: focusTags,
+          focus_areas: focusTags,
           categoryIds,
           afterTrainingEnabled: selectedTask.afterTrainingEnabled ?? false,
           afterTrainingDelayMinutes: selectedTask.afterTrainingEnabled ? (selectedTask.afterTrainingDelayMinutes ?? 0) : null,
@@ -1331,6 +1480,8 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         subtasks: [],
         videoUrl: undefined,
         videoUrls: [],
+        focusAreas: [],
+        focus_areas: [],
         afterTrainingEnabled: false,
         afterTrainingDelayMinutes: 0,
         afterTrainingFeedbackEnableScore: true,
@@ -1383,6 +1534,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const cardBgColor = isDark ? '#2a2a2a' : colors.card;
   const textColor = isDark ? '#e3e3e3' : colors.text;
   const textSecondaryColor = isDark ? '#999' : colors.textSecondary;
+  const selectedTaskFocusTags = getTaskFocusTags(selectedTask);
   const isTrainerProfile = userRole === 'trainer';
   const isPlayerPlan = userRole === 'player' && !embedded;
   const showFlatTemplateList = embedded || isPlayerPlan;
@@ -1915,6 +2067,21 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
                     numberOfLines={4}
                     editable={!isSaving}
                     testID="tasks.modal.descriptionInput"
+                  />
+
+                  <TaskFocusTagEditor
+                    selectedTags={selectedTaskFocusTags}
+                    availableTags={allTaskFocusTags}
+                    inputValue={taskFocusTagInput}
+                    disabled={isSaving}
+                    isDark={isDark}
+                    bgColor={bgColor}
+                    cardBgColor={cardBgColor}
+                    textColor={textColor}
+                    textSecondaryColor={textSecondaryColor}
+                    onInputChange={setTaskFocusTagInput}
+                    onAddTag={addSelectedTaskFocusTag}
+                    onRemoveTag={removeSelectedTaskFocusTag}
                   />
 
                   <View style={styles.videoSection}>
@@ -2515,6 +2682,86 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   sourceFilterCount: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  focusEditorCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 14,
+    marginBottom: 4,
+    gap: 10,
+  },
+  focusEditorHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  focusEditorHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  focusEditorTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  focusEditorSelectedChip: {
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  focusEditorSelectedText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    maxWidth: 180,
+  },
+  focusEditorInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  focusEditorInput: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  focusEditorAddButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  focusEditorSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  focusEditorSuggestionChip: {
+    minHeight: 32,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    justifyContent: 'center',
+  },
+  focusEditorSuggestionText: {
     fontSize: 12,
     fontWeight: '900',
   },

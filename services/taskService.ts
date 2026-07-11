@@ -16,6 +16,8 @@ export interface CreateTaskData {
   videoUrls?: string[] | null;
   mediaNames?: string[] | null;
   media_names?: string[] | null;
+  focusAreas?: string[] | null;
+  focus_areas?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -41,6 +43,8 @@ export interface UpdateTaskData {
   videoUrls?: string[] | null;
   mediaNames?: string[] | null;
   media_names?: string[] | null;
+  focusAreas?: string[] | null;
+  focus_areas?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;
@@ -97,6 +101,19 @@ const uniqueStringIds = (values: unknown[]): string[] => {
     .map((value) => normalizeStringId(value))
     .filter((value): value is string => Boolean(value));
   return Array.from(new Set(ids));
+};
+
+const normalizeFocusAreas = (values: unknown): string[] => {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set<string>();
+  return values.reduce<string[]>((acc, value) => {
+    const tag = String(value ?? '').trim();
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) return acc;
+    seen.add(key);
+    acc.push(tag);
+    return acc;
+  }, []).slice(0, 12);
 };
 
 const toActivityStartMs = (activityDate: unknown, activityTime: unknown): number | null => {
@@ -370,6 +387,10 @@ export const taskService = {
       ],
       resolvedVideoPayload.videoUrls,
     );
+    const resolvedFocusAreas = normalizeFocusAreas([
+      ...normalizeFocusAreas('focusAreas' in sourceTask ? (sourceTask as any).focusAreas : (rawData as CreateTaskData).focusAreas),
+      ...normalizeFocusAreas('focus_areas' in sourceTask ? (sourceTask as any).focus_areas : (rawData as CreateTaskData).focus_areas),
+    ]);
     const resolvedAfterTrainingEnabled =
       ('afterTrainingEnabled' in sourceTask
         ? (sourceTask as any).afterTrainingEnabled
@@ -451,6 +472,7 @@ export const taskService = {
       video_url: resolvedVideoPayload.video_url,
       video_urls: resolvedVideoPayload.video_urls,
       media_names: resolvedMediaNamePayload.media_names,
+      focus_areas: resolvedFocusAreas,
       after_training_enabled: resolvedAfterTrainingEnabled,
       after_training_delay_minutes: resolvedAfterTrainingDelay,
       after_training_feedback_enable_score: resolvedAfterTrainingFeedbackEnableScore,
@@ -468,7 +490,7 @@ export const taskService = {
       library_exercise_id: resolvedLibraryExerciseId,
     };
     const templateSelect =
-      'id, title, description, reminder_minutes, video_url, video_urls, media_names, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes, auto_add_to_activities';
+      'id, title, description, reminder_minutes, video_url, video_urls, media_names, focus_areas, source_folder, after_training_enabled, after_training_delay_minutes, after_training_feedback_enable_score, after_training_feedback_score_explanation, after_training_feedback_enable_intensity, after_training_feedback_enable_note, task_duration_enabled, task_duration_minutes, auto_add_to_activities';
 
     let template: any = null;
     let templateCreated = false;
@@ -579,6 +601,8 @@ export const taskService = {
       videoUrls: returnedVideoPayload.videoUrls,
       mediaNames: returnedMediaNamePayload.mediaNames,
       media_names: returnedMediaNamePayload.media_names,
+      focusAreas: normalizeFocusAreas((template as any).focus_areas ?? resolvedFocusAreas),
+      focus_areas: normalizeFocusAreas((template as any).focus_areas ?? resolvedFocusAreas),
       source_folder: template.source_folder ?? undefined,
       afterTrainingEnabled: template.after_training_enabled ?? false,
       afterTrainingDelayMinutes: template.after_training_delay_minutes ?? null,
@@ -623,6 +647,12 @@ export const taskService = {
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.reminder !== undefined) updateData.reminder_minutes = updates.reminder;
+    if (updates.focusAreas !== undefined || updates.focus_areas !== undefined) {
+      (updateData as any).focus_areas = normalizeFocusAreas([
+        ...normalizeFocusAreas(updates.focusAreas),
+        ...normalizeFocusAreas(updates.focus_areas),
+      ]);
+    }
 
     let nextMediaUrlsForNames: string[] | null = null;
     if ('videoUrl' in updates) {

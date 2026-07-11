@@ -70,6 +70,8 @@ export interface Task {
   video_urls?: string[] | null;
   mediaNames?: string[];
   media_names?: string[] | null;
+  focusAreas?: string[];
+  focus_areas?: string[] | null;
   afterTrainingEnabled?: boolean;
   afterTrainingDelayMinutes?: number | null;
   afterTrainingFeedbackEnableScore?: boolean;

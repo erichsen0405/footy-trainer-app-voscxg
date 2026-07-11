@@ -461,6 +461,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('Beskrivelse');
     expect(plan).toContain('FocusTagEditor');
     expect(plan).toContain('plan.templates.focusTagFilter');
+    expect(plan).toContain('normalizeFocusTags(template.focusAreas)');
+    expect(plan).toContain("value: 'session', label: 'Session'");
+    expect(plan).toContain("value: 'week', label: 'Week'");
     expect(plan).toContain('templateTagChip');
     expect(plan).toContain('minHeight={124}');
     expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
@@ -480,6 +483,10 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain("label: 'Kilde', value: sourceLabel");
     expect(tasks).toContain('tasks.taskFocusTags');
     expect(tasks).toContain('tasks.focusTagFilter.button');
+    expect(tasks).toContain('TaskFocusTagEditor');
+    expect(tasks).toContain('tasks.modal.focusTagEditor');
+    expect(tasks).toContain('focusAreas: focusTags');
+    expect(tasks).toContain('focus_areas: focusTags');
     expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Aktiv'");
     expect(tasks).not.toContain('tasks.template.autoAddBadge');
     expect(tasks).toContain('tasks.taskCard.media');
