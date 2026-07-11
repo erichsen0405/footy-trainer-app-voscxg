@@ -468,7 +468,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("value: 'session', label: 'Session'");
     expect(plan).toContain("value: 'week', label: 'Week'");
     expect(plan).toContain('templateTagChip');
-    expect(plan).toContain('minHeight={124}');
+    expect(plan).toContain('minHeight={92}');
+    expect(plan).toContain('hintVariant="counter"');
+    expect(plan).toContain('surfaceColor={colors.background}');
     expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
     expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Tasks' : 'Tasks'");
     expect(tasks).toContain('isTrainerProfile && !embedded');

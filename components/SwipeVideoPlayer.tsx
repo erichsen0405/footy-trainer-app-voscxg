@@ -22,6 +22,8 @@ type SwipeVideoPlayerProps = {
   initialIndex?: number;
   minHeight?: number;
   showHint?: boolean;
+  hintVariant?: 'full' | 'counter';
+  surfaceColor?: string;
   testID?: string;
 };
 
@@ -30,6 +32,8 @@ export default function SwipeVideoPlayer({
   initialIndex = 0,
   minHeight = 220,
   showHint = true,
+  hintVariant = 'full',
+  surfaceColor = '#000',
   testID,
 }: SwipeVideoPlayerProps) {
   const mediaUrls = useMemo(() => normalizeTaskVideoUrls(urls), [urls]);
@@ -59,7 +63,7 @@ export default function SwipeVideoPlayer({
   };
 
   return (
-    <View style={[styles.wrapper, { height: mediaHeight }]} onLayout={handleLayout} testID={testID}>
+    <View style={[styles.wrapper, { height: mediaHeight, backgroundColor: surfaceColor }]} onLayout={handleLayout} testID={testID}>
       <ScrollView
         horizontal
         pagingEnabled
@@ -70,15 +74,18 @@ export default function SwipeVideoPlayer({
         testID={testID ? `${testID}.scroll` : undefined}
       >
         {mediaUrls.map((url, index) => (
-          <View key={`${url}-${index}`} style={[styles.slide, { width: slideWidth, height: mediaHeight }]}>
-            <TaskMediaSlide url={url} height={mediaHeight} />
+          <View
+            key={`${url}-${index}`}
+            style={[styles.slide, { width: slideWidth, height: mediaHeight, backgroundColor: surfaceColor }]}
+          >
+            <TaskMediaSlide url={url} height={mediaHeight} surfaceColor={surfaceColor} />
           </View>
         ))}
       </ScrollView>
 
       {hasMultipleMedia && showHint ? (
-        <View style={styles.hintPill} pointerEvents="none">
-          <Text style={styles.hintText}>Swipe for next file</Text>
+        <View style={[styles.hintPill, hintVariant === 'counter' && styles.hintPillCompact]} pointerEvents="none">
+          {hintVariant === 'full' ? <Text style={styles.hintText}>Swipe for next file</Text> : null}
           <Text style={styles.counterText}>{activeIndex + 1}/{mediaUrls.length}</Text>
         </View>
       ) : null}
@@ -97,11 +104,11 @@ export default function SwipeVideoPlayer({
   );
 }
 
-function TaskMediaSlide({ url, height }: { url: string; height: number }) {
+function TaskMediaSlide({ url, height, surfaceColor }: { url: string; height: number; surfaceColor: string }) {
   const mediaType = getTaskMediaType(url);
 
   if (mediaType === 'image') {
-    return <Image source={{ uri: url }} style={[styles.image, { height }]} resizeMode="contain" />;
+    return <Image source={{ uri: url }} style={[styles.image, { height, backgroundColor: surfaceColor }]} resizeMode="contain" />;
   }
 
   if (mediaType === 'pdf') {
@@ -182,6 +189,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  hintPillCompact: {
+    top: 8,
+    right: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   hintText: {
     color: '#fff',

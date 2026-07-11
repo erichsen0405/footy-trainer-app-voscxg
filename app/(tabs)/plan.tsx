@@ -238,23 +238,43 @@ function createEmptyExerciseTimerDraft(): ExerciseTimerDraft {
   };
 }
 
+const LEGACY_FOCUS_TAG_TRANSLATIONS: Record<string, string> = {
+  afslutning: 'Finishing',
+  angreb: 'Attack',
+  boldkontrol: 'Ball control',
+  fysisk: 'Physical',
+  forsvar: 'Defense',
+  forsteberoring: 'First touch',
+  'forste beroring': 'First touch',
+  førsteberøring: 'First touch',
+  'første berøring': 'First touch',
+  hurtighed: 'Speed',
+  malmand: 'Goalkeeper',
+  målmand: 'Goalkeeper',
+  midtbane: 'Midfielder',
+  pasning: 'Passing',
+  styrke: 'Strength',
+  teknik: 'Technique',
+  udholdenhed: 'Endurance',
+};
+
+function normalizeFocusTagDisplayValue(value: unknown): string {
+  const tag = String(value ?? '').trim().replace(/\s+/g, ' ');
+  if (!tag) return '';
+  const key = normalizeFocusTagKey(tag);
+  return LEGACY_FOCUS_TAG_TRANSLATIONS[key] ?? tag;
+}
+
 function normalizeFocusInput(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean)
-    )
-  ).slice(0, 12);
+  return normalizeFocusTags(value.split(',')).slice(0, 12);
 }
 
 function normalizeFocusTags(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value.reduce<string[]>((acc, item) => {
-    const tag = String(item ?? '').trim();
-    const key = tag.toLowerCase();
+    const tag = normalizeFocusTagDisplayValue(item);
+    const key = normalizeFocusTagKey(tag);
     if (!tag || seen.has(key)) return acc;
     seen.add(key);
     acc.push(tag);
@@ -263,7 +283,12 @@ function normalizeFocusTags(value: unknown): string[] {
 }
 
 function normalizeFocusTagKey(value: string): string {
-  return value.trim().toLowerCase();
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 function buildFocusInputFromTags(tags: string[]): string {
@@ -532,7 +557,7 @@ function createDraftFromTemplate(template: TrainingTemplateSummary): TemplateDra
     title: template.title,
     description: template.description ?? '',
     folderId: template.folderId,
-    focusInput: template.focusAreas.join(', '),
+    focusInput: buildFocusInputFromTags(template.focusAreas),
     defaultActivityCategoryName: template.defaultActivityCategoryName ?? '',
     taskConfig: createTaskConfigDraftFromConfig(metadata.task),
     exerciseTimer: createExerciseTimerDraftFromConfig(metadata.timer),
@@ -2541,8 +2566,10 @@ function TemplateCard({
           <View style={styles.templateMediaPlayer}>
             <SwipeVideoPlayer
               urls={mediaUrls}
-              minHeight={124}
+              minHeight={92}
               showHint={mediaUrls.length > 1}
+              hintVariant="counter"
+              surfaceColor={colors.background}
               testID={`plan.template.mediaPlayer.${template.templateType}`}
             />
           </View>
