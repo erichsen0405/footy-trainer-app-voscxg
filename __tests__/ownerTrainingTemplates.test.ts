@@ -498,7 +498,7 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain("iosIcon: 'person.2.fill'");
     expect(tasks).toContain("iosIcon: 'person.crop.circle.fill'");
     expect(tasks).toContain('tasks.task.duration.${sanitizeTestIdSegment(taskId)}');
-    expect(tasks).toContain("Auto-add to activities: {autoAdd ? 'On' : 'Off'}");
+    expect(tasks).toContain("accessibilityLabel={`Auto-add to activities: ${autoAdd ? 'On' : 'Off'}`}");
     expect(tasks).toContain('tasks.taskCategoryBadge');
     expect(tasks).toContain('tasks.taskFocusTags');
     expect(tasks).toContain('tasks.focusTagFilter.button');

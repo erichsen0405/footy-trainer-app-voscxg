@@ -2572,7 +2572,7 @@ function TemplateCard({
               style={[
                 styles.templateActionButton,
                 styles.templateSourceButton,
-                { backgroundColor: `${sourceVisual.color}1F` },
+                { backgroundColor: `${sourceVisual.color}14` },
               ]}
               onPress={() => Alert.alert('Source', sourceLabel)}
               activeOpacity={0.84}
@@ -2596,7 +2596,7 @@ function TemplateCard({
             activeOpacity={0.84}
             testID={`plan.template.duplicate.${template.templateType}`}
           >
-            <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+            <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.templateActionButton, { opacity: busy ? 0.5 : 1 }]}
@@ -2605,7 +2605,7 @@ function TemplateCard({
             activeOpacity={0.84}
             testID={`plan.template.edit.${template.templateType}`}
           >
-            <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.warning} />
+            <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
           {showStatusControls ? (
             <TouchableOpacity
@@ -2618,8 +2618,8 @@ function TemplateCard({
               <IconSymbol
                 ios_icon_name={template.status === 'archived' ? 'arrow.uturn.backward.circle' : 'archivebox'}
                 android_material_icon_name={template.status === 'archived' ? 'unarchive' : 'archive'}
-                size={20}
-                color={colors.primary}
+                size={18}
+                color={colors.textSecondary}
               />
             </TouchableOpacity>
           ) : null}
@@ -2659,14 +2659,14 @@ function TemplateCard({
         <View style={styles.templateMetadataRows} testID={`plan.template.facts.${template.templateType}`}>
           {visibleMetadataFacts.map((fact) => {
             const icon = fact.label === 'Task duration'
-              ? { ios: 'clock.fill', android: 'schedule', color: colors.primary }
+              ? { ios: 'clock', android: 'schedule', color: colors.textSecondary }
               : fact.label === 'Timer'
                 ? { ios: 'timer', android: 'timer', color: colors.primary }
                 : fact.label === 'Reminder'
-                  ? { ios: 'bell.fill', android: 'notifications', color: colors.warning }
+                  ? { ios: 'bell', android: 'notifications_none', color: colors.textSecondary }
                   : fact.label === 'Feedback'
-                    ? { ios: 'bubble.left.and.bubble.right.fill', android: 'forum', color: colors.secondary }
-                    : { ios: 'list.bullet', android: 'format_list_bulleted', color: tone };
+                    ? { ios: 'bubble.left', android: 'chat_bubble_outline', color: colors.textSecondary }
+                    : { ios: 'list.bullet', android: 'format_list_bulleted', color: colors.textSecondary };
             const value = fact.label === 'Task duration'
               ? `${fact.value} task time`
               : fact.label === 'Items'
@@ -2699,7 +2699,7 @@ function TemplateCard({
             styles.templateAutoAddBadge,
             {
               backgroundColor: autoAddFact.value === 'On' ? `${colors.primary}1F` : `${colors.textSecondary}1F`,
-              borderColor: autoAddFact.value === 'On' ? colors.primary : colors.textSecondary,
+              borderColor: 'transparent',
             },
           ]}
           testID={`plan.template.autoAdd.${template.templateType}`}
@@ -2728,14 +2728,14 @@ function TemplateCard({
                 key={category.id}
                 style={[
                   styles.templateTagChip,
-                  { backgroundColor: `${category.color}1F`, borderColor: category.color },
+                  { backgroundColor: `${category.color}14`, borderColor: category.color },
                 ]}
               >
                 {category.emoji ? <Text style={styles.templateCategoryEmoji}>{category.emoji}</Text> : null}
                 <Text style={[styles.templateTagChipText, { color: category.color }]} numberOfLines={1}>{category.name}</Text>
               </View>
             )) : (
-              <View style={[styles.templateTagChip, { backgroundColor: `${tone}1F`, borderColor: tone }]}>
+              <View style={[styles.templateTagChip, { backgroundColor: `${tone}14`, borderColor: tone }]}>
                 <Text style={[styles.templateTagChipText, { color: tone }]} numberOfLines={1}>{categoryFact?.value}</Text>
               </View>
             )}
@@ -2751,7 +2751,7 @@ function TemplateCard({
           </View>
           <View style={styles.templateTagRow}>
             {focusTags.map((tag) => (
-              <View key={tag} style={[styles.templateTagChip, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+              <View key={tag} style={[styles.templateTagChip, { backgroundColor: `${colors.primary}14`, borderColor: colors.primary }]}>
                 <Text style={[styles.templateTagChipText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
               </View>
             ))}
@@ -3502,35 +3502,35 @@ const styles = StyleSheet.create({
   },
   templateCard: {
     borderWidth: 1,
-    borderRadius: 24,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     marginBottom: 12,
   },
   templateCardShadow: {
     shadowColor: '#64748b',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   templateHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    columnGap: 10,
-    marginBottom: 8,
+    columnGap: 8,
+    marginBottom: 6,
   },
   templateHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    columnGap: 12,
+    columnGap: 10,
     minWidth: 0,
   },
   templateIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3539,17 +3539,22 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   templateTitle: {
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: '800',
   },
   templateActions: {
     flexDirection: 'row',
-    columnGap: 8,
+    columnGap: 3,
     flexShrink: 0,
   },
   templateActionButton: {
-    padding: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
   templateSourceButton: {
     width: 28,
@@ -3577,12 +3582,12 @@ const styles = StyleSheet.create({
   },
   templateDescription: {
     fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
+    fontWeight: '500',
+    lineHeight: 19,
   },
   templateDescriptionIndented: {
-    marginLeft: 46,
-    marginTop: -4,
+    marginLeft: 42,
+    marginTop: -2,
     marginBottom: 10,
   },
   templateLabeledBlock: {
@@ -3620,6 +3625,7 @@ const styles = StyleSheet.create({
     rowGap: 6,
   },
   templateTagRow: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
@@ -3628,9 +3634,9 @@ const styles = StyleSheet.create({
     minHeight: 28,
     maxWidth: '100%',
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 0,
     paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 5,
@@ -3638,55 +3644,61 @@ const styles = StyleSheet.create({
   },
   templateTagChipText: {
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   templateCategoryEmoji: {
     fontSize: 13,
   },
   templateMetadataRows: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(148,163,184,0.24)',
+    paddingTop: 8,
     marginBottom: 2,
   },
   templateMetadataRow: {
+    minHeight: 26,
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: 6,
-    marginBottom: 8,
+    columnGap: 7,
   },
   templateMetadataText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   templateAutoAddBadge: {
     alignSelf: 'flex-start',
-    minHeight: 30,
+    minHeight: 28,
     maxWidth: '100%',
-    borderRadius: 999,
-    borderWidth: 1.5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginTop: 4,
+    marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 6,
   },
   templateAutoAddText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   templateTaxonomySection: {
-    marginTop: 6,
-    marginBottom: 8,
-    rowGap: 8,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    columnGap: 10,
   },
   templateTaxonomyLabelRow: {
+    width: 86,
+    minHeight: 27,
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: 6,
+    columnGap: 5,
   },
   templateTaxonomyLabel: {
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '700',
     letterSpacing: 0,
   },
   templateSectionHeader: {
@@ -3701,27 +3713,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   templateMediaSection: {
+    marginTop: 4,
     marginBottom: 12,
   },
   templateMediaPlayer: {
-    borderRadius: 14,
+    borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#000',
   },
   templateAssignButton: {
-    minHeight: 42,
-    borderRadius: 14,
+    minHeight: 44,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     columnGap: 7,
-    marginTop: 8,
-    marginBottom: 10,
+    marginTop: 12,
+    marginBottom: 0,
   },
   templateAssignButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
   },
   templatePills: {
     flexDirection: 'row',

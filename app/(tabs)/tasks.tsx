@@ -491,7 +491,7 @@ export const TaskCard = React.memo(
         <TouchableOpacity onPress={onPress} testID={`tasks.taskCard.${taskId}`} activeOpacity={0.9}>
           <View style={styles.taskHeader}>
             <View style={styles.taskHeaderLeft}>
-              <View style={styles.taskIconWrap}>
+              <View style={[styles.taskIconWrap, { backgroundColor: withAlpha(colors.primary, 0.1) }]}>
                 <IconSymbol ios_icon_name="checklist" android_material_icon_name="checklist" size={18} color={colors.primary} />
               </View>
               <View style={styles.taskTitleWrap}>
@@ -519,10 +519,10 @@ export const TaskCard = React.memo(
                 />
               </TouchableOpacity>
               <TouchableOpacity onPress={onDuplicate} style={styles.actionButton} testID={`tasks.task.duplicate.${taskId}`}>
-                <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={20} color={colors.secondary} />
+                <IconSymbol ios_icon_name="doc.on.doc" android_material_icon_name="content_copy" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity onPress={onPress} style={styles.actionButton}>
-                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={20} color={colors.accent} />
+                <IconSymbol ios_icon_name="pencil" android_material_icon_name="edit" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={onArchive}
@@ -532,12 +532,12 @@ export const TaskCard = React.memo(
                 <IconSymbol
                   ios_icon_name={isArchived ? 'arrow.uturn.backward.circle' : 'archivebox'}
                   android_material_icon_name={isArchived ? 'unarchive' : 'archive'}
-                  size={20}
-                  color={colors.primary}
+                  size={18}
+                  color={colors.textSecondary}
                 />
               </TouchableOpacity>
               <TouchableOpacity onPress={onDelete} style={styles.actionButton} testID={`tasks.task.delete.${taskId}`}>
-                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={20} color={colors.error} />
+                <IconSymbol ios_icon_name="trash" android_material_icon_name="delete" size={18} color={colors.error} />
               </TouchableOpacity>
             </View>
           </View>
@@ -575,48 +575,47 @@ export const TaskCard = React.memo(
           </View>
         ) : null}
 
-        {taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0 ? (
-          <View style={styles.taskMetadataRow} testID={`tasks.task.duration.${sanitizeTestIdSegment(taskId)}`}>
-            <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="schedule" size={15} color={colors.primary} />
-            <Text style={[styles.taskMetadataText, { color: colors.primary }]}>{taskDurationMinutes} min task time</Text>
-          </View>
-        ) : null}
+        <View style={[styles.taskMetadataGroup, { borderColor: isDark ? '#3a3a3a' : colors.highlight }]}>
+          {taskDurationEnabled && Number.isFinite(taskDurationMinutes) && taskDurationMinutes > 0 ? (
+            <View style={styles.taskMetadataRow} testID={`tasks.task.duration.${sanitizeTestIdSegment(taskId)}`}>
+              <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={14} color={colors.textSecondary} />
+              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Task time</Text>
+              <Text style={[styles.taskMetadataValue, { color: colors.text }]}>{taskDurationMinutes} min</Text>
+            </View>
+          ) : null}
 
-        {reminderMinutes !== null ? (
-          <View style={styles.taskMetadataRow}>
-            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={15} color={colors.accent} />
-            <Text style={[styles.taskMetadataText, { color: colors.accent }]}>{reminderMinutes} min before start</Text>
-          </View>
-        ) : null}
+          {reminderMinutes !== null ? (
+            <View style={styles.taskMetadataRow}>
+              <IconSymbol ios_icon_name="bell" android_material_icon_name="notifications_none" size={14} color={colors.textSecondary} />
+              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Reminder</Text>
+              <Text style={[styles.taskMetadataValue, { color: colors.text }]}>{reminderMinutes} min before</Text>
+            </View>
+          ) : null}
 
-        {feedbackEnabled ? (
-          <View style={styles.taskMetadataRow}>
-            <IconSymbol ios_icon_name="bubble.left.and.bubble.right.fill" android_material_icon_name="forum" size={15} color={colors.secondary} />
-            <Text style={[styles.taskMetadataText, { color: colors.secondary }]}>
-              Feedback {Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0 ? `${feedbackDelayMinutes} min after` : 'after activity'}
-            </Text>
-          </View>
-        ) : null}
+          {feedbackEnabled ? (
+            <View style={styles.taskMetadataRow}>
+              <IconSymbol ios_icon_name="bubble.left" android_material_icon_name="chat_bubble_outline" size={14} color={colors.textSecondary} />
+              <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Feedback</Text>
+              <Text style={[styles.taskMetadataValue, { color: colors.text }]}>
+                {Number.isFinite(feedbackDelayMinutes) && feedbackDelayMinutes > 0 ? `${feedbackDelayMinutes} min after` : 'After activity'}
+              </Text>
+            </View>
+          ) : null}
 
-        <View
-          style={[
-            styles.autoAddBadge,
-            {
-              backgroundColor: autoAdd ? withAlpha(colors.primary, 0.12) : withAlpha(colors.textSecondary, 0.12),
-              borderColor: autoAdd ? colors.primary : colors.textSecondary,
-            },
-          ]}
-          testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
-        >
-          <IconSymbol
-            ios_icon_name={autoAdd ? 'checkmark.circle.fill' : 'minus.circle'}
-            android_material_icon_name={autoAdd ? 'check_circle' : 'remove_circle_outline'}
-            size={15}
-            color={autoAdd ? colors.primary : colors.textSecondary}
-          />
-          <Text style={[styles.autoAddBadgeText, { color: autoAdd ? colors.primary : colors.textSecondary }]}>
-            Auto-add to activities: {autoAdd ? 'On' : 'Off'}
-          </Text>
+          <View
+            style={styles.taskMetadataRow}
+            testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
+            accessibilityLabel={`Auto-add to activities: ${autoAdd ? 'On' : 'Off'}`}
+          >
+            <IconSymbol
+              ios_icon_name={autoAdd ? 'checkmark.circle.fill' : 'minus.circle'}
+              android_material_icon_name={autoAdd ? 'check_circle' : 'remove_circle_outline'}
+              size={14}
+              color={autoAdd ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[styles.taskMetadataLabel, { color: colors.textSecondary }]}>Auto-add</Text>
+            <Text style={[styles.taskMetadataValue, { color: autoAdd ? colors.primary : colors.textSecondary }]}>{autoAdd ? 'On' : 'Off'}</Text>
+          </View>
         </View>
 
         {categoryItems.length ? (
@@ -634,7 +633,7 @@ export const TaskCard = React.memo(
                     key={categoryId}
                     style={[
                       styles.taskCategoryBadge,
-                      { backgroundColor: withAlpha(categoryColor, 0.14), borderColor: categoryColor },
+                      { backgroundColor: withAlpha(categoryColor, 0.1), borderColor: categoryColor },
                     ]}
                     testID={`tasks.taskCategoryBadge.${sanitizeTestIdSegment(taskId)}.${sanitizeTestIdSegment(categoryId)}`}
                   >
@@ -659,7 +658,7 @@ export const TaskCard = React.memo(
             </View>
             <View style={styles.cardTagRow}>
               {focusTags.map((tag) => (
-                <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
+                <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.08), borderColor: colors.primary }]}>
                   <Text style={[styles.cardTagChipText, { color: colors.primary }]} numberOfLines={1}>{tag}</Text>
                 </View>
               ))}
@@ -2981,28 +2980,30 @@ const styles = StyleSheet.create({
   emptyState: { padding: 48, borderRadius: 16, alignItems: 'center', gap: 16 },
   emptyStateText: { fontSize: 16, textAlign: 'center' },
 
-  taskCard: { borderRadius: 24, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.28)' },
+  taskCard: { borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(148,163,184,0.2)' },
   taskCardShadow: {
     shadowColor: '#64748b',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  taskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 10 },
-  taskHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, minWidth: 0 },
-  taskIconWrap: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(59,130,246,0.12)' },
+  taskHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8 },
+  taskHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10, minWidth: 0 },
+  taskIconWrap: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   taskTitleWrap: { flex: 1, minWidth: 0, gap: 5 },
   taskTitleRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  taskTitle: { fontSize: 16, fontWeight: '800', flex: 1, lineHeight: 21 },
+  taskTitle: { fontSize: 17, fontWeight: '800', flex: 1, lineHeight: 22 },
   taskMeta: { fontSize: 11, fontWeight: '800' },
-  taskDescription: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
-  taskDescriptionIndented: { marginLeft: 46, marginTop: -4, marginBottom: 10 },
-  taskActions: { flexDirection: 'row', gap: 8, flexShrink: 0 },
-  actionButton: { padding: 4 },
+  taskDescription: { fontSize: 13, lineHeight: 19, fontWeight: '500' },
+  taskDescriptionIndented: { marginLeft: 42, marginTop: -2, marginBottom: 10 },
+  taskActions: { flexDirection: 'row', gap: 3, flexShrink: 0 },
+  actionButton: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', padding: 0 },
   sourceActionButton: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', padding: 0 },
-  taskMetadataRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  taskMetadataText: { fontSize: 12, fontWeight: '800' },
+  taskMetadataGroup: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, marginBottom: 4 },
+  taskMetadataRow: { minHeight: 26, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  taskMetadataLabel: { flex: 1, fontSize: 12, fontWeight: '600' },
+  taskMetadataValue: { fontSize: 12, fontWeight: '700' },
   cardFactGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -3038,22 +3039,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cardTagRow: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
   cardTagChip: {
-    minHeight: 28,
+    minHeight: 27,
     maxWidth: '100%',
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 0,
     paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingVertical: 4,
     justifyContent: 'center',
   },
   cardTagChipText: {
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '700',
   },
   cardSectionHeader: {
     flexDirection: 'row',
@@ -3064,7 +3066,7 @@ const styles = StyleSheet.create({
   },
   cardSectionLabel: {
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0,
   },
@@ -3073,26 +3075,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   cardMediaSection: {
+    marginTop: 4,
     marginBottom: 12,
   },
   cardMediaPlayer: {
-    borderRadius: 14,
+    borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#000',
   },
   taskAssignButton: {
-    minHeight: 42,
-    borderRadius: 14,
+    minHeight: 44,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    marginBottom: 10,
+    marginTop: 12,
+    marginBottom: 0,
   },
   taskAssignButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
   },
 
   videoThumbnailWrapper: { height: 180, borderRadius: 12, overflow: 'hidden', marginBottom: 12, backgroundColor: '#000' },
@@ -3183,23 +3187,23 @@ const styles = StyleSheet.create({
   },
   autoAddBadgeText: { fontSize: 12, fontWeight: '800' },
 
-  categoriesBlock: { marginTop: 6, gap: 8 },
-  categoriesLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  categoriesLabelText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
-  taskCategoryBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoriesBlock: { marginTop: 8, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  categoriesLabelRow: { width: 86, minHeight: 27, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  categoriesLabelText: { fontSize: 11, fontWeight: '700' },
+  taskCategoryBadges: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   taskCategoryBadge: {
-    minHeight: 30,
+    minHeight: 27,
     maxWidth: '100%',
     borderRadius: 999,
-    borderWidth: 1.5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderWidth: 0,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
   taskCategoryBadgeEmoji: { fontSize: 13 },
-  taskCategoryBadgeText: { fontSize: 12, fontWeight: '800' },
+  taskCategoryBadgeText: { fontSize: 12, fontWeight: '700' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '92%', overflow: 'hidden' },

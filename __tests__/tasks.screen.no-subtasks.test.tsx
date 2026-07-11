@@ -308,10 +308,8 @@ describe('Tasks redesigned template screen', () => {
 
     expect(getByText('Auto aktiv')).toBeTruthy();
     expect(getByText('Auto inaktiv')).toBeTruthy();
-    expect(getByTestId('tasks.template.autoAddBadge.auto-on')).toBeTruthy();
-    expect(getByTestId('tasks.template.autoAddBadge.auto-off')).toBeTruthy();
-    expect(getByText('Auto-add to activities: On')).toBeTruthy();
-    expect(getByText('Auto-add to activities: Off')).toBeTruthy();
+    expect(getByTestId('tasks.template.autoAddBadge.auto-on').props.accessibilityLabel).toBe('Auto-add to activities: On');
+    expect(getByTestId('tasks.template.autoAddBadge.auto-off').props.accessibilityLabel).toBe('Auto-add to activities: Off');
   });
 
   it('validates required title and video URL in the modal', () => {
