@@ -38,10 +38,17 @@ ownerUserId: fea5a82e-7855-4a76-b7ed-3b5d3d4c3e3e
 createdAt: 2026-07-10T11:21:04.116709+00:00
 ```
 
-Konklusion: delete-endpointet virker for den row-id, der sendes. Fejlen i
-Base44 er sandsynligvis, at UI sender en stale/forældet `ownerAccountId`,
-bruger `coachAccountId`, bruger navn som identitet, eller merger en gammel liste
-tilbage efter refetch.
+Konklusion per 2026-07-11: delete-endpointet slettede den row-id, der blev
+sendt, men den linkede legacy `coach_account` blev straks genoprettet via
+legacy auto-provision triggers, naar FK'er blev sat til `null`. Backend er
+rettet i migration
+`20260711110000_delete_owner_account_prevent_legacy_reprovision.sql`, saa
+platform-admin delete nu saetter et transaction-flag, der stopper legacy
+auto-provision under selve delete-kaldet.
+
+Base44 skal stadig rette sit UI-flow, saa den slettede row fjernes straks,
+listen refetches, og der aldrig bruges stale id, `coachAccountId` eller navn
+som identitet.
 
 ## Endpoint
 
@@ -146,7 +153,25 @@ Vigtigt:
 
 ## Jeppe Test Case
 
-Naar listen viser den aktive `Jeppe's workspace`, skal slette-dialogen sende:
+Foer backend-rettelsen blev der oprettet nye aktive Jeppe-rows efter hvert
+delete-kald. Den seneste aktive row blev slettet efter migrationen:
+
+```text
+deleted ownerAccountId: 58b2b944-1084-4e7a-a78e-bb0e700424c0
+deleted coachAccountId: edb22488-b04e-450f-b118-00979d5e4e15
+```
+
+Efter delete og refetch gav remote verifikation:
+
+```text
+owner_accounts_name_jeppe_count: 0
+coach_accounts_name_jeppe_count: 0
+list_rpc_jeppe_count: 0
+```
+
+Hvis Base44 igen viser en aktiv `Jeppe's workspace`, skal slette-dialogen sende
+den rows aktuelle `ownerAccountId` fra `listPlatformAdminOwnerAccounts`, ikke en
+af de gamle id'er. Eksempel paa en tidligere aktiv row, der nu er slettet:
 
 ```json
 {
@@ -160,11 +185,13 @@ Den maa ikke sende:
 9f1f6e7a-f971-4b29-8d40-0ae8fc5c6c0f
 025e0cc0-69ac-4bbd-bd74-5eac6dd56e1a
 46ce0196-8f6a-4f8c-9817-8b512ecb2ac6
+58b2b944-1084-4e7a-a78e-bb0e700424c0
 Jeppe's workspace
 ```
 
-De vaerdier er enten en tidligere slettet owner row, en coach account id, et
-andet gammelt id eller et navn.
+De vaerdier er enten tidligere slettede owner rows, en coach account id, et
+andet gammelt id eller et navn. Brug altid den aktuelle rows `ownerAccountId`
+fra seneste liste-response.
 
 ## Acceptance Krav
 

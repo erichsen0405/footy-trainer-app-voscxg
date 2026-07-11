@@ -23,6 +23,10 @@ const deleteVisibilityMigrationPath = path.join(
   process.cwd(),
   'supabase/migrations/20260710150000_platform_admin_owner_account_delete_visibility.sql'
 );
+const deleteNoReprovisionMigrationPath = path.join(
+  process.cwd(),
+  'supabase/migrations/20260711110000_delete_owner_account_prevent_legacy_reprovision.sql'
+);
 const ownerSeatBase44PromptPath = path.join(process.cwd(), 'docs/base44-owner-seat-endpoints-deployed-prompt.md');
 const ownerDeleteBase44PromptPath = path.join(process.cwd(), 'docs/base44-delete-owner-account-fix-prompt.md');
 
@@ -75,6 +79,7 @@ const ownerSeatStatusPayload = {
 
 describe('owner licensing backend helpers', () => {
   const deleteVisibilityMigration = fs.readFileSync(deleteVisibilityMigrationPath, 'utf8');
+  const deleteNoReprovisionMigration = fs.readFileSync(deleteNoReprovisionMigrationPath, 'utf8');
   const ownerSeatBase44Prompt = fs.readFileSync(ownerSeatBase44PromptPath, 'utf8');
   const ownerDeleteBase44Prompt = fs.readFileSync(ownerDeleteBase44PromptPath, 'utf8');
 
@@ -364,10 +369,26 @@ describe('owner licensing backend helpers', () => {
     expect(ownerDeleteBase44Prompt).toContain('response.data.ownerAccountId === selectedOwnerAccountId');
     expect(ownerDeleteBase44Prompt).toContain('Merge aldrig med gammel');
     expect(ownerDeleteBase44Prompt).toContain('setOwnerAccounts(refreshed.ownerAccounts ?? [])');
+    expect(ownerDeleteBase44Prompt).toContain('legacy auto-provision triggers');
+    expect(ownerDeleteBase44Prompt).toContain('20260711110000_delete_owner_account_prevent_legacy_reprovision.sql');
     expect(ownerDeleteBase44Prompt).toContain('e6a68cb1-53d5-491e-bca6-1d4ce660919f');
+    expect(ownerDeleteBase44Prompt).toContain('58b2b944-1084-4e7a-a78e-bb0e700424c0');
+    expect(ownerDeleteBase44Prompt).toContain('owner_accounts_name_jeppe_count: 0');
     expect(ownerDeleteBase44Prompt).toContain('9f1f6e7a-f971-4b29-8d40-0ae8fc5c6c0f');
     expect(ownerDeleteBase44Prompt).toContain('025e0cc0-69ac-4bbd-bd74-5eac6dd56e1a');
     expect(ownerDeleteBase44Prompt).toContain('Der er ingen hardcoded special-case for Jeppe');
+  });
+
+  it('prevents legacy workspace reprovision during owner account delete', () => {
+    expect(deleteNoReprovisionMigration).toContain('create or replace function public.ensure_migration_coach_account_for_user');
+    expect(deleteNoReprovisionMigration).toContain("current_setting('app.skip_coach_workspace_auto_provision', true) = 'on'");
+    expect(deleteNoReprovisionMigration).toContain('return null;');
+    expect(deleteNoReprovisionMigration).toContain('create or replace function public.delete_owner_account_as_platform_admin');
+    expect(deleteNoReprovisionMigration).toContain(
+      "perform set_config('app.skip_coach_workspace_auto_provision', 'on', true);"
+    );
+    expect(deleteNoReprovisionMigration).toContain('delete from public.coach_accounts');
+    expect(deleteNoReprovisionMigration).toContain('without legacy auto-reprovisioning');
   });
 
   it('documents Base44 dashboard seat status fallback handling', () => {
