@@ -2533,6 +2533,9 @@ function TemplateCard({
   const visibleMetadataFacts = templateFacts.filter(
     (fact) => !['Category', 'Auto-add', 'Feedback'].includes(fact.label) && !['Off', 'Not set'].includes(fact.value),
   );
+  const sessionContentItems = template.templateType === 'session'
+    ? template.items.filter((item) => ['task_template', 'exercise'].includes(item.itemType) && item.title.trim().length > 0)
+    : [];
   const focusTags = normalizeFocusTags(template.focusAreas);
   const typeMeta = TEMPLATE_TYPES.find((type) => type.value === template.templateType);
   const normalizedSourceLabel = sourceLabel?.toLowerCase() ?? '';
@@ -2731,6 +2734,30 @@ function TemplateCard({
               </View>
             </View>
           ) : null}
+        </View>
+      ) : null}
+
+      {sessionContentItems.length ? (
+        <View style={styles.templateContentsSection} testID="plan.template.sessionItems">
+          <View style={styles.templateTaxonomyLabelRow}>
+            <IconSymbol ios_icon_name="list.bullet" android_material_icon_name="format_list_bulleted" size={14} color={colors.textSecondary} />
+            <Text style={[styles.templateTaxonomyLabel, { color: colors.textSecondary }]}>Included</Text>
+          </View>
+          <View style={styles.templateContentsList}>
+            {sessionContentItems.map((item) => (
+              <View key={item.id} style={styles.templateContentItem}>
+                <IconSymbol
+                  ios_icon_name={item.itemType === 'exercise' ? 'timer' : 'checkmark.circle'}
+                  android_material_icon_name={item.itemType === 'exercise' ? 'timer' : 'check_circle_outline'}
+                  size={13}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.templateContentTitle, { color: colors.text }]} numberOfLines={2}>
+                  {item.title}
+                </Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
 
@@ -3742,6 +3769,28 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0,
+  },
+  templateContentsSection: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    columnGap: 10,
+  },
+  templateContentsList: {
+    flex: 1,
+    rowGap: 6,
+  },
+  templateContentItem: {
+    minHeight: 22,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    columnGap: 7,
+  },
+  templateContentTitle: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   templateSectionHeader: {
     flexDirection: 'row',

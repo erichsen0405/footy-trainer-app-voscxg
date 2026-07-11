@@ -477,6 +477,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('normalizeFocusTags(template.focusAreas)');
     expect(plan).toContain("value: 'session', label: 'Session'");
     expect(plan).toContain("value: 'week', label: 'Week'");
+    expect(plan).toContain('plan.template.sessionItems');
+    expect(plan).toContain("['task_template', 'exercise'].includes(item.itemType)");
+    expect(plan).toContain('sessionContentItems.map');
     expect(plan).toContain('templateTagChip');
     expect(plan).toContain('minHeight={92}');
     expect(plan).toContain('hintVariant="counter"');
