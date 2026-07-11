@@ -2536,30 +2536,42 @@ function ExerciseTimerEditor({
     <View style={[styles.timerEditor, { backgroundColor: colors.background, borderColor: colors.border }]}>
       <Text style={[styles.taskFieldsSubtitle, { color: colors.textSecondary }]}>Interval timer</Text>
       <View style={styles.timerInputRow}>
-        <TextInput
-          style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-          value={timer.activeSeconds}
-          onChangeText={(value) => update({ activeSeconds: value.replace(/[^0-9]/g, '') })}
-          placeholder="Work sec"
-          placeholderTextColor={colors.textSecondary}
-          keyboardType="number-pad"
-        />
-        <TextInput
-          style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-          value={timer.restSeconds}
-          onChangeText={(value) => update({ restSeconds: value.replace(/[^0-9]/g, '') })}
-          placeholder="Rest sec"
-          placeholderTextColor={colors.textSecondary}
-          keyboardType="number-pad"
-        />
-        <TextInput
-          style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-          value={timer.rounds}
-          onChangeText={(value) => update({ rounds: value.replace(/[^0-9]/g, '') })}
-          placeholder="Rounds"
-          placeholderTextColor={colors.textSecondary}
-          keyboardType="number-pad"
-        />
+        <View style={styles.timerInputGroup}>
+          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Aktiv tid</Text>
+          <TextInput
+            style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+            value={timer.activeSeconds}
+            onChangeText={(value) => update({ activeSeconds: value.replace(/[^0-9]/g, '') })}
+            placeholder="45"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="number-pad"
+          />
+          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Sekunder med arbejde</Text>
+        </View>
+        <View style={styles.timerInputGroup}>
+          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Pause</Text>
+          <TextInput
+            style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+            value={timer.restSeconds}
+            onChangeText={(value) => update({ restSeconds: value.replace(/[^0-9]/g, '') })}
+            placeholder="15"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="number-pad"
+          />
+          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Sekunder mellem runder</Text>
+        </View>
+        <View style={styles.timerInputGroup}>
+          <Text style={[styles.timerInputLabel, { color: colors.text }]}>Runder</Text>
+          <TextInput
+            style={[styles.input, styles.timerInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+            value={timer.rounds}
+            onChangeText={(value) => update({ rounds: value.replace(/[^0-9]/g, '') })}
+            placeholder="3"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="number-pad"
+          />
+          <Text style={[styles.timerInputHint, { color: colors.textSecondary }]}>Antal gentagelser</Text>
+        </View>
       </View>
     </View>
   );
@@ -3311,9 +3323,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     columnGap: 8,
   },
-  timerInput: {
+  timerInputGroup: {
     flex: 1,
     minWidth: 0,
+    rowGap: 4,
+  },
+  timerInputLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  timerInputHint: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '700',
+  },
+  timerInput: {
+    width: '100%',
   },
   draftItemRow: {
     minHeight: 64,

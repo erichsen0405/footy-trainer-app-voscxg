@@ -393,6 +393,9 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("const [activeSection, setActiveSection] = useState<PlanSection>('tasks')");
     expect(plan).toContain("value: 'exercise', label: 'Exercise'");
     expect(plan).toContain('Interval timer');
+    expect(plan).toContain('Sekunder med arbejde');
+    expect(plan).toContain('Sekunder mellem runder');
+    expect(plan).toContain('Antal gentagelser');
     expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
     expect(plan).toContain('type ItemPickerMode');
     expect(plan).toContain("type PlanFilterPicker = 'view' | null");
