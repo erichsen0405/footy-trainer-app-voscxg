@@ -37,6 +37,7 @@ export default function SwipeVideoPlayer({
   const [containerWidth, setContainerWidth] = useState(0);
   const { width } = useWindowDimensions();
   const slideWidth = Math.max(1, containerWidth || Math.min(width, 720));
+  const mediaHeight = Math.max(96, minHeight);
   const hasMultipleMedia = mediaUrls.length > 1;
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function SwipeVideoPlayer({
   };
 
   return (
-    <View style={[styles.wrapper, { minHeight }]} onLayout={handleLayout} testID={testID}>
+    <View style={[styles.wrapper, { height: mediaHeight }]} onLayout={handleLayout} testID={testID}>
       <ScrollView
         horizontal
         pagingEnabled
@@ -69,8 +70,8 @@ export default function SwipeVideoPlayer({
         testID={testID ? `${testID}.scroll` : undefined}
       >
         {mediaUrls.map((url, index) => (
-          <View key={`${url}-${index}`} style={[styles.slide, { width: slideWidth, minHeight }]}>
-            <TaskMediaSlide url={url} />
+          <View key={`${url}-${index}`} style={[styles.slide, { width: slideWidth, height: mediaHeight }]}>
+            <TaskMediaSlide url={url} height={mediaHeight} />
           </View>
         ))}
       </ScrollView>
@@ -96,17 +97,17 @@ export default function SwipeVideoPlayer({
   );
 }
 
-function TaskMediaSlide({ url }: { url: string }) {
+function TaskMediaSlide({ url, height }: { url: string; height: number }) {
   const mediaType = getTaskMediaType(url);
 
   if (mediaType === 'image') {
-    return <Image source={{ uri: url }} style={styles.image} resizeMode="contain" />;
+    return <Image source={{ uri: url }} style={[styles.image, { height }]} resizeMode="contain" />;
   }
 
   if (mediaType === 'pdf') {
     return (
       <Pressable
-        style={styles.pdfSlide}
+        style={[styles.pdfSlide, { height }]}
         onPress={() => Linking.openURL(url)}
         accessibilityRole="button"
         accessibilityLabel="Open PDF"
@@ -120,7 +121,7 @@ function TaskMediaSlide({ url }: { url: string }) {
     );
   }
 
-  return <SmartVideoPlayer url={url} />;
+  return <SmartVideoPlayer url={url} height={height} />;
 }
 
 function clampIndex(index: number, length: number): number {
@@ -142,13 +143,10 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: '100%',
-    minHeight: 220,
     backgroundColor: '#000',
   },
   pdfSlide: {
     width: '100%',
-    minHeight: 220,
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

@@ -66,6 +66,12 @@ type PlanSourceFilterOption = {
   count: number;
 };
 
+type TemplateFocusTagOption = {
+  value: string;
+  label: string;
+  count: number;
+};
+
 type TemplateCategoryOption = {
   id: string;
   name: string;
@@ -241,6 +247,27 @@ function normalizeFocusInput(value: string): string[] {
         .filter(Boolean)
     )
   ).slice(0, 12);
+}
+
+function normalizeFocusTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.reduce<string[]>((acc, item) => {
+    const tag = String(item ?? '').trim();
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) return acc;
+    seen.add(key);
+    acc.push(tag);
+    return acc;
+  }, []);
+}
+
+function normalizeFocusTagKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function buildFocusInputFromTags(tags: string[]): string {
+  return normalizeFocusTags(tags).join(', ');
 }
 
 function parsePositiveInt(value: string): number | null {
@@ -445,19 +472,28 @@ function getTemplateSourceKind(template: TrainingTemplateSummary, actorUserId: s
 function getTemplateFacts(
   template: TrainingTemplateSummary,
   sourceLabel?: string,
-  mediaUrls: string[] = getTemplateMediaUrls(template),
   timer: TrainingTemplateExerciseTimer | null = getTemplateTimer(template),
 ): { label: string; value: string }[] {
   return [
-    { label: 'Type', value: templateTypeLabel(template.templateType) },
-    { label: 'Version', value: `v${template.versionNumber}` },
-    { label: 'Indhold', value: template.itemCount ? `${template.itemCount} items` : 'Selvstændig skabelon' },
     { label: 'Kilde', value: sourceLabel ?? null },
-    { label: 'Mappe', value: template.folderName },
-    { label: 'Fokus', value: template.focusAreas.length ? template.focusAreas.slice(0, 3).join(', ') : null },
     { label: 'Timer', value: formatExerciseTimer(timer) },
-    { label: 'Media', value: mediaUrls.length ? `${mediaUrls.length} ${mediaUrls.length === 1 ? 'fil' : 'filer'}` : null },
   ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
+}
+
+function buildTemplateFocusTagOptions(templates: TrainingTemplateSummary[]): TemplateFocusTagOption[] {
+  const byKey = new Map<string, TemplateFocusTagOption>();
+  templates.forEach((template) => {
+    normalizeFocusTags(template.focusAreas).forEach((tag) => {
+      const key = normalizeFocusTagKey(tag);
+      const current = byKey.get(key);
+      if (current) {
+        current.count += 1;
+      } else {
+        byKey.set(key, { value: tag, label: tag, count: 1 });
+      }
+    });
+  });
+  return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function buildTemplateSourceFilterOptions(
@@ -536,6 +572,7 @@ export default function PlanScreen() {
   const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   const [templateSourceFilter, setTemplateSourceFilter] = useState<TemplateSourceFilter>('all');
+  const [templateFocusTagFilter, setTemplateFocusTagFilter] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -553,6 +590,7 @@ export default function PlanScreen() {
   const [selectedReusableTemplateId, setSelectedReusableTemplateId] = useState<string | null>(null);
   const [selectedLibraryItemId, setSelectedLibraryItemId] = useState<string | null>(null);
   const [itemPickerMode, setItemPickerMode] = useState<ItemPickerMode>(null);
+  const [focusTagInput, setFocusTagInput] = useState('');
   const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
   const [uploadingItemMedia, setUploadingItemMedia] = useState(false);
   const { user } = useAuthSession();
@@ -674,10 +712,29 @@ export default function PlanScreen() {
   const effectiveTemplateSourceFilter = templateSourceOptions.some((option) => option.value === templateSourceFilter)
     ? templateSourceFilter
     : 'all';
-  const visiblePlanTemplates = useMemo(() => {
+  const sourceFilteredPlanTemplates = useMemo(() => {
     if (effectiveTemplateSourceFilter === 'all') return searchedPlanTemplates;
     return searchedPlanTemplates.filter((template) => getTemplateSourceKind(template, actorUserId) === effectiveTemplateSourceFilter);
   }, [actorUserId, effectiveTemplateSourceFilter, searchedPlanTemplates]);
+  const templateFocusTagOptions = useMemo(
+    () => buildTemplateFocusTagOptions(sourceFilteredPlanTemplates),
+    [sourceFilteredPlanTemplates]
+  );
+  const effectiveTemplateFocusTagFilter = useMemo(() => {
+    const availableKeys = new Set(templateFocusTagOptions.map((option) => normalizeFocusTagKey(option.value)));
+    return templateFocusTagFilter.filter((tag) => availableKeys.has(normalizeFocusTagKey(tag)));
+  }, [templateFocusTagFilter, templateFocusTagOptions]);
+  const visiblePlanTemplates = useMemo(() => {
+    if (!effectiveTemplateFocusTagFilter.length) return sourceFilteredPlanTemplates;
+    const selectedKeys = new Set(effectiveTemplateFocusTagFilter.map(normalizeFocusTagKey));
+    return sourceFilteredPlanTemplates.filter((template) =>
+      normalizeFocusTags(template.focusAreas).some((tag) => selectedKeys.has(normalizeFocusTagKey(tag)))
+    );
+  }, [effectiveTemplateFocusTagFilter, sourceFilteredPlanTemplates]);
+  const allFocusTags = useMemo(
+    () => buildTemplateFocusTagOptions(payload?.templates ?? []).map((option) => option.value),
+    [payload?.templates]
+  );
 
   const allowedItemTypes = useMemo(
     () => ITEM_TYPES.filter((type) => ITEM_TYPES_BY_TEMPLATE[draft.templateType].includes(type.value)),
@@ -740,6 +797,7 @@ export default function PlanScreen() {
 
   const openCreate = useCallback((type: TrainingTemplateType = 'session') => {
     setDraft(createEmptyDraft(type));
+    setFocusTagInput('');
     resetItemDraft(type);
     setDraftVisible(true);
   }, [resetItemDraft]);
@@ -752,6 +810,7 @@ export default function PlanScreen() {
   const selectPlanViewTarget = useCallback((target: (typeof PLAN_VIEW_TARGETS)[number]) => {
     setPlanFilterPicker(null);
     setTemplateSourceFilter('all');
+    setTemplateFocusTagFilter([]);
     if (target.value === 'tasks') {
       setActiveSection('tasks');
       setSelectedTemplateTypes([]);
@@ -771,9 +830,40 @@ export default function PlanScreen() {
 
   const openEdit = useCallback((template: TrainingTemplateSummary) => {
     setDraft(createDraftFromTemplate(template));
+    setFocusTagInput('');
     resetItemDraft(template.templateType);
     setDraftVisible(true);
   }, [resetItemDraft]);
+
+  const toggleTemplateFocusTagFilter = useCallback((tag: string) => {
+    const key = normalizeFocusTagKey(tag);
+    setTemplateFocusTagFilter((current) =>
+      current.some((selected) => normalizeFocusTagKey(selected) === key)
+        ? current.filter((selected) => normalizeFocusTagKey(selected) !== key)
+        : [...current, tag]
+    );
+  }, []);
+
+  const updateDraftFocusTags = useCallback((tags: string[]) => {
+    setDraft((current) => ({ ...current, focusInput: buildFocusInputFromTags(tags) }));
+  }, []);
+
+  const addDraftFocusTag = useCallback((tag: string) => {
+    const normalized = tag.trim();
+    if (!normalized) return;
+    const currentTags = normalizeFocusInput(draft.focusInput);
+    const exists = currentTags.some((item) => normalizeFocusTagKey(item) === normalizeFocusTagKey(normalized));
+    if (!exists) {
+      updateDraftFocusTags([...currentTags, normalized]);
+    }
+    setFocusTagInput('');
+  }, [draft.focusInput, updateDraftFocusTags]);
+
+  const removeDraftFocusTag = useCallback((tag: string) => {
+    updateDraftFocusTags(
+      normalizeFocusInput(draft.focusInput).filter((item) => normalizeFocusTagKey(item) !== normalizeFocusTagKey(tag))
+    );
+  }, [draft.focusInput, updateDraftFocusTags]);
 
   const onRefresh = useCallback(async () => {
     if (!activeOwnerAccountId) return;
@@ -1264,6 +1354,10 @@ export default function PlanScreen() {
               sourceOptions={templateSourceOptions}
               sourceFilter={effectiveTemplateSourceFilter}
               onSourceFilterChange={setTemplateSourceFilter}
+              focusTagOptions={templateFocusTagOptions}
+              selectedFocusTags={effectiveTemplateFocusTagFilter}
+              onToggleFocusTag={toggleTemplateFocusTagFilter}
+              onClearFocusTags={() => setTemplateFocusTagFilter([])}
               actorUserId={actorUserId}
               colors={colors}
               onEdit={openEdit}
@@ -1340,12 +1434,14 @@ export default function PlanScreen() {
               placeholder="Purpose, coaching notes, setup..."
               multiline
             />
-            <LabeledInput
-              label="Focus areas"
-              value={draft.focusInput}
-              onChangeText={(value) => setDraft((current) => ({ ...current, focusInput: value }))}
+            <FocusTagEditor
+              selectedTags={normalizeFocusInput(draft.focusInput)}
+              availableTags={allFocusTags}
+              inputValue={focusTagInput}
+              onInputChange={setFocusTagInput}
+              onAddTag={addDraftFocusTag}
+              onRemoveTag={removeDraftFocusTag}
               colors={colors}
-              placeholder="Finishing, first touch, scanning"
             />
             {draft.templateType === 'session' ? (
               <LabeledInput
@@ -1638,6 +1734,10 @@ function PlanTemplateLibraryView({
   sourceOptions,
   sourceFilter,
   onSourceFilterChange,
+  focusTagOptions,
+  selectedFocusTags,
+  onToggleFocusTag,
+  onClearFocusTags,
   actorUserId,
   colors,
   onEdit,
@@ -1658,6 +1758,10 @@ function PlanTemplateLibraryView({
   sourceOptions: PlanSourceFilterOption[];
   sourceFilter: TemplateSourceFilter;
   onSourceFilterChange: (value: TemplateSourceFilter) => void;
+  focusTagOptions: TemplateFocusTagOption[];
+  selectedFocusTags: string[];
+  onToggleFocusTag: (value: string) => void;
+  onClearFocusTags: () => void;
   actorUserId: string | null;
   colors: ReturnType<typeof getColors>;
   onEdit: (template: TrainingTemplateSummary) => void;
@@ -1695,6 +1799,16 @@ function PlanTemplateLibraryView({
           selected={sourceFilter}
           onSelect={onSourceFilterChange}
           colors={colors}
+        />
+      ) : null}
+
+      {focusTagOptions.length ? (
+        <PlanFocusTagDropdown
+          options={focusTagOptions}
+          selectedTags={selectedFocusTags}
+          colors={colors}
+          onToggle={onToggleFocusTag}
+          onClear={onClearFocusTags}
         />
       ) : null}
 
@@ -1798,6 +1912,86 @@ function PlanSourceSelector({
           </TouchableOpacity>
         );
       })}
+    </View>
+  );
+}
+
+function PlanFocusTagDropdown({
+  options,
+  selectedTags,
+  colors,
+  onToggle,
+  onClear,
+}: {
+  options: TemplateFocusTagOption[];
+  selectedTags: string[];
+  colors: ReturnType<typeof getColors>;
+  onToggle: (value: string) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedKeys = new Set(selectedTags.map(normalizeFocusTagKey));
+  const label = selectedTags.length ? selectedTags.join(', ') : 'Alle fokus tags';
+
+  return (
+    <View style={styles.planFocusFilterWrap} testID="plan.templates.focusTagFilter">
+      <TouchableOpacity
+        style={[styles.planFocusFilterButton, { backgroundColor: colors.card, borderColor: selectedTags.length ? colors.primary : colors.border }]}
+        onPress={() => setOpen((current) => !current)}
+        activeOpacity={0.84}
+        testID="plan.templates.focusTagFilter.button"
+      >
+        <View style={styles.planFocusFilterCopy}>
+          <Text style={[styles.planFilterSelectLabel, { color: colors.textSecondary }]}>Fokus tags</Text>
+          <Text style={[styles.planFilterSelectValue, { color: colors.text }]} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+        <IconSymbol ios_icon_name={open ? 'chevron.up' : 'chevron.down'} android_material_icon_name={open ? 'expand_less' : 'expand_more'} size={16} color={colors.textSecondary} />
+      </TouchableOpacity>
+
+      {open ? (
+        <View style={[styles.planFocusFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {selectedTags.length ? (
+            <TouchableOpacity
+              style={[styles.planFocusClearButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+              onPress={onClear}
+              activeOpacity={0.84}
+              testID="plan.templates.focusTagFilter.clear"
+            >
+              <Text style={[styles.planFocusClearText, { color: colors.text }]}>Ryd fokus tags</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.planFocusTagGrid}>
+            {options.map((option) => {
+              const selected = selectedKeys.has(normalizeFocusTagKey(option.value));
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.planFocusTagOption,
+                    {
+                      backgroundColor: selected ? colors.primary : colors.background,
+                      borderColor: selected ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => onToggle(option.value)}
+                  activeOpacity={0.84}
+                  testID={`plan.templates.focusTagFilter.option.${option.value}`}
+                >
+                  <Text style={[styles.planFocusTagOptionText, { color: selected ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
+                    {option.label}
+                  </Text>
+                  <Text style={[styles.planFocusTagOptionCount, { color: selected ? '#FFFFFF' : colors.textSecondary }]}>
+                    {option.count}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -2232,7 +2426,8 @@ function TemplateCard({
   const tone = getTemplateTone(template.templateType, colors);
   const mediaUrls = getTemplateMediaUrls(template);
   const timer = getTemplateTimer(template);
-  const templateFacts = getTemplateFacts(template, sourceLabel, mediaUrls, timer);
+  const templateFacts = getTemplateFacts(template, sourceLabel, timer);
+  const focusTags = normalizeFocusTags(template.focusAreas);
   return (
     <View style={[styles.templateCard, { backgroundColor: colors.card, borderColor: colors.border }]} testID={`plan.template.${template.templateType}`}>
       <View style={styles.templateHeader}>
@@ -2274,6 +2469,21 @@ function TemplateCard({
         </View>
       ) : null}
 
+      {focusTags.length ? (
+        <View style={styles.templateTagSection} testID={`plan.template.focusTags.${template.templateType}`}>
+          <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Fokus</Text>
+          <View style={styles.templateTagRow}>
+            {focusTags.map((tag) => (
+              <View key={tag} style={[styles.templateTagChip, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}>
+                <Text style={[styles.templateTagChipText, { color: colors.primary }]} numberOfLines={1}>
+                  {tag}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {template.description ? (
         <View style={styles.templateLabeledBlock}>
           <Text style={[styles.templateFactLabel, { color: colors.textSecondary }]}>Beskrivelse</Text>
@@ -2294,7 +2504,7 @@ function TemplateCard({
           <View style={styles.templateMediaPlayer}>
             <SwipeVideoPlayer
               urls={mediaUrls}
-              minHeight={180}
+              minHeight={124}
               showHint={mediaUrls.length > 1}
               testID={`plan.template.mediaPlayer.${template.templateType}`}
             />
@@ -2358,6 +2568,94 @@ function TemplateAction({
         {label}
       </Text>
     </TouchableOpacity>
+  );
+}
+
+function FocusTagEditor({
+  selectedTags,
+  availableTags,
+  inputValue,
+  onInputChange,
+  onAddTag,
+  onRemoveTag,
+  colors,
+}: {
+  selectedTags: string[];
+  availableTags: string[];
+  inputValue: string;
+  onInputChange: (value: string) => void;
+  onAddTag: (value: string) => void;
+  onRemoveTag: (value: string) => void;
+  colors: ReturnType<typeof getColors>;
+}) {
+  const selectedKeys = new Set(selectedTags.map(normalizeFocusTagKey));
+  const suggestions = normalizeFocusTags(availableTags).filter((tag) => !selectedKeys.has(normalizeFocusTagKey(tag)));
+  const canAdd = inputValue.trim().length > 0;
+
+  return (
+    <View style={styles.inputGroup} testID="plan.template.focusTagEditor">
+      <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Fokus tags</Text>
+      <View style={styles.focusTagSelectedRow}>
+        {selectedTags.length ? (
+          selectedTags.map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.focusTagChip, { backgroundColor: `${colors.primary}18`, borderColor: colors.primary }]}
+              onPress={() => onRemoveTag(tag)}
+              activeOpacity={0.84}
+              testID={`plan.template.focusTag.remove.${tag}`}
+            >
+              <Text style={[styles.focusTagChipText, { color: colors.primary }]} numberOfLines={1}>
+                {tag}
+              </Text>
+              <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={12} color={colors.primary} />
+            </TouchableOpacity>
+          ))
+        ) : (
+          <Text style={[styles.focusTagEmptyText, { color: colors.textSecondary }]}>Ingen fokus tags valgt</Text>
+        )}
+      </View>
+
+      {suggestions.length ? (
+        <View style={styles.focusTagSuggestionRow}>
+          {suggestions.slice(0, 12).map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.focusTagSuggestion, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => onAddTag(tag)}
+              activeOpacity={0.84}
+              testID={`plan.template.focusTag.suggestion.${tag}`}
+            >
+              <Text style={[styles.focusTagSuggestionText, { color: colors.text }]} numberOfLines={1}>
+                {tag}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={styles.focusTagInputRow}>
+        <TextInput
+          style={[styles.focusTagInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          value={inputValue}
+          onChangeText={onInputChange}
+          placeholder="Tilføj nyt tag"
+          placeholderTextColor={colors.textSecondary}
+          returnKeyType="done"
+          onSubmitEditing={() => canAdd && onAddTag(inputValue)}
+          testID="plan.template.focusTag.input"
+        />
+        <TouchableOpacity
+          style={[styles.focusTagAddButton, { backgroundColor: canAdd ? colors.primary : colors.border }]}
+          onPress={() => onAddTag(inputValue)}
+          disabled={!canAdd}
+          activeOpacity={0.84}
+          testID="plan.template.focusTag.add"
+        >
+          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -2931,6 +3229,65 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
   },
+  planFocusFilterWrap: {
+    marginBottom: 12,
+  },
+  planFocusFilterButton: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  planFocusFilterCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  planFocusFilterPanel: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    rowGap: 8,
+  },
+  planFocusTagGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+  planFocusTagOption: {
+    minHeight: 34,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  planFocusTagOptionText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  planFocusTagOptionCount: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  planFocusClearButton: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  planFocusClearText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
   templateCard: {
     borderWidth: 1,
     borderRadius: 8,
@@ -3006,6 +3363,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
     marginTop: 2,
+  },
+  templateTagSection: {
+    marginTop: 10,
+    rowGap: 6,
+  },
+  templateTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  templateTagChip: {
+    minHeight: 28,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    justifyContent: 'center',
+  },
+  templateTagChipText: {
+    fontSize: 12,
+    fontWeight: '900',
   },
   templateSectionHeader: {
     flexDirection: 'row',
@@ -3131,6 +3510,72 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     fontSize: 14,
     fontWeight: '700',
+  },
+  focusTagSelectedRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginBottom: 8,
+  },
+  focusTagChip: {
+    minHeight: 32,
+    maxWidth: '100%',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  focusTagChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  focusTagEmptyText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  focusTagSuggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginBottom: 8,
+  },
+  focusTagSuggestion: {
+    minHeight: 30,
+    maxWidth: '100%',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    justifyContent: 'center',
+  },
+  focusTagSuggestionText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  focusTagInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  focusTagInput: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  focusTagAddButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   multilineInput: {
     minHeight: 86,

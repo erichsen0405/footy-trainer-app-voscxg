@@ -459,6 +459,10 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('plan.template.mediaPlayer');
     expect(plan).toContain('TemplateAction label="Tildel"');
     expect(plan).toContain('Beskrivelse');
+    expect(plan).toContain('FocusTagEditor');
+    expect(plan).toContain('plan.templates.focusTagFilter');
+    expect(plan).toContain('templateTagChip');
+    expect(plan).toContain('minHeight={124}');
     expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
     expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Opgaver' : 'Tasks'");
     expect(tasks).toContain('isTrainerProfile && !embedded');
@@ -473,7 +477,11 @@ describe('owner training templates contract', () => {
     expect(tasks).toContain(": 'Kategori'");
     expect(tasks).toContain('Dine egne skabeloner og skabeloner delt fra din træner.');
     expect(tasks).toContain('taskFacts');
-    expect(tasks).toContain("label: 'Feedback', value: feedbackEnabled ? 'Aktiv'");
+    expect(tasks).toContain("label: 'Kilde', value: sourceLabel");
+    expect(tasks).toContain('tasks.taskFocusTags');
+    expect(tasks).toContain('tasks.focusTagFilter.button');
+    expect(tasks).not.toContain("label: 'Feedback', value: feedbackEnabled ? 'Aktiv'");
+    expect(tasks).not.toContain('tasks.template.autoAddBadge');
     expect(tasks).toContain('tasks.taskCard.media');
     expect(tasks).toContain('tasks.task.assign');
     expect(tasks).toContain('SwipeVideoPlayer');

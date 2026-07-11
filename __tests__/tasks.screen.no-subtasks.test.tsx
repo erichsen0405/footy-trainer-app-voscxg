@@ -262,18 +262,18 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByTestId, getByText, queryByText } = render(<TasksScreen />);
+    const { getByTestId, getByText, queryByTestId, queryByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.categoryFilter.button'));
     fireEvent.press(getByTestId('tasks.categoryFilter.option.cat-1'));
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
     expect(getByText('Pasning')).toBeTruthy();
-    expect(getByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeTruthy();
+    expect(queryByTestId('tasks.taskCategoryBadge.cat-pass.cat-1')).toBeNull();
     expect(queryByText('Sprint')).toBeNull();
   });
 
-  it('shows auto-add status on task template cards', () => {
+  it('keeps compact task cards free of auto-add status badges', () => {
     mockUseFootball.mockReturnValue(baseFootball({
       tasks: [
         baseTask({ id: 'auto-on', title: 'Auto aktiv', autoAddToActivities: true }),
@@ -281,14 +281,16 @@ describe('Tasks redesigned template screen', () => {
       ],
     }));
 
-    const { getByTestId, getByText } = render(<TasksScreen />);
+    const { getByTestId, getByText, queryByTestId, queryByText } = render(<TasksScreen />);
 
     fireEvent.press(getByTestId('tasks.folder.personal'));
 
-    expect(getByTestId('tasks.template.autoAddBadge.auto-on')).toBeTruthy();
-    expect(getByTestId('tasks.template.autoAddBadge.auto-off')).toBeTruthy();
-    expect(getByText('Auto-add to activities: On')).toBeTruthy();
-    expect(getByText('Auto-add to activities: Off')).toBeTruthy();
+    expect(getByText('Auto aktiv')).toBeTruthy();
+    expect(getByText('Auto inaktiv')).toBeTruthy();
+    expect(queryByTestId('tasks.template.autoAddBadge.auto-on')).toBeNull();
+    expect(queryByTestId('tasks.template.autoAddBadge.auto-off')).toBeNull();
+    expect(queryByText('Auto-add to activities: On')).toBeNull();
+    expect(queryByText('Auto-add to activities: Off')).toBeNull();
   });
 
   it('validates required title and video URL in the modal', () => {

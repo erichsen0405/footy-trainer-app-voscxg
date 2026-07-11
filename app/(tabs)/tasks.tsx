@@ -115,6 +115,24 @@ const sanitizeTestIdSegment = (value: unknown): string =>
     .replace(/[^a-z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'unknown';
 
+const normalizeCardTags = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.reduce<string[]>((acc, item) => {
+    const tag = String(item ?? '').trim();
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) return acc;
+    seen.add(key);
+    acc.push(tag);
+    return acc;
+  }, []);
+};
+
+const normalizeCardTagKey = (value: string): string => value.trim().toLowerCase();
+
+const getTaskFocusTags = (task: any): string[] =>
+  normalizeCardTags(task?.focusAreas ?? task?.focus_areas ?? task?.tags);
+
 const isFootballCoachSource = (sourceFolder: string) =>
   sourceFolder.toLowerCase() === FOOTBALLCOACH_INSPIRATION.toLowerCase();
 
@@ -146,6 +164,12 @@ type TaskSourceKind = Exclude<TaskSourceFilter, 'all'>;
 
 type TaskSourceFilterOption = {
   value: TaskSourceFilter;
+  label: string;
+  count: number;
+};
+
+type TaskFocusTagOption = {
+  value: string;
   label: string;
   count: number;
 };
@@ -220,6 +244,22 @@ function buildTaskSourceFilterOptions(
   if (counts.workspace > 0) sourceOptions.push({ value: 'workspace', label: 'Workspace', count: counts.workspace });
   if (counts.library > 0) sourceOptions.push({ value: 'library', label: 'Library', count: counts.library });
   return sourceOptions;
+}
+
+function buildTaskFocusTagOptions(tasks: Task[]): TaskFocusTagOption[] {
+  const byKey = new Map<string, TaskFocusTagOption>();
+  tasks.forEach((task) => {
+    getTaskFocusTags(task).forEach((tag) => {
+      const key = normalizeCardTagKey(tag);
+      const current = byKey.get(key);
+      if (current) {
+        current.count += 1;
+      } else {
+        byKey.set(key, { value: tag, label: tag, count: 1 });
+      }
+    });
+  });
+  return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 // ✅ simple icon mapping for source folders
@@ -359,7 +399,6 @@ export const TaskCard = React.memo(
     onArchive = () => {},
     onDelete,
     onAssign,
-    getCategoryItems,
     isArchived = false,
     canAssign = false,
   }: {
@@ -376,9 +415,8 @@ export const TaskCard = React.memo(
   }) => {
     const videoUrls = getTaskModalVideoUrls(task);
     const taskId = String((task as any)?.id ?? '');
-    const categoryItems = getCategoryItems((((task as any)?.categoryIds ?? []) as string[]).filter(Boolean));
     const description = String((task as any)?.description ?? '').trim();
-    const autoAddEnabled = !!((task as any)?.autoAddToActivities ?? (task as any)?.auto_add_to_activities);
+    const focusTags = normalizeCardTags((task as any)?.focusAreas ?? (task as any)?.focus_areas ?? (task as any)?.tags);
     const sourceFolder = getTaskSourceFolder(task);
     const trainerNameFromSource = parseTrainerNameFromSource(sourceFolder);
     const sourceLabel = isFootballCoachSource(sourceFolder)
@@ -388,14 +426,8 @@ export const TaskCard = React.memo(
         : sourceFolder.toLowerCase().includes('personal') || !sourceFolder
           ? 'Min skabelon'
           : sourceFolder;
-    const feedbackEnabled = !!(task as any)?.afterTrainingEnabled;
-    const reminderValue = normalizeReminderValue((task as any)?.reminder);
     const taskFacts = [
       { label: 'Kilde', value: sourceLabel },
-      { label: 'Media', value: videoUrls.length ? `${videoUrls.length} filer` : null },
-      { label: 'Kategorier', value: categoryItems.length ? `${categoryItems.length}` : null },
-      { label: 'Feedback', value: feedbackEnabled ? 'Aktiv' : null },
-      { label: 'Reminder', value: reminderValue !== null ? `${reminderValue} min før` : null },
     ].filter((item): item is { label: string; value: string } => typeof item.value === 'string' && item.value.length > 0);
 
     return (
@@ -457,6 +489,21 @@ export const TaskCard = React.memo(
             </View>
           ) : null}
 
+          {focusTags.length ? (
+            <View style={styles.cardTagSection} testID={`tasks.taskFocusTags.${sanitizeTestIdSegment(taskId)}`}>
+              <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Fokus</Text>
+              <View style={styles.cardTagRow}>
+                {focusTags.map((tag) => (
+                  <View key={tag} style={[styles.cardTagChip, { backgroundColor: withAlpha(colors.primary, 0.12), borderColor: colors.primary }]}>
+                    <Text style={[styles.cardTagChipText, { color: colors.primary }]} numberOfLines={1}>
+                      {tag}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {description ? (
             <View style={styles.cardLabeledSection}>
               <Text style={[styles.cardSectionLabel, { color: isDark ? '#999' : colors.textSecondary }]}>Beskrivelse</Text>
@@ -481,7 +528,7 @@ export const TaskCard = React.memo(
             <View style={styles.cardMediaPlayer}>
               <SwipeVideoPlayer
                 urls={videoUrls}
-                minHeight={180}
+                minHeight={124}
                 showHint={videoUrls.length > 1}
                 testID={`tasks.taskCard.media.${sanitizeTestIdSegment(taskId)}`}
               />
@@ -501,75 +548,6 @@ export const TaskCard = React.memo(
           </TouchableOpacity>
         ) : null}
 
-        {(task as any)?.reminder != null && String((task as any).reminder).length > 0 && (
-          <View style={styles.reminderBadge}>
-            <IconSymbol ios_icon_name="bell.fill" android_material_icon_name="notifications" size={14} color={colors.accent} />
-            <Text style={[styles.reminderText, { color: colors.accent }]}>{String((task as any).reminder)} min before</Text>
-          </View>
-        )}
-
-        <View
-          style={[
-            styles.autoAddBadge,
-            {
-              backgroundColor: autoAddEnabled
-                ? withAlpha(colors.primary, 0.12)
-                : withAlpha(colors.textSecondary ?? '#6B7280', 0.12),
-              borderColor: autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280',
-            },
-          ]}
-          testID={`tasks.template.autoAddBadge.${sanitizeTestIdSegment(taskId)}`}
-        >
-          <IconSymbol
-            ios_icon_name={autoAddEnabled ? 'checkmark.circle.fill' : 'minus.circle'}
-            android_material_icon_name={autoAddEnabled ? 'check_circle' : 'remove_circle_outline'}
-            size={15}
-            color={autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280'}
-          />
-          <Text
-            style={[
-              styles.autoAddBadgeText,
-              { color: autoAddEnabled ? colors.primary : colors.textSecondary ?? '#6B7280' },
-            ]}
-          >
-            Auto-add to activities: {autoAddEnabled ? 'On' : 'Off'}
-          </Text>
-        </View>
-
-        {categoryItems.length ? (
-          <View style={styles.categoriesBlock}>
-            <View style={styles.categoriesLabelRow}>
-              <IconSymbol ios_icon_name="tag.fill" android_material_icon_name="label" size={14} color={isDark ? '#999' : colors.textSecondary} />
-              <Text style={[styles.categoriesLabelText, { color: isDark ? '#999' : colors.textSecondary }]}>Categories</Text>
-            </View>
-            <View style={styles.taskCategoryBadges}>
-              {categoryItems.map((category: any) => {
-                const catId = String(category.id);
-                const catColor = category.color || colors.primary;
-                return (
-                  <View
-                    key={catId}
-                    style={[
-                      styles.taskCategoryBadge,
-                      {
-                        backgroundColor: withAlpha(catColor, 0.14),
-                        borderColor: catColor,
-                      },
-                    ]}
-                    testID={`tasks.taskCategoryBadge.${sanitizeTestIdSegment(taskId)}.${sanitizeTestIdSegment(catId)}`}
-                  >
-                    {String(category.emoji ?? '').trim() ? (
-                      <Text style={styles.taskCategoryBadgeEmoji}>{String(category.emoji ?? '').trim()}</Text>
-                    ) : null}
-                    <Text style={[styles.taskCategoryBadgeText, { color: catColor }]} numberOfLines={1}>
-                      {String(category.name ?? '')}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
       </View>
     );
   },
@@ -755,6 +733,8 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryFilterId, setSelectedCategoryFilterId] = useState<string | null>(null);
   const [taskSourceFilter, setTaskSourceFilter] = useState<TaskSourceFilter>('all');
+  const [focusTagFilterOpen, setFocusTagFilterOpen] = useState(false);
+  const [selectedFocusTags, setSelectedFocusTags] = useState<string[]>([]);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -829,7 +809,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const effectiveTaskSourceFilter = taskSourceOptions.some((option) => option.value === taskSourceFilter)
     ? taskSourceFilter
     : 'all';
-  const templateTasks = useMemo(
+  const sourceFilteredTemplateTasks = useMemo(
     () =>
       effectiveTaskSourceFilter === 'all'
         ? templateTaskCandidates
@@ -838,6 +818,21 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           ),
     [adminMode, effectiveTaskSourceFilter, templateTaskCandidates, user?.id, userRole],
   );
+  const taskFocusTagOptions = useMemo(
+    () => buildTaskFocusTagOptions(sourceFilteredTemplateTasks),
+    [sourceFilteredTemplateTasks],
+  );
+  const effectiveSelectedFocusTags = useMemo(() => {
+    const availableKeys = new Set(taskFocusTagOptions.map((option) => normalizeCardTagKey(option.value)));
+    return selectedFocusTags.filter((tag) => availableKeys.has(normalizeCardTagKey(tag)));
+  }, [selectedFocusTags, taskFocusTagOptions]);
+  const templateTasks = useMemo(() => {
+    if (!effectiveSelectedFocusTags.length) return sourceFilteredTemplateTasks;
+    const selectedKeys = new Set(effectiveSelectedFocusTags.map(normalizeCardTagKey));
+    return sourceFilteredTemplateTasks.filter((task) =>
+      getTaskFocusTags(task).some((tag) => selectedKeys.has(normalizeCardTagKey(tag)))
+    );
+  }, [effectiveSelectedFocusTags, sourceFilteredTemplateTasks]);
   const folders = useMemo(
     () => organizeFolders(templateTasks, { adminMode, userRole, currentUserId: user?.id ?? null }),
     [templateTasks, adminMode, userRole, user?.id],
@@ -883,6 +878,19 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   const selectCategoryFilter = useCallback((categoryId: string | null) => {
     setSelectedCategoryFilterId(categoryId);
     setCategoryFilterOpen(false);
+  }, []);
+
+  const toggleFocusTagFilterOpen = useCallback(() => {
+    setFocusTagFilterOpen((current) => !current);
+  }, []);
+
+  const toggleFocusTagFilter = useCallback((tag: string) => {
+    const key = normalizeCardTagKey(tag);
+    setSelectedFocusTags((current) =>
+      current.some((selected) => normalizeCardTagKey(selected) === key)
+        ? current.filter((selected) => normalizeCardTagKey(selected) !== key)
+        : [...current, tag]
+    );
   }, []);
 
   const openTaskModal = useCallback((task: Task | null, creating: boolean = false) => {
@@ -1490,6 +1498,85 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
           />
         ) : null}
 
+        {taskFocusTagOptions.length ? (
+          <>
+            <View style={styles.categoryFilterHeader}>
+              <TouchableOpacity
+                style={[
+                  styles.categoryFilterButton,
+                  {
+                    backgroundColor: effectiveSelectedFocusTags.length ? colors.primary : cardBgColor,
+                    borderColor: effectiveSelectedFocusTags.length ? colors.primary : isDark ? '#333' : colors.highlight,
+                  },
+                ]}
+                onPress={toggleFocusTagFilterOpen}
+                activeOpacity={0.85}
+                testID="tasks.focusTagFilter.button"
+              >
+                <IconSymbol
+                  ios_icon_name="tag.fill"
+                  android_material_icon_name="label"
+                  size={18}
+                  color={effectiveSelectedFocusTags.length ? '#fff' : textSecondaryColor}
+                />
+                <Text
+                  style={[
+                    styles.categoryFilterButtonText,
+                    { color: effectiveSelectedFocusTags.length ? '#fff' : textColor },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {effectiveSelectedFocusTags.length ? effectiveSelectedFocusTags.join(', ') : 'Fokus tags'}
+                </Text>
+                <IconSymbol
+                  ios_icon_name={focusTagFilterOpen ? 'chevron.up' : 'chevron.down'}
+                  android_material_icon_name={focusTagFilterOpen ? 'expand_less' : 'expand_more'}
+                  size={16}
+                  color={effectiveSelectedFocusTags.length ? '#fff' : textSecondaryColor}
+                />
+              </TouchableOpacity>
+
+              {effectiveSelectedFocusTags.length ? (
+                <TouchableOpacity
+                  style={[styles.categoryFilterClearButton, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]}
+                  onPress={() => setSelectedFocusTags([])}
+                  activeOpacity={0.85}
+                  testID="tasks.focusTagFilter.clearButton"
+                >
+                  <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color={textSecondaryColor} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {focusTagFilterOpen ? (
+              <View style={[styles.categoryFilterPanel, { backgroundColor: cardBgColor, borderColor: isDark ? '#333' : colors.highlight }]} testID="tasks.focusTagFilter.panel">
+                {taskFocusTagOptions.map((option) => {
+                  const isSelected = effectiveSelectedFocusTags.some((tag) => normalizeCardTagKey(tag) === normalizeCardTagKey(option.value));
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.categoryFilterChip,
+                        {
+                          backgroundColor: isSelected ? withAlpha(colors.primary, 0.18) : 'transparent',
+                          borderColor: colors.primary,
+                        },
+                      ]}
+                      onPress={() => toggleFocusTagFilter(option.value)}
+                      activeOpacity={0.85}
+                      testID={`tasks.focusTagFilter.option.${sanitizeTestIdSegment(option.value)}`}
+                    >
+                      <Text style={[styles.categoryFilterChipText, { color: isSelected ? colors.primary : textColor }]} numberOfLines={1}>
+                        {option.label} ({option.count})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
+          </>
+        ) : null}
+
         <View style={styles.categoryFilterHeader}>
           <TouchableOpacity
             style={[
@@ -1648,13 +1735,18 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
     isPlayerPlan,
     embedded,
     templateView,
+    focusTagFilterOpen,
+    effectiveSelectedFocusTags,
     categoryFilterOpen,
     selectedCategoryFilter,
     selectedCategoryFilterId,
     effectiveTaskSourceFilter,
     showFlatTemplateList,
+    taskFocusTagOptions,
     taskSourceOptions,
     uniqueCategories,
+    toggleFocusTagFilterOpen,
+    toggleFocusTagFilter,
     toggleCategoryFilterOpen,
     selectCategoryFilter,
     templateTasks.length,
@@ -1665,7 +1757,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
       <View style={[styles.emptyState, { backgroundColor: cardBgColor }]}>
         <IconSymbol ios_icon_name="folder" android_material_icon_name="folder_open" size={48} color={textSecondaryColor} />
         <Text style={[styles.emptyStateText, { color: textSecondaryColor }]}>
-          {searchQuery || selectedCategoryFilterId || effectiveTaskSourceFilter !== 'all'
+          {searchQuery || selectedCategoryFilterId || effectiveTaskSourceFilter !== 'all' || effectiveSelectedFocusTags.length
             ? 'No tasks match your filter'
             : templateView === 'active'
               ? 'No active task templates'
@@ -1673,7 +1765,7 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
         </Text>
       </View>
     );
-  }, [searchQuery, selectedCategoryFilterId, effectiveTaskSourceFilter, cardBgColor, textSecondaryColor, templateView]);
+  }, [searchQuery, selectedCategoryFilterId, effectiveTaskSourceFilter, effectiveSelectedFocusTags.length, cardBgColor, textSecondaryColor, templateView]);
 
   const ListFooterComponent = useMemo(() => <View style={{ height: embedded ? 132 : 100 }} />, [embedded]);
 
@@ -2562,6 +2654,28 @@ const styles = StyleSheet.create({
   cardLabeledSection: {
     marginBottom: 10,
     gap: 4,
+  },
+  cardTagSection: {
+    marginBottom: 10,
+    gap: 6,
+  },
+  cardTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  cardTagChip: {
+    minHeight: 28,
+    maxWidth: '100%',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    justifyContent: 'center',
+  },
+  cardTagChipText: {
+    fontSize: 12,
+    fontWeight: '900',
   },
   cardSectionHeader: {
     flexDirection: 'row',
