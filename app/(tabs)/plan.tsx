@@ -489,7 +489,6 @@ export default function PlanScreen() {
   const [selectedTemplateTypes, setSelectedTemplateTypes] = useState<TrainingTemplateType[]>([]);
   const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
-  const [templateContentFilterOpen, setTemplateContentFilterOpen] = useState(false);
   const [expandedTemplateFolders, setExpandedTemplateFolders] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -676,7 +675,6 @@ export default function PlanScreen() {
 
   const selectPlanViewTarget = useCallback((target: (typeof PLAN_VIEW_TARGETS)[number]) => {
     setPlanFilterPicker(null);
-    setTemplateContentFilterOpen(false);
     if (target.value === 'tasks') {
       setActiveSection('tasks');
       setSelectedTemplateTypes([]);
@@ -1210,9 +1208,6 @@ export default function PlanScreen() {
               onSearchChange={setTemplateSearchQuery}
               statusFilter={statusFilter}
               onStatusFilterChange={setStatusFilter}
-              filterOpen={templateContentFilterOpen}
-              onToggleFilter={() => setTemplateContentFilterOpen((current) => !current)}
-              onCloseFilter={() => setTemplateContentFilterOpen(false)}
               expandedFolders={expandedTemplateFolders}
               onToggleFolder={toggleTemplateFolder}
               colors={colors}
@@ -1660,9 +1655,6 @@ function PlanTemplateLibraryView({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
-  filterOpen,
-  onToggleFilter,
-  onCloseFilter,
   expandedFolders,
   onToggleFolder,
   colors,
@@ -1679,9 +1671,6 @@ function PlanTemplateLibraryView({
   onSearchChange: (value: string) => void;
   statusFilter: TemplateStatusFilter;
   onStatusFilterChange: (value: TemplateStatusFilter) => void;
-  filterOpen: boolean;
-  onToggleFilter: () => void;
-  onCloseFilter: () => void;
   expandedFolders: Set<string>;
   onToggleFolder: (folderId: string) => void;
   colors: ReturnType<typeof getColors>;
@@ -1713,54 +1702,6 @@ function PlanTemplateLibraryView({
           </TouchableOpacity>
         ) : null}
       </View>
-
-      <View style={styles.planContentFilterRow}>
-        <TouchableOpacity
-          style={[styles.planContentFilterButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={onToggleFilter}
-          activeOpacity={0.85}
-          testID="plan.templates.filterButton"
-        >
-          <IconSymbol ios_icon_name="line.3.horizontal.decrease.circle" android_material_icon_name="filter_list" size={18} color={colors.textSecondary} />
-          <View style={styles.planContentFilterText}>
-            <Text style={[styles.planContentFilterLabel, { color: colors.text }]}>Filter</Text>
-            <Text style={[styles.planContentFilterValue, { color: colors.textSecondary }]} numberOfLines={1}>
-              {statusFilter === 'active' ? 'Active' : 'Archived'} · {detail}
-            </Text>
-          </View>
-          <IconSymbol
-            ios_icon_name={filterOpen ? 'chevron.up' : 'chevron.down'}
-            android_material_icon_name={filterOpen ? 'expand_less' : 'expand_more'}
-            size={16}
-            color={colors.textSecondary}
-          />
-        </TouchableOpacity>
-      </View>
-
-      {filterOpen ? (
-        <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <PlanFilterOption
-            label="Active"
-            detail="Skabeloner der kan bruges nu"
-            active={statusFilter === 'active'}
-            colors={colors}
-            onPress={() => {
-              onStatusFilterChange('active');
-              onCloseFilter();
-            }}
-          />
-          <PlanFilterOption
-            label="Archived"
-            detail="Skabeloner der er gemt væk"
-            active={statusFilter === 'archived'}
-            colors={colors}
-            onPress={() => {
-              onStatusFilterChange('archived');
-              onCloseFilter();
-            }}
-          />
-        </View>
-      ) : null}
 
       <View style={styles.planSectionDivider}>
         <Text style={[styles.planSectionDividerText, { color: colors.textSecondary }]}>Folders</Text>
@@ -2732,34 +2673,6 @@ const styles = StyleSheet.create({
   },
   planSearchClearButton: {
     padding: 4,
-  },
-  planContentFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  planContentFilterButton: {
-    flex: 1,
-    minHeight: 54,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 10,
-  },
-  planContentFilterText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  planContentFilterLabel: {
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  planContentFilterValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 2,
   },
   planSectionDivider: {
     flexDirection: 'row',

@@ -396,10 +396,11 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('buildPlanTemplateFolders');
     expect(plan).toContain('plan.templates.libraryView');
     expect(plan).toContain('plan.templates.searchInput');
-    expect(plan).toContain('plan.templates.filterButton');
     expect(plan).toContain('plan.templates.status.active');
     expect(plan).toContain('plan.templates.status.archived');
     expect(plan).toContain('setSelectedTemplateTypes([])');
+    expect(plan).not.toContain('plan.templates.filterButton');
+    expect(plan).not.toContain('planContentFilter');
     expect(plan).not.toContain('type TemplateTypeFilter');
     expect(plan).not.toContain('FilterChip');
     expect(plan).toContain('ReusableItemPickerModal');
