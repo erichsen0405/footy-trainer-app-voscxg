@@ -357,6 +357,14 @@ describe('owner licensing backend helpers', () => {
   it('documents Base44 dashboard seat status fallback handling', () => {
     expect(ownerSeatBase44Prompt).toContain('Dashboard/KPI implementation rules');
     expect(ownerSeatBase44Prompt).toContain('`KlubAdmin.jsx` skal hente `getOwnerSeatStatus`');
+    expect(ownerSeatBase44Prompt).toContain('adapteren bevare `playerSeats` fra backendens');
+    expect(ownerSeatBase44Prompt).toContain('Normaliser ikke en manglende');
+    expect(ownerSeatBase44Prompt).toContain('Hvis Base44 fortsat bruger flade convenience-felter');
+    expect(ownerSeatBase44Prompt).toContain('`seatsTotal`,');
+    expect(ownerSeatBase44Prompt).toContain('skal felterne vaere');
+    expect(ownerSeatBase44Prompt).toContain('`null`/`undefined`');
+    expect(ownerSeatBase44Prompt).toContain('sidebar/header');
+    expect(ownerSeatBase44Prompt).toContain('`seatsUsed ?? "—"` og `seatsTotal ?? "—"`');
     expect(ownerSeatBase44Prompt).toContain('`KlubDashboard.jsx` skal foretraekke den prop-baserede status');
     expect(ownerSeatBase44Prompt).toContain('`DashboardKpiStrip.jsx` skal have en `getPlayerSeats(seatStatus)`-helper');
     expect(ownerSeatBase44Prompt).toContain('`seatStatusLoading`, `seatStatusError` og');
@@ -366,6 +374,17 @@ describe('owner licensing backend helpers', () => {
     expect(ownerSeatBase44Prompt).toContain('Hvis der bruges `Loader2`, skal ikonet have `animate-spin`');
     expect(ownerSeatBase44Prompt).toContain('Vis aldrig `0/0` som placeholder');
     expect(ownerSeatBase44Prompt).toContain('`playerSeats.effectiveSeats`, `playerSeats.seatsUsed` og');
+  });
+
+  it('documents Base44 seat pre-check before player assignment', () => {
+    expect(ownerSeatBase44Prompt).toContain('Base44 assignment rules');
+    expect(ownerSeatBase44Prompt).toContain('Kald `assertOwnerSeatAvailable` lige foer Base44 opretter eller tildeler en');
+    expect(ownerSeatBase44Prompt).toContain('i `AddPlayerModal.jsx` lige');
+    expect(ownerSeatBase44Prompt).toContain("role: 'player'");
+    expect(ownerSeatBase44Prompt).toContain('Behold stadig backendens seat-check');
+    expect(ownerSeatBase44Prompt).toContain('Pre-checket er en UX-forbedring');
+    expect(ownerSeatBase44Prompt).toContain('Hvis Base44 senere opretter/tildeler `owner` eller `admin`');
+    expect(ownerSeatBase44Prompt).toContain('Kald ikke `assertOwnerSeatAvailable` for `coach`, `assistant_coach` eller');
   });
 
   it('calls the platform owner account delete RPC', async () => {

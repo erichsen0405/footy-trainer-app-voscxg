@@ -111,12 +111,23 @@ UI rule:
 
 - Vis `effectiveSeats`, `seatsUsed` og `seatsAvailable` fra response.
 - Fald ikke tilbage til `0`, hvis request fejler. Vis en fejlstate og retry.
+- Hvis Base44 har et lokalt API-wrapper/adapter-lag omkring
+  `getOwnerSeatStatus`, skal adapteren bevare `playerSeats` fra backendens
+  response og ogsaa gerne sende `seats` videre. Normaliser ikke en manglende
+  `playerSeats` til `0`.
+- Hvis Base44 fortsat bruger flade convenience-felter som `seatsTotal`,
+  `seatsUsed` og `seatsAvailable`, maa de kun vaere `0`, naar backend faktisk
+  sender `0`. Hvis `playerSeats` mangler eller er `null`, skal felterne vaere
+  `null`/`undefined`, saa UI kan vise en tom state i stedet for `0/0`.
 
 Dashboard/KPI implementation rules:
 
 - `KlubAdmin.jsx` skal hente `getOwnerSeatStatus` for den valgte owner account
   og sende `seatStatus`, `seatStatusLoading`, `seatStatusError` og
   `onSeatStatusRetry` videre til `KlubDashboard`.
+- Hvis `KlubAdmin.jsx` viser seats i sidebar/header, skal visningen bruge
+  `seatsUsed ?? "—"` og `seatsTotal ?? "—"` eller tilsvarende. Den maa ikke
+  vise `0/0`, naar `playerSeats` mangler.
 - `KlubDashboard.jsx` skal foretraekke den prop-baserede status fra
   `getOwnerSeatStatus` over eventuel legacy `data?.seatStatus`, fx
   `seatStatus ?? data?.seatStatus ?? null`, og sende samme loading/error/retry
@@ -169,6 +180,29 @@ Alias:
   Seat-status viser `isUnlimited: true`, `seatsUsed` og `null` for loft/ledig.
   Base44 skal ikke vise provisioning-controls eller kalde
   `assertOwnerSeatAvailable` for de roller.
+
+Base44 assignment rules:
+
+- Kald `assertOwnerSeatAvailable` lige foer Base44 opretter eller tildeler en
+  limited seat. For spiller-flowet betyder det fx i `AddPlayerModal.jsx` lige
+  foer `addPlayer(...)`/create-player kaldet:
+
+```ts
+await supabase.functions.invoke('assertOwnerSeatAvailable', {
+  body: {
+    ownerAccountId,
+    role: 'player',
+  },
+});
+```
+
+- Behold stadig backendens seat-check i selve create-/assignment-flowet som
+  autoritativ kontrol. Pre-checket er en UX-forbedring, ikke en erstatning for
+  server-side enforcement, da seats kan aendre sig mellem pre-check og write.
+- Hvis Base44 senere opretter/tildeler `owner` eller `admin`, skal samme
+  pre-check bruges for den konkrete rolle.
+- Kald ikke `assertOwnerSeatAvailable` for `coach`, `assistant_coach` eller
+  `parent`, fordi de er unlimited count-only roller.
 
 Success response:
 
