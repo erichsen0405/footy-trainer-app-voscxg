@@ -52,7 +52,7 @@ import {
 
 type PlanSection = 'templates' | 'tasks' | 'assignments';
 type TemplateStatusFilter = 'active' | 'archived';
-type PlanFilterPicker = 'status' | 'types' | null;
+type PlanFilterPicker = 'view' | 'status' | 'types' | null;
 type ItemSourceMode = 'new' | 'saved' | 'library';
 type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
 type PlanViewTarget = 'tasks' | 'exercise' | 'session' | 'week' | 'assignments';
@@ -148,15 +148,16 @@ const CREATE_TEMPLATE_OPTIONS: {
 const PLAN_VIEW_TARGETS: {
   value: PlanViewTarget;
   label: string;
+  detail: string;
   icon: string;
   materialIcon: string;
   templateType?: TrainingTemplateType;
 }[] = [
-  { value: 'tasks', label: 'Opgaver', icon: 'checklist', materialIcon: 'checklist' },
-  { value: 'exercise', label: 'Exercise', icon: 'timer', materialIcon: 'timer', templateType: 'exercise' },
-  { value: 'session', label: 'Session', icon: 'calendar', materialIcon: 'event', templateType: 'session' },
-  { value: 'week', label: 'Week', icon: 'calendar.badge.clock', materialIcon: 'event_note', templateType: 'week' },
-  { value: 'assignments', label: 'Tildelinger', icon: 'person.2.fill', materialIcon: 'groups' },
+  { value: 'tasks', label: 'Opgaver', detail: 'Opgavebibliotek og task templates', icon: 'checklist', materialIcon: 'checklist' },
+  { value: 'exercise', label: 'Exercise', detail: 'Exercise-skabeloner med timer', icon: 'timer', materialIcon: 'timer', templateType: 'exercise' },
+  { value: 'session', label: 'Session', detail: 'Session-skabeloner', icon: 'calendar', materialIcon: 'event', templateType: 'session' },
+  { value: 'week', label: 'Week', detail: 'Ugeforløb bygget af sessioner', icon: 'calendar.badge.clock', materialIcon: 'event_note', templateType: 'week' },
+  { value: 'assignments', label: 'Tildelinger', detail: 'Samlet overblik over tildelinger', icon: 'person.2.fill', materialIcon: 'groups' },
 ];
 
 const ITEM_TYPES: {
@@ -1058,16 +1059,6 @@ export default function PlanScreen() {
             </Text>
           </View>
           <TouchableOpacity
-            style={[styles.headerCreateButton, { backgroundColor: colors.primary }]}
-            onPress={() => setCreatePickerVisible(true)}
-            activeOpacity={0.86}
-            accessibilityLabel="Opret skabelon"
-            testID="plan.create.open"
-          >
-            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={18} color="#FFFFFF" />
-            <Text style={styles.headerCreateText}>Opret</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)/profile' as any)}
             activeOpacity={0.84}
@@ -1105,50 +1096,57 @@ export default function PlanScreen() {
         </ScrollView>
       ) : null}
 
+      <TouchableOpacity
+        style={[styles.primaryCreateCard, { backgroundColor: colors.primary }]}
+        onPress={() => setCreatePickerVisible(true)}
+        activeOpacity={0.86}
+        accessibilityLabel="Opret skabelon"
+        testID="plan.create.open"
+      >
+        <View style={styles.primaryCreateCopy}>
+          <Text style={styles.primaryCreateTitle}>Opret</Text>
+          <Text style={styles.primaryCreateDetail}>Task, exercise, session eller week</Text>
+        </View>
+        <View style={styles.primaryCreateIcon}>
+          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={22} color={colors.primary} />
+        </View>
+      </TouchableOpacity>
+
       <View style={styles.sectionBlock}>
-        <View style={styles.sectionBlockHeader}>
-          <Text style={[styles.sectionBlockTitle, { color: colors.textSecondary }]}>Visning</Text>
-          <Text style={[styles.sectionBlockMeta, { color: colors.textSecondary }]}>
-            {activePlanViewLabel}
-          </Text>
-        </View>
-        <View style={styles.sectionSelector} testID="plan.sectionSelector">
-          {PLAN_VIEW_TARGETS.map((section) => {
-            const active =
-              section.value === 'tasks'
-                ? activeSection === 'tasks'
-                : section.value === 'assignments'
-                  ? activeSection === 'assignments'
-                  : activeSection === 'templates' &&
-                    selectedTemplateTypes.length === 1 &&
-                    selectedTemplateTypes[0] === section.templateType;
-            return (
-              <TouchableOpacity
-                key={section.value}
-                style={[
-                  styles.sectionButton,
-                  {
-                    backgroundColor: active ? colors.primary : colors.card,
-                    borderColor: active ? colors.primary : colors.border,
-                  },
-                ]}
-                onPress={() => selectPlanViewTarget(section)}
-                activeOpacity={0.84}
-                testID={`plan.section.${section.value}`}
-              >
-                <IconSymbol
-                  ios_icon_name={section.icon as any}
-                  android_material_icon_name={section.materialIcon as any}
-                  size={18}
-                  color={active ? '#FFFFFF' : colors.textSecondary}
+        <PlanFilterSelect
+          label="Visning"
+          value={activePlanViewLabel}
+          icon="line.3.horizontal.decrease.circle"
+          materialIcon="filter_list"
+          active={planFilterPicker === 'view'}
+          colors={colors}
+          onPress={() => setPlanFilterPicker((current) => (current === 'view' ? null : 'view'))}
+        />
+
+        {planFilterPicker === 'view' ? (
+          <View style={[styles.planFilterPanel, { backgroundColor: colors.card, borderColor: colors.border }]} testID="plan.viewDropdown">
+            {PLAN_VIEW_TARGETS.map((section) => {
+              const active =
+                section.value === 'tasks'
+                  ? activeSection === 'tasks'
+                  : section.value === 'assignments'
+                    ? activeSection === 'assignments'
+                    : activeSection === 'templates' &&
+                      selectedTemplateTypes.length === 1 &&
+                      selectedTemplateTypes[0] === section.templateType;
+              return (
+                <PlanFilterOption
+                  key={section.value}
+                  label={section.label}
+                  detail={section.detail}
+                  active={active}
+                  colors={colors}
+                  onPress={() => selectPlanViewTarget(section)}
                 />
-                <Text style={[styles.sectionButtonText, { color: active ? '#FFFFFF' : colors.text }]} numberOfLines={1}>
-                  {section.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       {error ? (
@@ -1159,7 +1157,6 @@ export default function PlanScreen() {
       ) : null}
     </>
   );
-
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]} testID="plan.screen">
       {activeSection === 'tasks' ? (
@@ -2604,20 +2601,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerCreateButton: {
-    minHeight: 38,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    columnGap: 6,
-  },
-  headerCreateText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '900',
-  },
   workspaceRow: {
     paddingBottom: 14,
     columnGap: 8,
@@ -2633,46 +2616,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  sectionBlock: {
-    marginBottom: 14,
-  },
-  sectionBlockHeader: {
+  primaryCreateCard: {
+    minHeight: 68,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    columnGap: 10,
-    marginBottom: 8,
+    columnGap: 12,
   },
-  sectionBlockTitle: {
-    fontSize: 12,
+  primaryCreateCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  primaryCreateTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
     fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0,
   },
-  sectionBlockMeta: {
-    flexShrink: 1,
-    fontSize: 12,
-    fontWeight: '800',
+  primaryCreateDetail: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 3,
   },
-  sectionSelector: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  sectionButton: {
-    width: '48.5%',
-    minHeight: 48,
-    borderWidth: 1,
+  primaryCreateIcon: {
+    width: 38,
+    height: 38,
     borderRadius: 8,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    columnGap: 7,
   },
-  sectionButtonText: {
-    fontSize: 13,
-    fontWeight: '900',
+  sectionBlock: {
+    marginBottom: 14,
   },
   notice: {
     borderWidth: 1,

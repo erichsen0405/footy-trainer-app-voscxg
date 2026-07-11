@@ -385,11 +385,13 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('Interval timer');
     expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
     expect(plan).toContain('type ItemPickerMode');
-    expect(plan).toContain("type PlanFilterPicker = 'status' | 'types' | null");
+    expect(plan).toContain("type PlanFilterPicker = 'view' | 'status' | 'types' | null");
     expect(plan).toContain('selectedTemplateTypes');
     expect(plan).toContain('toggleTemplateTypeFilter');
     expect(plan).toContain('PlanFilterSelect');
     expect(plan).toContain('PlanFilterOption');
+    expect(plan).toContain('plan.viewDropdown');
+    expect(plan).toContain("label=\"Visning\"");
     expect(plan).not.toContain('type TemplateTypeFilter');
     expect(plan).not.toContain('FilterChip');
     expect(plan).toContain('ReusableItemPickerModal');
@@ -415,6 +417,7 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("onPress={() => setActiveSection('tasks')}");
     expect(plan).toContain("setSelectedTemplateTypes(['session'])");
     expect(plan).toContain("setSelectedTemplateTypes(['week'])");
+    expect(plan).not.toContain('plan.section.${section.value}');
     expect(plan).not.toContain('plan.programs.list');
     expect(plan).not.toContain('plan.template.create.${type.value}');
     expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
