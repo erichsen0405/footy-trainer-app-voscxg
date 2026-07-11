@@ -484,7 +484,7 @@ export default function PlanScreen() {
   const [context, setContext] = useState<{ workspaces: OwnerPlayerCrmWorkspace[]; defaultOwnerAccountId: string | null } | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof fetchOwnerTrainingTemplates>> | null>(null);
-  const [activeSection, setActiveSection] = useState<PlanSection>('templates');
+  const [activeSection, setActiveSection] = useState<PlanSection>('tasks');
   const [statusFilter, setStatusFilter] = useState<TemplateStatusFilter>('active');
   const [selectedTemplateTypes, setSelectedTemplateTypes] = useState<TrainingTemplateType[]>([]);
   const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
@@ -679,10 +679,12 @@ export default function PlanScreen() {
     setTemplateContentFilterOpen(false);
     if (target.value === 'tasks') {
       setActiveSection('tasks');
+      setSelectedTemplateTypes([]);
       return;
     }
     if (target.value === 'assignments') {
       setActiveSection('assignments');
+      setSelectedTemplateTypes([]);
       return;
     }
     if (target.templateType) {

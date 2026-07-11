@@ -381,6 +381,7 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('duplicateOwnerTrainingTemplate');
     expect(plan).toContain('archiveOwnerTrainingTemplate');
     expect(plan).toContain('restoreOwnerTrainingTemplate');
+    expect(plan).toContain("const [activeSection, setActiveSection] = useState<PlanSection>('tasks')");
     expect(plan).toContain("value: 'exercise', label: 'Exercise'");
     expect(plan).toContain('Interval timer');
     expect(plan).toContain("type ItemSourceMode = 'new' | 'saved' | 'library'");
@@ -398,6 +399,7 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('plan.templates.filterButton');
     expect(plan).toContain('plan.templates.status.active');
     expect(plan).toContain('plan.templates.status.archived');
+    expect(plan).toContain('setSelectedTemplateTypes([])');
     expect(plan).not.toContain('type TemplateTypeFilter');
     expect(plan).not.toContain('FilterChip');
     expect(plan).toContain('ReusableItemPickerModal');
