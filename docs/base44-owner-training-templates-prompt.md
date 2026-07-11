@@ -529,6 +529,284 @@ Week-template:
   `Library`
 - preview skal vise dag 1, dag 2 osv.
 
+## Latest Plan And Card UX Requirements
+
+Denne sektion samler de seneste mobilkrav, som Base44/web skal matche i logik
+og informationsstruktur. Web maa gerne bruge desktop-layout, men begreber,
+labels, filtre og handlinger skal vaere de samme som i mobilappen.
+
+### Plan Erstatter Det Gamle Bibliotek
+
+`Plan` er det nye samlede bibliotek for baade traenere og spillere.
+
+- Der skal ikke bygges en separat `Bibliotek`-oplevelse for traenere/spillere
+  til tasks/exercises. Skabeloner er det nye bibliotek.
+- Traenerens Plan viser:
+  - `Opgaver`
+  - `Exercise`
+  - `Session`
+  - `Week`
+  - `Tildelinger`
+- Spillerens opgaveside skal hedde `Plan`.
+- Spilleren maa kunne se egne skabeloner og skabeloner delt/tildelt fra
+  traeneren.
+- Spilleren skal ikke have `Tildelinger` som knap/visning, da spilleren ikke
+  tildeler til andre.
+
+### Plan Landing Og Navigation
+
+Plan skal have en tydelig primær opret-handling.
+
+- Brug en primær `Opret` CTA, ikke en knap der hedder `Skabeloner`.
+- Ved klik paa `Opret` skal Base44 vise en modal/popup med fire valg:
+  - `Task`
+  - `Exercise`
+  - `Session`
+  - `Week`
+- Hver type skal have et lille `i`/info-ikon eller helpertekst:
+  - `Task`: enkelt genbrugelig opgave med media, kategorier, reminder og
+    feedback.
+  - `Exercise`: task med samme opgavefelter plus intervaltimer.
+  - `Session`: traeningssession/aktivitet samme dag, bygget af tasks,
+    exercises, noter, fokus og feedback.
+  - `Week`: ugeforloeb bygget af gemte sessioner fordelt paa dage.
+- Visningsvalg skal ligge samlet og logisk som dropdown/select, ikke som mange
+  rodede knapper i samme raekke.
+- Dropdownen skal kunne filtrere praecist paa type:
+  - alle typer
+  - opgaver/task
+  - exercise
+  - session
+  - week
+  - tildelinger, kun for traener/owner/admin
+
+### Ens Sideopsætning For Alle Plan-visninger
+
+`Opgaver`, `Exercise`, `Session`, `Week` og `Tildelinger` skal bruge samme
+grundlayout:
+
+- top: `Opret` CTA
+- visning/type dropdown
+- soegning
+- kildefilter
+- liste/folders
+- ens kortkomponenter
+
+Undgaa ekstra summary-kort, dobbelte filterkort eller standalone `Ny
+skabelon`-knapper under listen, hvis `Opret` allerede findes som primær CTA.
+Base44 skal ikke vise en separat `Skabeloner`-boks oven over listen, hvis listen
+i sig selv allerede er skabelonbiblioteket.
+
+### Filterlogik
+
+Filtre skal vaere selvforklarende og ikke fylde unødigt.
+
+- Typefilter skal vaere en dropdown/select.
+- Kildefilter skal kunne skelne mellem:
+  - `Alle`
+  - `Mine`
+  - `Workspace`/`Fra traener`
+- Paa spillerens Plan skal kildefilteret vise om skabelonen er spillerens egen
+  eller kommer fra traeneren.
+- `Active`/`Archived` skal kun bruges hvor det giver mening:
+  - task templates
+  - exercise templates
+- `Session` og `Week` skal ikke have aktiv/archive som primær workflow, da de
+  ikke auto-tildeles til aktiviteter. Hvis backend stadig returnerer `status`,
+  maa Base44 vise status diskret, men undgaa at gøre arkiv til hovedfilter for
+  session/week.
+
+### Kortdesign For Task, Exercise, Session Og Week
+
+Alle kort skal forklare hvad informationen betyder. Vis ikke kun værdier uden
+label.
+
+Kort skal bruge label/value-felter som fx:
+
+- `Type`: Task, Exercise, Session eller Week
+- `Kilde`: Mine, Workspace, Fra traener eller FootballCoach
+- `Version`: fx `v3`
+- `Indhold`: antal items eller "Selvstændig skabelon"
+- `Kategorier`: antal eller navne
+- `Feedback`: Aktiv/Inaktiv
+- `Reminder`: fx `15 min foer`
+- `Timer`: fx `4 runder · 45 sek aktiv · 15 sek pause`
+- `Media`: antal filer
+- `Mappe`: foldernavn, hvis findes
+- `Fokus`: fokusomraader, hvis findes
+
+Beskrivelse skal have en tydelig label som `Beskrivelse`. Kort maa ikke vise en
+los tekstblok, hvor brugeren ikke kan se, hvilket felt teksten kommer fra.
+
+### Media Direkte Paa Kort
+
+Task-, exercise-, session- og week-kort skal kunne vise media direkte paa
+kortet, naar der findes media i skabelonen eller i underliggende items.
+
+- Vis billeder direkte i kortet.
+- Vis PDF som preview/aabn-link.
+- Video skal kunne afspilles direkte fra kortet/listen, ikke kun via en separat
+  detaljeside.
+- Hvis der er flere filer, vis swipe/carousel eller en tilsvarende desktop
+  media-strip.
+- Session-kort skal aggregere media fra task/exercise items, saa coachen kan se
+  hvilke medier sessionen indeholder.
+- Week-kort maa aggregere media fra de linkede sessioner, hvis data er
+  tilgaengelig i klientens loaded state. Hvis linked session content ikke er
+  loaded, vis `Media` som ukendt/ikke vist fremfor at lave ekstra uautoriserede
+  table reads.
+
+### Tildel-knap Paa Alle Kort
+
+Alle kort skal have en synlig `Tildel` handling for roller, der maa tildele.
+
+- Task-kort: `Tildel`
+- Exercise-kort: `Tildel`
+- Session-kort: `Tildel`
+- Week-kort: `Tildel`
+- Tildelingskort: relevant `Se`, `Rediger` eller `Tildel igen`, afhængigt af
+  backend-flowet
+
+Vigtigt: Base44 maa ikke fake tildeling lokalt. Hvis backend endpoint/RPC til at
+materialisere training templates til konkrete aktiviteter/tasks endnu ikke er
+tilgaengeligt, skal `Tildel` enten:
+
+- aabne en modal med tydelig "kommer naar backend assignment-flowet er klar",
+  eller
+- vaere disabled med forklaring.
+
+Base44 maa ikke skrive direkte i flere tabeller fra browseren for at simulere
+tildeling. Cross-user writes skal gaa via Supabase Edge Function/RPC/server-side
+flow.
+
+### Assignment Flow Der Skal Bygges Naar Backend Er Klar
+
+Naar backend-understoettelse til `Tildel` findes, skal flowet vaere:
+
+- Vaelg modtagere:
+  - enkelt spiller
+  - flere spillere
+  - hold/team, hvis owner har teams
+- For `Task` og `Exercise`:
+  - vaelg dato eller aktivitet/session hvor opgaven skal ligge
+  - behold task/exercise felterne fra skabelonen: media, kategorier, reminder,
+    feedback og auto-add regler
+- For `Session`:
+  - vaelg dato
+  - vaelg starttidspunkt
+  - vaelg varighed, hvis relevant
+  - materialiser sessionen som en aktivitet med tilhoerende task/exercise items
+- For `Week`:
+  - vaelg startdato/uge
+  - vis weekens sessioner med foreslaaet `dayOffset`
+  - lad coachen override dato/starttid pr. session pr. spiller/hold
+  - materialiser hver session som konkrete aktiviteter
+
+Dato, starttid og varighed maa ikke gemmes paa selve session/week skabelonen.
+De hoerer til tildelingen/materialiseringen.
+
+### Task Og Exercise Felter
+
+`Exercise` skal have praecis samme egenskaber som `Task`. Den eneste forskel er
+intervaltimeren.
+
+Baade task og exercise skal understøtte:
+
+- titel
+- beskrivelse
+- video/billeder/PDF
+- media-navne
+- kategorier
+- auto-add til aktiviteter baseret paa kategori
+- reminder
+- post-training feedback
+- feedback score-forklaring
+
+Exercise skal desuden understøtte:
+
+- `Aktiv tid`: antal sekunder med arbejde
+- `Pause`: antal sekunder mellem runder
+- `Runder`: antal gentagelser
+
+Vis disse timerfelter med forklaring i UI. Brug ikke kun tomme inputfelter uden
+label/helpertekst.
+
+### Subtasks Og Tid Paa Task/Exercise
+
+Subtasks skal ikke vises eller kunne oprettes for task/exercise templates.
+Feature bruges ikke.
+
+Task/exercise skal heller ikke have eget tidspunkt eller egen varighed i
+template builderen. Tidspunkt, dato og varighed saettes paa session/tildeling,
+ikke paa task/exercise niveau.
+
+### Session Og Week Item-regler
+
+Session:
+
+- er en samlet aktivitet paa samme dag
+- maa ikke have Day-vaelger
+- kan indeholde tasks og exercises
+- task/exercise items kan komme fra `New`, `Saved` eller `Library`
+- nye/library task/exercise items skal automatisk gemmes som selvstaendige
+  templates, saa de kan genbruges senere
+
+Week:
+
+- maa kun indeholde gemte session templates
+- skal have Day-vaelger/day offset for hver session
+- maa ikke lade coachen vaelge task/exercise direkte
+- coachen skal kunne override weekens foreslaaede dage/tidspunkter ved
+  tildeling
+
+### Saved Og Library Picker
+
+Naar brugeren vaelger `Saved` eller `Library`, skal listen vises som en
+modal/popup/bottom sheet med flotte kort.
+
+Kort i pickeren skal vise:
+
+- titel
+- type/kilde
+- beskrivelse med label
+- media count og gerne preview
+- timer-info for exercise
+- kategori/fokus, hvis findes
+
+Vis ikke saved/library som en lang inline liste inde i selve formularen.
+
+### Spillerens Plan
+
+For spillere skal `Opgaver` omdoebes til `Plan`.
+
+Spillerens Plan skal:
+
+- vise egne skabeloner
+- vise skabeloner fra traeneren
+- bruge samme kortdesign som traenerens Plan
+- ikke vise `Tildelinger`
+- ikke vise actions som arkiver/dupliker, medmindre spilleren ejer
+  skabelonen og backend tillader det
+- have kildefilter, saa spilleren kan skelne mellem `Mine` og `Fra traener`
+
+### Mobile/Web Parity Acceptance
+
+Base44-implementeringen er klar, naar:
+
+- Plan bruger `Opret` som primær create-handling.
+- Task, Exercise, Session, Week og Tildelinger bruger samme liste/kortlogik.
+- Kort viser forklarende labels, ikke kun værdier.
+- Media vises paa kort, og video kan afspilles direkte fra kort/listen.
+- Alle relevante kort har en `Tildel` knap eller en disabled/placeholder state,
+  hvis backend assignment endnu mangler.
+- Session viser ikke Day-vaelger.
+- Week viser Day-vaelger og tillader kun gemte sessioner.
+- Task/exercise viser ikke subtasks eller eget tidspunkt/varighed.
+- Exercise har samme task-features som task plus timer med forklaringer.
+- Saved/library vises i modal/popup med kort.
+- Spillerens Plan erstatter den gamle opgaveside/biblioteklogik og viser egne
+  samt traenerens skabeloner.
+
 ## Error Handling
 
 Vis stabile fejl:

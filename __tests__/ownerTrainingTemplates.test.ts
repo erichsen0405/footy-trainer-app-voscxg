@@ -489,6 +489,13 @@ describe('owner training templates contract', () => {
     expect(base44Prompt).toContain('template_versions');
     expect(base44Prompt).toContain('Player og guardian maa ikke have template-admin adgang');
     expect(base44Prompt).toContain('popup/bottom sheet');
+    expect(base44Prompt).toContain('Plan Erstatter Det Gamle Bibliotek');
+    expect(base44Prompt).toContain('Alle kort skal forklare hvad informationen betyder');
+    expect(base44Prompt).toContain('Video skal kunne afspilles direkte fra kortet/listen');
+    expect(base44Prompt).toContain('Alle kort skal have en synlig `Tildel` handling');
+    expect(base44Prompt).toContain('Base44 maa ikke fake tildeling lokalt');
+    expect(base44Prompt).toContain('Task Og Exercise Felter');
+    expect(base44Prompt).toContain('Spillerens Plan');
     expect(base44Prompt).toContain('Day-vaelger i session builderen');
     expect(base44Prompt).toContain('sessionStartTime');
     expect(base44Prompt).toContain('ignorerer Edge Function disse felter');
