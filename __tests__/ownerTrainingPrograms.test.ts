@@ -38,6 +38,8 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('My program');
     expect(screen).toContain('publishTrainingProgram');
     expect(screen).toContain('enrollTrainingProgram');
+    expect(screen).toContain('createProgramDraftId');
+    expect(screen).not.toContain('crypto.randomUUID()');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
     expect(prompt).toContain('do not create a parallel portal');
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');

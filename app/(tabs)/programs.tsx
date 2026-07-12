@@ -6,6 +6,14 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { fetchOwnerTrainingTemplatesContext } from '@/services/trainingTemplateService';
 import { enrollTrainingProgram, fetchMyTrainingPrograms, fetchTrainingPrograms, PlayerProgramEnrollment, publishTrainingProgram, saveTrainingProgram, TrainingProgramsPayload } from '@/services/trainingProgramService';
 
+export function createProgramDraftId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 export default function ProgramsScreen() {
   const colors = getColors(useColorScheme()); const insets = useSafeAreaInsets(); const { userRole } = useUserRole();
   const isCoach = userRole === 'admin' || userRole === 'trainer';
@@ -17,7 +25,7 @@ export default function ProgramsScreen() {
   } catch (e) { setError(e instanceof Error ? e.message : 'Could not load programs.'); } finally { setLoading(false); setRefreshing(false); } }, [isCoach, ownerId]);
   useEffect(() => { void load(); }, [load]);
   const createDraft = async () => { if (!ownerId || !title.trim()) return; try { setLoading(true); const durationWeeks = Math.max(1, Math.min(52, Number(weeks) || 4));
-    const phaseId = crypto.randomUUID(); setPayload(await saveTrainingProgram({ ownerAccountId: ownerId, title: title.trim(), durationWeeks,
+    const phaseId = createProgramDraftId(); setPayload(await saveTrainingProgram({ ownerAccountId: ownerId, title: title.trim(), durationWeeks,
       phases: [{ id: phaseId, title: 'Week 1', weekOffset: 0, durationWeeks }], items: [{ phaseId, itemType: 'focus', title: 'Program focus', dayOffset: 0 }] })); setTitle('');
   } catch (e) { Alert.alert('Could not create program', e instanceof Error ? e.message : 'Try again.'); } finally { setLoading(false); } };
   if (loading && !payload && !mine.length) return <View style={[styles.center, { backgroundColor: colors.background }]}><ActivityIndicator /></View>;
