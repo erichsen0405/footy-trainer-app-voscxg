@@ -35,6 +35,7 @@ Actions:
 - `{ "action":"enroll", "ownerAccountId":"<uuid>", "programId":"<uuid>", "playerIds":["<uuid>"], "teamId":null, "startDate":"2026-07-20" }`
 - `{ "action":"setEnrollmentStatus", "ownerAccountId":"<uuid>", "enrollmentId":"<uuid>", "status":"paused|active|completed|cancelled" }`
 - `{ "action":"archive", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
+- `{ "action":"delete", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 
 Successful responses use `{ "success": true, "data": ... }`. Render API error messages and handle `401`, `403`, `404`, `409` and `500`. A protected deployed endpoint returns `401` without auth; `404` means it has not been deployed.
 
@@ -53,8 +54,60 @@ free-text field. Web and mobile use the same stored values:
 | Advanced | `advanced` |
 | Elite | `elite` |
 
-Render these as accessible chips, radio cards or a select. Store the API value
-in `training_programs.level`; do not translate labels into new backend values.
+Render Level as an accessible dropdown/select on both web and mobile. Do not
+render all levels as permanently visible chips. Store the API value in
+`training_programs.level`; do not translate labels into new backend values.
+
+### Content-step template picker
+
+Replace a long inline list of saved templates with an intuitive dropdown-style
+picker for each phase/week. The closed control says
+`Choose task, exercise or session` and clearly shows which phase receives the
+selection.
+
+Opening the control presents a searchable picker with:
+
+- a search field that matches title, description and focus areas
+- type filters: `All`, `Task`, `Exercise`, `Session`
+- result count and an understandable empty state
+- result cards with title, type badge, short description and focus areas
+- one clear action: `Add to <phase name>`
+
+Only active owner-scoped templates from `manageTrainingTemplates.list` may be
+shown. Exclude archived templates and week templates from this picker. Search
+and filtering happen against the already owner-scoped result and must work
+together. Preserve the current search text while changing type filter, and
+clear picker state after a template is added or the picker is closed.
+
+Group added content by phase instead of showing one unstructured item list.
+Each phase shows its own saved items plus its own picker trigger. A selected
+template must be saved with that phase's `phaseId`. Default its absolute
+`dayOffset` to the first day of the phase:
+
+```ts
+dayOffset = phase.weekOffset * 7;
+```
+
+The coach can then adjust the human-facing `Program day` value if needed. UI
+day 1 maps to API `dayOffset = 0`.
+
+### Delete program
+
+Show `Delete` for programs on both web and mobile with a destructive
+confirmation explaining that deletion is permanent. Call:
+
+```json
+{
+  "action": "delete",
+  "ownerAccountId": "<selected owner UUID>",
+  "programId": "<program UUID>"
+}
+```
+
+The server permits hard deletion only when the program has no enrollments. If
+the endpoint returns `409` with `Programs with enrollments cannot be deleted`,
+keep the program visible and offer Archive instead. Never delete enrollments or
+player history to make deletion succeed.
 
 ### Phase-step UX — do not expose offsets
 

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { filterProgramTemplates } from '@/utils/programTemplatePicker';
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 
@@ -24,6 +25,7 @@ describe('owner training programs contract', () => {
   it('keeps publishing and cross-user enrollment server-side', () => {
     expect(edge).toContain("action === 'publish'");
     expect(edge).toContain("action === 'enroll'");
+    expect(edge).toContain("action === 'delete'");
     expect(edge).toContain("get_owner_account_roles");
     expect(edge).toContain("from('program_versions').insert");
     expect(edge).toContain("from('program_enrollment_items').insert");
@@ -35,7 +37,10 @@ describe('owner training programs contract', () => {
     expect(edge).toContain('Every phase must fit inside the program duration.');
     expect(edge).toContain("new Set(['all', 'beginner', 'intermediate', 'advanced', 'elite'])");
     expect(edge).toContain('level must be all, beginner, intermediate, advanced or elite.');
+    expect(edge).toContain('Programs with enrollments cannot be deleted. Archive this program to preserve player history.');
+    expect(edge).toContain("from('training_programs').delete()");
     expect(service).toContain("supabase.functions.invoke('manageTrainingPrograms'");
+    expect(service).toContain('deleteTrainingProgram');
   });
 
   it('delivers coach and player mobile flows plus the existing Base44 reuse contract', () => {
@@ -62,7 +67,15 @@ describe('owner training programs contract', () => {
     expect(screen).toContain("{ value: 'intermediate', label: 'Intermediate' }");
     expect(screen).toContain("{ value: 'advanced', label: 'Advanced' }");
     expect(screen).toContain("{ value: 'elite', label: 'Elite' }");
-    expect(screen).toContain('programs.level.${level.value}');
+    expect(screen).toContain('DropdownSelect');
+    expect(screen).toContain('testIDPrefix="programs.level"');
+    expect(screen).toContain('TemplatePickerModal');
+    expect(screen).toContain('programs.templates.search');
+    expect(screen).toContain('programs.templates.filter.${type}');
+    expect(screen).toContain('Choose task, exercise or session');
+    expect(screen).toContain('filterProgramTemplates');
+    expect(screen).toContain('Delete program permanently?');
+    expect(screen).toContain('deleteTrainingProgram');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
     expect(prompt).toContain('do not create a parallel portal');
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');
@@ -72,6 +85,10 @@ describe('owner training programs contract', () => {
     expect(prompt).toContain('automatically suggest the first week after');
     expect(prompt).toContain('predefined single-select');
     expect(prompt).toContain('| All levels | `all` |');
+    expect(prompt).toContain('Render Level as an accessible dropdown/select');
+    expect(prompt).toContain('Content-step template picker');
+    expect(prompt).toContain('type filters: `All`, `Task`, `Exercise`, `Session`');
+    expect(prompt).toContain('The server permits hard deletion only when the program has no enrollments');
     expect(enrollmentFixPrompt).toContain('phase.week_offset');
     expect(enrollmentFixPrompt).toContain('item.phase_id');
     expect(enrollmentFixPrompt).toContain('item.item_type');
@@ -81,5 +98,20 @@ describe('owner training programs contract', () => {
     expect(enrollmentFixPrompt).toContain('No content in this phase');
     expect(enrollmentFixPrompt).toContain('weekOffset * 7');
     expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
+  });
+
+  it('combines template type filters and search while excluding week templates', () => {
+    const templates = [
+      { templateType: 'task', title: 'Finishing homework', description: 'Shots', focusAreas: ['Finishing'] },
+      { templateType: 'exercise', title: 'First touch drill', description: 'Technical', focusAreas: ['First touch'] },
+      { templateType: 'session', title: 'Finishing session', description: 'Team session', focusAreas: ['Finishing'] },
+      { templateType: 'week', title: 'Full week', description: 'Plan', focusAreas: [] },
+    ];
+
+    expect(filterProgramTemplates(templates, 'all', '')).toHaveLength(3);
+    expect(filterProgramTemplates(templates, 'session', '')).toEqual([templates[2]]);
+    expect(filterProgramTemplates(templates, 'all', 'first TOUCH')).toEqual([templates[1]]);
+    expect(filterProgramTemplates(templates, 'task', 'finishing')).toEqual([templates[0]]);
+    expect(filterProgramTemplates(templates, 'exercise', 'finishing')).toEqual([]);
   });
 });

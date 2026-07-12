@@ -180,6 +180,17 @@ Deno.serve(async (req: Request) => {
     if (action === 'setEnrollmentStatus') { await assertStaff(client, userId, ownerAccountId); const status = text(body.status, 'status', true)!; if (!STATUSES.includes(status)) throw new AppError('VALIDATION_ERROR', 'Invalid enrollment status.', 400);
       await client.from('program_enrollments').update({ status, paused_at: status === 'paused' ? new Date().toISOString() : null, completed_at: status === 'completed' ? new Date().toISOString() : null }).eq('owner_account_id', ownerAccountId).eq('id', uuid(body.enrollmentId, 'enrollmentId')); return successResponse(await payload(client, ownerAccountId)); }
     if (action === 'archive') { await assertStaff(client, userId, ownerAccountId); await client.from('training_programs').update({ status: 'archived', archived_at: new Date().toISOString(), updated_by: userId }).eq('owner_account_id', ownerAccountId).eq('id', uuid(body.programId, 'programId')); return successResponse(await payload(client, ownerAccountId)); }
+    if (action === 'delete') {
+      await assertStaff(client, userId, ownerAccountId);
+      const programId = uuid(body.programId, 'programId');
+      await loadProgram(client, ownerAccountId, programId);
+      const { count, error: countError } = await client.from('program_enrollments').select('id', { count: 'exact', head: true }).eq('owner_account_id', ownerAccountId).eq('program_id', programId);
+      if (countError) throw new AppError('INTERNAL_ERROR', countError.message, 500);
+      if ((count ?? 0) > 0) throw new AppError('VALIDATION_ERROR', 'Programs with enrollments cannot be deleted. Archive this program to preserve player history.', 409);
+      const { error: deleteError } = await client.from('training_programs').delete().eq('owner_account_id', ownerAccountId).eq('id', programId);
+      if (deleteError) throw new AppError('INTERNAL_ERROR', deleteError.message, 500);
+      return successResponse(await payload(client, ownerAccountId));
+    }
     throw new AppError('VALIDATION_ERROR', 'Unsupported action.', 400);
   } catch (error) { return responseFromError(error); }
 });

@@ -28,3 +28,4 @@ export const publishTrainingProgram = (ownerAccountId: string, programId: string
 export const enrollTrainingProgram = (input: { ownerAccountId: string; programId: string; playerIds?: string[]; teamId?: string; startDate: string }) => invoke<TrainingProgramsPayload>({ action: 'enroll', ...input });
 export const setProgramEnrollmentStatus = (ownerAccountId: string, enrollmentId: string, status: ProgramEnrollmentStatus) => invoke<TrainingProgramsPayload>({ action: 'setEnrollmentStatus', ownerAccountId, enrollmentId, status });
 export const archiveTrainingProgram = (ownerAccountId: string, programId: string) => invoke<TrainingProgramsPayload>({ action: 'archive', ownerAccountId, programId });
+export const deleteTrainingProgram = (ownerAccountId: string, programId: string) => invoke<TrainingProgramsPayload>({ action: 'delete', ownerAccountId, programId });

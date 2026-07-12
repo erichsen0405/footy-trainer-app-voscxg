@@ -272,3 +272,7 @@ Verify:
 9. Switching owner accounts clears stale players, teams and selections.
 10. Empty, loading, `401`, `403`, `409` and retry states remain usable.
 
+Also apply the shared Content-step searchable template picker, Level dropdown
+and safe program deletion contract from
+`docs/base44-owner-training-programs-prompt.md`. The enrollment adapter fix and
+the builder picker must use the same normalized phase and item model.
