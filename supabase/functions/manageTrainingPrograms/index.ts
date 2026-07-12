@@ -61,26 +61,36 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   const durationWeeks = integer(body.durationWeeks, 'durationWeeks', 1, 52);
   const phases = Array.isArray(body.phases) ? body.phases : [];
   const items = Array.isArray(body.items) ? body.items : [];
-  const { error } = await client.from('training_programs').upsert({
-    id: programId, owner_account_id: ownerAccountId, title: text(body.title, 'title', true), description: text(body.description, 'description'),
-    audience: text(body.audience, 'audience'), level: text(body.level, 'level'), duration_weeks: durationWeeks,
-    status: 'draft', created_by: existing?.created_by ?? userId, updated_by: userId,
-  });
-  if (error) throw new AppError('INTERNAL_ERROR', error.message, 500);
-  await client.from('program_items').delete().eq('owner_account_id', ownerAccountId).eq('program_id', programId);
-  await client.from('program_phases').delete().eq('owner_account_id', ownerAccountId).eq('program_id', programId);
+  const title = text(body.title, 'title', true);
   const phaseRows = phases.map((raw: unknown, index: number) => {
     const p = record(raw); return { id: p.id && UUID.test(p.id) ? p.id : crypto.randomUUID(), owner_account_id: ownerAccountId, program_id: programId,
       title: text(p.title, 'phase.title', true), description: text(p.description, 'phase.description'), week_offset: integer(p.weekOffset ?? index, 'phase.weekOffset', 0, 51),
       duration_weeks: integer(p.durationWeeks ?? 1, 'phase.durationWeeks', 1, 52), sort_order: index };
   });
-  if (phaseRows.length) { const result = await client.from('program_phases').insert(phaseRows); if (result.error) throw new AppError('INTERNAL_ERROR', result.error.message, 500); }
+  if (phaseRows.some((phase: any) => phase.week_offset + phase.duration_weeks > durationWeeks)) {
+    throw new AppError('VALIDATION_ERROR', 'Every phase must fit inside the program duration.', 400);
+  }
   const phaseIds = new Set(phaseRows.map((p: any) => p.id));
   const itemRows = items.map((raw: unknown, index: number) => { const item = record(raw); const phaseId = item.phaseId && phaseIds.has(item.phaseId) ? item.phaseId : null;
     return { owner_account_id: ownerAccountId, program_id: programId, phase_id: phaseId, item_type: text(item.itemType, 'item.itemType', true),
       training_template_id: item.trainingTemplateId ? uuid(item.trainingTemplateId, 'item.trainingTemplateId') : null, title: text(item.title, 'item.title', true),
       description: text(item.description, 'item.description'), day_offset: integer(item.dayOffset ?? 0, 'item.dayOffset', 0, durationWeeks * 7 - 1), sort_order: index,
       config: item.config && typeof item.config === 'object' ? item.config : {} }; });
+  const templateIds = [...new Set(itemRows.map((item: any) => item.training_template_id).filter(Boolean))];
+  if (templateIds.length) {
+    const { data: ownedTemplates, error: templateError } = await client.from('training_templates').select('id').eq('owner_account_id', ownerAccountId).in('id', templateIds);
+    if (templateError) throw new AppError('INTERNAL_ERROR', templateError.message, 500);
+    if ((ownedTemplates ?? []).length !== templateIds.length) throw new AppError('FORBIDDEN', 'Every selected template must belong to this owner.', 403);
+  }
+  const { error } = await client.from('training_programs').upsert({
+    id: programId, owner_account_id: ownerAccountId, title, description: text(body.description, 'description'),
+    audience: text(body.audience, 'audience'), level: text(body.level, 'level'), duration_weeks: durationWeeks,
+    status: 'draft', created_by: existing?.created_by ?? userId, updated_by: userId,
+  });
+  if (error) throw new AppError('INTERNAL_ERROR', error.message, 500);
+  await client.from('program_items').delete().eq('owner_account_id', ownerAccountId).eq('program_id', programId);
+  await client.from('program_phases').delete().eq('owner_account_id', ownerAccountId).eq('program_id', programId);
+  if (phaseRows.length) { const result = await client.from('program_phases').insert(phaseRows); if (result.error) throw new AppError('INTERNAL_ERROR', result.error.message, 500); }
   if (itemRows.length) { const result = await client.from('program_items').insert(itemRows); if (result.error) throw new AppError('INTERNAL_ERROR', result.error.message, 500); }
   return payload(client, ownerAccountId);
 }

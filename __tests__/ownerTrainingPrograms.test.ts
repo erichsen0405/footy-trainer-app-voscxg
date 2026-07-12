@@ -30,16 +30,26 @@ describe('owner training programs contract', () => {
     expect(edge).toContain("from('activities').insert");
     expect(edge).toContain("from('activity_tasks').insert");
     expect(edge).toContain('The selected team does not belong to this owner.');
+    expect(edge).toContain('Every selected template must belong to this owner.');
+    expect(edge).toContain('Every phase must fit inside the program duration.');
     expect(service).toContain("supabase.functions.invoke('manageTrainingPrograms'");
   });
 
   it('delivers coach and player mobile flows plus the existing Base44 reuse contract', () => {
-    expect(screen).toContain('New guided draft');
+    expect(screen).toContain('New program');
     expect(screen).toContain('My program');
     expect(screen).toContain('publishTrainingProgram');
     expect(screen).toContain('enrollTrainingProgram');
     expect(screen).toContain('createProgramDraftId');
     expect(screen).not.toContain('crypto.randomUUID()');
+    expect(screen).toContain("['Details', 'Phases', 'Content', 'Preview']");
+    expect(screen).toContain('fetchOwnerPlayerCrmList');
+    expect(screen).toContain('fetchOwnerTrainingTemplates');
+    expect(screen).toContain('Enrollment preview');
+    expect(screen).toContain('Confirm enrollment');
+    expect(screen).toContain('setProgramEnrollmentStatus');
+    expect(screen).toContain('Archive program?');
+    expect(screen).not.toContain('Enroll first player');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
     expect(prompt).toContain('do not create a parallel portal');
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');
