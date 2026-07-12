@@ -44,7 +44,7 @@ export default function ProgramsScreen() {
     if (!isCoach) { setMine((await fetchMyTrainingPrograms()).enrollments); return; }
     const context = await fetchOwnerTrainingTemplatesContext(); const nextOwner = ownerId ?? context.defaultOwnerAccountId ?? context.workspaces[0]?.ownerAccountId ?? null; setOwnerId(nextOwner); if (!nextOwner) return;
     const [programData, templateData, crm] = await Promise.all([fetchTrainingPrograms(nextOwner), fetchOwnerTrainingTemplates(nextOwner), fetchOwnerPlayerCrmList(nextOwner)]);
-    setPayload(programData); setTemplates(templateData.templates.filter((template) => template.status === 'active')); setPlayers(crm.players); setTeams(crm.teams);
+    setPayload(programData); setTemplates(templateData.templates.filter((template) => template.status === 'active')); setPlayers(crm.players.filter((player) => player.ownerRosterStatus === 'active')); setTeams(crm.teams);
   } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load programs.'); } finally { setLoading(false); setRefreshing(false); } }, [isCoach, ownerId]);
   useEffect(() => { void load(); }, [load]);
 

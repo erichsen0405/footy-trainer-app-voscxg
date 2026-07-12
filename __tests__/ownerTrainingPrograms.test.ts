@@ -9,6 +9,7 @@ describe('owner training programs contract', () => {
   const service = read('services/trainingProgramService.ts');
   const screen = read('app/(tabs)/programs.tsx');
   const prompt = read('docs/base44-owner-training-programs-prompt.md');
+  const enrollmentFixPrompt = read('docs/base44-owner-training-program-enrollment-fix-prompt.md');
 
   it('stores owner-scoped immutable programs and dated enrollment snapshots', () => {
     for (const table of ['training_programs', 'program_phases', 'program_items', 'program_versions', 'program_enrollments', 'program_enrollment_items']) {
@@ -71,5 +72,14 @@ describe('owner training programs contract', () => {
     expect(prompt).toContain('automatically suggest the first week after');
     expect(prompt).toContain('predefined single-select');
     expect(prompt).toContain('| All levels | `all` |');
+    expect(enrollmentFixPrompt).toContain('phase.week_offset');
+    expect(enrollmentFixPrompt).toContain('item.phase_id');
+    expect(enrollmentFixPrompt).toContain('item.item_type');
+    expect(enrollmentFixPrompt).toContain('item.day_offset');
+    expect(enrollmentFixPrompt).toContain("player.ownerRosterStatus === 'active'");
+    expect(enrollmentFixPrompt).toContain('Never construct player choices from `owner_memberships`');
+    expect(enrollmentFixPrompt).toContain('No content in this phase');
+    expect(enrollmentFixPrompt).toContain('weekOffset * 7');
+    expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
   });
 });

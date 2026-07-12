@@ -117,6 +117,13 @@ The mobile app uses the same endpoint and tables. Do not write cross-user activi
 
 Test both owner types, a multi-role account, forbidden cross-owner access, draft validation, immutable publishing, duplicate enrollment, individual/team enrollment, correct relative dates, pause/resume/complete, mobile/web parity and player-only visibility.
 
+For the required enrollment field adapter, phase/session timeline logic and
+CRM-only player source, apply the corrective prompt in
+`docs/base44-owner-training-program-enrollment-fix-prompt.md`. In particular,
+never read raw `week_offset`, `phase_id`, `item_type` or `day_offset` as if they
+were camelCase, and never populate enrollment players from memberships or
+guardian/parent data.
+
 ## Remote deployment status (verified 2026-07-12)
 
 - Project ref: `lhpczofddvwcyrgotzha`
