@@ -5,6 +5,7 @@ import { AppError, optionsResponse, readJsonBody, responseFromError, successResp
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = ['owner', 'admin', 'coach', 'assistant_coach'];
 const STATUSES = ['active', 'paused', 'completed', 'cancelled'];
+const PROGRAM_LEVELS = new Set(['all', 'beginner', 'intermediate', 'advanced', 'elite']);
 
 function record(value: unknown): Record<string, any> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new AppError('VALIDATION_ERROR', 'Invalid request body.', 400);
@@ -62,6 +63,8 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   const phases = Array.isArray(body.phases) ? body.phases : [];
   const items = Array.isArray(body.items) ? body.items : [];
   const title = text(body.title, 'title', true);
+  const level = text(body.level, 'level') ?? 'all';
+  if (!PROGRAM_LEVELS.has(level)) throw new AppError('VALIDATION_ERROR', 'level must be all, beginner, intermediate, advanced or elite.', 400);
   const phaseRows = phases.map((raw: unknown, index: number) => {
     const p = record(raw); return { id: p.id && UUID.test(p.id) ? p.id : crypto.randomUUID(), owner_account_id: ownerAccountId, program_id: programId,
       title: text(p.title, 'phase.title', true), description: text(p.description, 'phase.description'), week_offset: integer(p.weekOffset ?? index, 'phase.weekOffset', 0, 51),
@@ -84,7 +87,7 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   }
   const { error } = await client.from('training_programs').upsert({
     id: programId, owner_account_id: ownerAccountId, title, description: text(body.description, 'description'),
-    audience: text(body.audience, 'audience'), level: text(body.level, 'level'), duration_weeks: durationWeeks,
+    audience: text(body.audience, 'audience'), level, duration_weeks: durationWeeks,
     status: 'draft', created_by: existing?.created_by ?? userId, updated_by: userId,
   });
   if (error) throw new AppError('INTERNAL_ERROR', error.message, 500);

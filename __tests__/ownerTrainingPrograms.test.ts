@@ -32,6 +32,8 @@ describe('owner training programs contract', () => {
     expect(edge).toContain('The selected team does not belong to this owner.');
     expect(edge).toContain('Every selected template must belong to this owner.');
     expect(edge).toContain('Every phase must fit inside the program duration.');
+    expect(edge).toContain("new Set(['all', 'beginner', 'intermediate', 'advanced', 'elite'])");
+    expect(edge).toContain('level must be all, beginner, intermediate, advanced or elite.');
     expect(service).toContain("supabase.functions.invoke('manageTrainingPrograms'");
   });
 
@@ -54,6 +56,12 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('Duration (weeks)');
     expect(screen).toContain('Runs from week');
     expect(screen).not.toContain('wk off');
+    expect(screen).toContain('PROGRAM_LEVELS');
+    expect(screen).toContain("{ value: 'beginner', label: 'Beginner' }");
+    expect(screen).toContain("{ value: 'intermediate', label: 'Intermediate' }");
+    expect(screen).toContain("{ value: 'advanced', label: 'Advanced' }");
+    expect(screen).toContain("{ value: 'elite', label: 'Elite' }");
+    expect(screen).toContain('programs.level.${level.value}');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
     expect(prompt).toContain('do not create a parallel portal');
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');
@@ -61,5 +69,7 @@ describe('owner training programs contract', () => {
     expect(prompt).toContain('Phase-step UX — do not expose offsets');
     expect(prompt).toContain('weekOffset = startsInWeek - 1');
     expect(prompt).toContain('automatically suggest the first week after');
+    expect(prompt).toContain('predefined single-select');
+    expect(prompt).toContain('| All levels | `all` |');
   });
 });

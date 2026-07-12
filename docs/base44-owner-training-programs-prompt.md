@@ -42,6 +42,20 @@ Successful responses use `{ "success": true, "data": ... }`. Render API error me
 
 Use steps: details → phases/weeks → content → enrollment preview. Content selects existing #286 training templates. Show relative and calculated dates before enrollment. Require explicit confirmation for publish, team enrollment, cancellation and archive. Published programs are immutable; offer duplication as a new draft rather than editing history.
 
+On the details step, `Level` must be a predefined single-select instead of a
+free-text field. Web and mobile use the same stored values:
+
+| Label | API value |
+|---|---|
+| All levels | `all` |
+| Beginner | `beginner` |
+| Intermediate | `intermediate` |
+| Advanced | `advanced` |
+| Elite | `elite` |
+
+Render these as accessible chips, radio cards or a select. Store the API value
+in `training_programs.level`; do not translate labels into new backend values.
+
 ### Phase-step UX — do not expose offsets
 
 The phase step must use human week numbers. Never show labels such as `wk off`,
