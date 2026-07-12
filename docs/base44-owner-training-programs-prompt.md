@@ -30,7 +30,7 @@ Never expose the service-role key in Base44.
 Actions:
 
 - `{ "action":"list", "ownerAccountId":"<uuid>" }`
-- `{ "action":"upsert", "ownerAccountId":"<uuid>", "programId":null, "title":"8-week finishing", "description":"...", "audience":"U15", "level":"advanced", "durationWeeks":8, "phases":[{"id":"<client uuid>","title":"Foundation","weekOffset":0,"durationWeeks":2}], "items":[{"phaseId":"<same uuid>","itemType":"session_template","trainingTemplateId":"<uuid>","title":"Finishing session","dayOffset":0}] }`
+- `{ "action":"upsert", "ownerAccountId":"<uuid>", "programId":null, "title":"8-week finishing", "description":"...", "audience":"U15", "level":"advanced", "durationWeeks":8, "phases":[{"id":"<stable client id>","title":"Foundation","startsInWeek":1,"durationWeeks":2}], "items":[{"phaseId":"<same client id>","itemType":"session_template","trainingTemplateId":"<uuid>","title":"Finishing session","weekInPhase":1,"weekday":"monday"}] }`
 - `{ "action":"publish", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 - `{ "action":"enroll", "ownerAccountId":"<uuid>", "programId":"<uuid>", "playerIds":["<uuid>"], "teamId":null, "startDate":"2026-07-20" }`
 - `{ "action":"setEnrollmentStatus", "ownerAccountId":"<uuid>", "enrollmentId":"<uuid>", "status":"paused|active|completed|cancelled" }`
@@ -81,15 +81,11 @@ clear picker state after a template is added or the picker is closed.
 
 Group added content by phase instead of showing one unstructured item list.
 Each phase shows its own saved items plus its own picker trigger. A selected
-template must be saved with that phase's `phaseId`. Default its absolute
-`dayOffset` to the first day of the phase:
-
-```ts
-dayOffset = phase.weekOffset * 7;
-```
-
-The coach can then adjust the human-facing `Program day` value if needed. UI
-day 1 maps to API `dayOffset = 0`.
+template must be saved with that phase's stable `phaseId`. Schedule it with a
+`Week` dropdown inside the phase and a Monday–Sunday `Weekday` dropdown. Never
+show or submit a numeric day from program start. Apply the authoritative
+builder contract in
+`docs/base44-owner-training-program-builder-schedule-v3-prompt.md`.
 
 ### Delete program
 
@@ -182,6 +178,10 @@ it entirely with the server-composed API v2 flow in
 `docs/base44-owner-training-program-enrollment-preview-v2-prompt.md`. This is
 the authoritative enrollment-modal contract: one endpoint returns calculated
 phase dates, nested persisted content, active players and teams.
+
+For all new saves and draft edits, the authoritative phase/item save contract
+is `docs/base44-owner-training-program-builder-schedule-v3-prompt.md`. It
+supersedes client-side `weekOffset` and `dayOffset` calculations.
 
 ## Remote deployment status (verified 2026-07-12)
 

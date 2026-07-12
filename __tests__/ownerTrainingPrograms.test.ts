@@ -13,6 +13,7 @@ describe('owner training programs contract', () => {
   const prompt = read('docs/base44-owner-training-programs-prompt.md');
   const enrollmentFixPrompt = read('docs/base44-owner-training-program-enrollment-fix-prompt.md');
   const enrollmentPreviewV2Prompt = read('docs/base44-owner-training-program-enrollment-preview-v2-prompt.md');
+  const builderScheduleV3Prompt = read('docs/base44-owner-training-program-builder-schedule-v3-prompt.md');
 
   it('stores owner-scoped immutable programs and dated enrollment snapshots', () => {
     for (const table of ['training_programs', 'program_phases', 'program_items', 'program_versions', 'program_enrollments', 'program_enrollment_items']) {
@@ -40,6 +41,12 @@ describe('owner training programs contract', () => {
     expect(edge).toContain('Every phase must fit inside the program duration.');
     expect(edge).toContain("new Set(['all', 'beginner', 'intermediate', 'advanced', 'elite'])");
     expect(edge).toContain('level must be all, beginner, intermediate, advanced or elite.');
+    expect(edge).toContain('phaseIdMap.set(clientId, id)');
+    expect(edge).toContain('phaseIdMap.get(clientPhaseId)');
+    expect(edge).toContain('p.startsInWeek');
+    expect(edge).toContain('item.weekday ?? item.dayOfWeek');
+    expect(edge).toContain("config.scheduling = { weekday:");
+    expect(edge).toContain("session: 'session_template'");
     expect(edge).toContain('Programs with enrollments cannot be deleted. Archive this program to preserve player history.');
     expect(edge).toContain("from('training_programs').delete()");
     expect(edge).toContain('loadEnrollmentPreview');
@@ -82,6 +89,11 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('filterProgramTemplates');
     expect(screen).toContain('Delete program permanently?');
     expect(screen).toContain('deleteTrainingProgram');
+    expect(screen).toContain('PROGRAM_WEEKDAYS');
+    expect(screen).toContain('testIDPrefix={`programs.item.${item.id}.weekday`}');
+    expect(screen).toContain('testIDPrefix={`programs.item.${item.id}.week`}');
+    expect(screen).toContain('startsInWeek: Number(phase.weekOffset) + 1');
+    expect(screen).not.toContain('label="Program day"');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
     expect(prompt).toContain('do not create a parallel portal');
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');
@@ -108,6 +120,11 @@ describe('owner training programs contract', () => {
     expect(enrollmentPreviewV2Prompt).toContain('Render player choices exclusively from');
     expect(enrollmentPreviewV2Prompt).toContain('preview.players');
     expect(enrollmentPreviewV2Prompt).toContain('Do not normalize this response again');
+    expect(builderScheduleV3Prompt).toContain('Program Builder Schedule v3');
+    expect(builderScheduleV3Prompt).toContain('Do not send `dayOffset`');
+    expect(builderScheduleV3Prompt).toContain('"weekday": "monday"');
+    expect(builderScheduleV3Prompt).toContain('temporary phase IDs');
+    expect(builderScheduleV3Prompt).toContain('Mandatory server round-trip before Publish');
     expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
   });
 
@@ -145,5 +162,20 @@ describe('owner training programs contract', () => {
     expect(timeline.phases[0].items.map((item: any) => item.title)).toEqual(['Session one']);
     expect(timeline.phases[1].items.map((item: any) => item.title)).toEqual(['Session two']);
     expect(timeline.phases[1].items[0]).toMatchObject({ programDay: 10, scheduledDate: '2026-07-21' });
+  });
+
+  it('resolves semantic weekdays inside a program week for any enrollment start date', () => {
+    const timeline = buildProgramEnrollmentTimeline({
+      id: 'program-2', title: 'Calendar weekdays', duration_weeks: 2, status: 'published', phases: [
+        { id: 'phase-1', title: 'Week one', week_offset: 0, duration_weeks: 1, sort_order: 0 },
+        { id: 'phase-2', title: 'Week two', week_offset: 1, duration_weeks: 1, sort_order: 1 },
+      ], items: [
+        { id: 'monday-1', phase_id: 'phase-1', item_type: 'session_template', title: 'Monday session', day_offset: 0, sort_order: 0, config: { scheduling: { weekday: 'monday', weekInPhase: 1 } } },
+        { id: 'sunday-2', phase_id: 'phase-2', item_type: 'task_template', title: 'Sunday task', day_offset: 13, sort_order: 0, config: { scheduling: { weekday: 'sunday', weekInPhase: 1 } } },
+      ],
+    }, '2026-07-12'); // Sunday
+
+    expect(timeline.phases[0].items[0]).toMatchObject({ weekday: 'monday', weekdayLabel: 'Monday', scheduledDate: '2026-07-13', programDay: 2 });
+    expect(timeline.phases[1].items[0]).toMatchObject({ weekday: 'sunday', weekdayLabel: 'Sunday', scheduledDate: '2026-07-19', programDay: 8 });
   });
 });

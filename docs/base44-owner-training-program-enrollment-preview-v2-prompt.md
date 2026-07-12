@@ -68,6 +68,9 @@ type EnrollmentPreviewV2 = {
         description: string | null;
         dayOffset: number;
         programDay: number;
+        weekInPhase: number;
+        weekday: string;
+        weekdayLabel: string;
         scheduledDate: string;
         sortOrder: number;
         config: Record<string, unknown>;
@@ -116,6 +119,7 @@ phase.endDate
 phase.items.map(item => ...)
 item.itemType
 item.title
+item.weekdayLabel
 item.scheduledDate
 ```
 
@@ -206,4 +210,3 @@ session:
 6. Changing start date refetches and updates every returned date.
 7. Changing owner/program clears stale preview and selection immediately.
 8. Network/error state never falls back to the old incorrect data path.
-

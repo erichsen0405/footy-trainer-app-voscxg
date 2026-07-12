@@ -1,5 +1,11 @@
 # Base44 Fix Prompt: Training Program Enrollment Preview (#285)
 
+> Legacy reference: enrollment rendering is superseded by
+> `base44-owner-training-program-enrollment-preview-v2-prompt.md`, and builder
+> save scheduling is superseded by
+> `base44-owner-training-program-builder-schedule-v3-prompt.md`. Do not apply
+> the legacy client-side dayOffset formulas below to new saves.
+
 Apply this fix inside the existing authenticated Base44/KlubAdmin webapp. Do
 not build a new portal and do not create Base44 business-data entities.
 Supabase remains source of truth.

@@ -1,12 +1,14 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { requireAuthContext } from '../_shared/auth.ts';
 import { AppError, optionsResponse, readJsonBody, responseFromError, successResponse } from '../_shared/http.ts';
-import { buildProgramEnrollmentTimeline } from '../_shared/programEnrollmentPreview.ts';
+import { buildProgramEnrollmentTimeline, getProgramItemSchedule } from '../_shared/programEnrollmentPreview.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = ['owner', 'admin', 'coach', 'assistant_coach'];
 const STATUSES = ['active', 'paused', 'completed', 'cancelled'];
 const PROGRAM_LEVELS = new Set(['all', 'beginner', 'intermediate', 'advanced', 'elite']);
+const PROGRAM_ITEM_TYPES = new Set(['task_template', 'exercise_template', 'session_template', 'week_template', 'note', 'focus', 'video', 'test']);
+const WEEKDAY_INDEX: Record<string, number> = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
 
 function record(value: unknown): Record<string, any> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new AppError('VALIDATION_ERROR', 'Invalid request body.', 400);
@@ -25,6 +27,21 @@ function integer(value: unknown, name: string, min: number, max: number): number
   const result = Number(value);
   if (!Number.isInteger(result) || result < min || result > max) throw new AppError('VALIDATION_ERROR', `${name} is out of range.`, 400);
   return result;
+}
+function normalizeWeekday(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  const aliases: Record<string, string> = { mon: 'monday', tue: 'tuesday', tues: 'tuesday', wed: 'wednesday', thu: 'thursday', thur: 'thursday', thurs: 'thursday', fri: 'friday', sat: 'saturday', sun: 'sunday' };
+  const candidate = String(value).trim().toLowerCase();
+  const normalized = aliases[candidate] ?? candidate;
+  if (!(normalized in WEEKDAY_INDEX)) throw new AppError('VALIDATION_ERROR', 'weekday must be Monday, Tuesday, Wednesday, Thursday, Friday, Saturday or Sunday.', 400);
+  return normalized;
+}
+function normalizeProgramItemType(value: unknown): string {
+  const raw = text(value, 'item.itemType', true)!;
+  const aliases: Record<string, string> = { task: 'task_template', exercise: 'exercise_template', session: 'session_template', week: 'week_template' };
+  const normalized = aliases[raw] ?? raw;
+  if (!PROGRAM_ITEM_TYPES.has(normalized)) throw new AppError('VALIDATION_ERROR', 'item.itemType is invalid.', 400);
+  return normalized;
 }
 async function assertStaff(client: any, userId: string, ownerAccountId: string) {
   const { data, error } = await client.rpc('get_owner_account_roles', { p_owner_account_id: ownerAccountId, p_user_id: userId });
@@ -62,24 +79,47 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   if (existing && existing.status !== 'draft') throw new AppError('VALIDATION_ERROR', 'Published or archived programs cannot be edited. Duplicate it to create a new draft.', 409);
   const durationWeeks = integer(body.durationWeeks, 'durationWeeks', 1, 52);
   const phases = Array.isArray(body.phases) ? body.phases : [];
-  const items = Array.isArray(body.items) ? body.items : [];
+  const items = Array.isArray(body.items) ? body.items : Array.isArray(body.programItems) ? body.programItems : [];
   const title = text(body.title, 'title', true);
   const level = text(body.level, 'level') ?? 'all';
   if (!PROGRAM_LEVELS.has(level)) throw new AppError('VALIDATION_ERROR', 'level must be all, beginner, intermediate, advanced or elite.', 400);
+  const phaseIdMap = new Map<string, string>();
   const phaseRows = phases.map((raw: unknown, index: number) => {
-    const p = record(raw); return { id: p.id && UUID.test(p.id) ? p.id : crypto.randomUUID(), owner_account_id: ownerAccountId, program_id: programId,
-      title: text(p.title, 'phase.title', true), description: text(p.description, 'phase.description'), week_offset: integer(p.weekOffset ?? index, 'phase.weekOffset', 0, 51),
+    const p = record(raw);
+    const clientId = text(p.id ?? p.clientId, 'phase.id') ?? `phase-${index}`;
+    const id = UUID.test(clientId) ? clientId : crypto.randomUUID();
+    phaseIdMap.set(clientId, id);
+    const weekOffset = p.startsInWeek !== undefined
+      ? integer(p.startsInWeek, 'phase.startsInWeek', 1, 52) - 1
+      : integer(p.weekOffset ?? index, 'phase.weekOffset', 0, 51);
+    return { id, owner_account_id: ownerAccountId, program_id: programId,
+      title: text(p.title, 'phase.title', true), description: text(p.description, 'phase.description'), week_offset: weekOffset,
       duration_weeks: integer(p.durationWeeks ?? 1, 'phase.durationWeeks', 1, 52), sort_order: index };
   });
   if (phaseRows.some((phase: any) => phase.week_offset + phase.duration_weeks > durationWeeks)) {
     throw new AppError('VALIDATION_ERROR', 'Every phase must fit inside the program duration.', 400);
   }
-  const phaseIds = new Set(phaseRows.map((p: any) => p.id));
-  const itemRows = items.map((raw: unknown, index: number) => { const item = record(raw); const phaseId = item.phaseId && phaseIds.has(item.phaseId) ? item.phaseId : null;
-    return { owner_account_id: ownerAccountId, program_id: programId, phase_id: phaseId, item_type: text(item.itemType, 'item.itemType', true),
-      training_template_id: item.trainingTemplateId ? uuid(item.trainingTemplateId, 'item.trainingTemplateId') : null, title: text(item.title, 'item.title', true),
-      description: text(item.description, 'item.description'), day_offset: integer(item.dayOffset ?? 0, 'item.dayOffset', 0, durationWeeks * 7 - 1), sort_order: index,
-      config: item.config && typeof item.config === 'object' ? item.config : {} }; });
+  const itemRows = items.map((raw: unknown, index: number) => {
+    const item = record(raw);
+    const clientPhaseId = text(item.phaseId ?? item.phase_id, 'item.phaseId');
+    const phaseId = clientPhaseId ? phaseIdMap.get(clientPhaseId) ?? (UUID.test(clientPhaseId) && phaseRows.some((phase: any) => phase.id === clientPhaseId) ? clientPhaseId : null) : null;
+    if (!phaseId) throw new AppError('VALIDATION_ERROR', 'Every program item must reference a phase from the same save payload.', 400);
+    const phase = phaseRows.find((candidate: any) => candidate.id === phaseId)!;
+    const weekday = normalizeWeekday(item.weekday ?? item.dayOfWeek);
+    const weekInPhase = weekday ? integer(item.weekInPhase ?? 1, 'item.weekInPhase', 1, phase.duration_weeks) : null;
+    const dayOffset = weekday && weekInPhase
+      ? phase.week_offset * 7 + (weekInPhase - 1) * 7 + WEEKDAY_INDEX[weekday]
+      : integer(item.dayOffset ?? 0, 'item.dayOffset', 0, durationWeeks * 7 - 1);
+    const config = item.config && typeof item.config === 'object' && !Array.isArray(item.config) ? { ...item.config } : {};
+    config.scheduling = { weekday: weekday ?? Object.keys(WEEKDAY_INDEX)[dayOffset % 7], weekInPhase: weekInPhase ?? Math.max(1, Math.floor((dayOffset - phase.week_offset * 7) / 7) + 1) };
+    const itemType = normalizeProgramItemType(item.itemType ?? item.type ?? item.templateType);
+    const templateIdValue = item.trainingTemplateId ?? item.templateId ?? item.savedTemplateId;
+    const trainingTemplateId = templateIdValue ? uuid(templateIdValue, 'item.trainingTemplateId') : null;
+    if (itemType.endsWith('_template') && !trainingTemplateId) throw new AppError('VALIDATION_ERROR', 'Saved task, exercise, session and week items require trainingTemplateId.', 400);
+    return { owner_account_id: ownerAccountId, program_id: programId, phase_id: phaseId, item_type: itemType,
+      training_template_id: trainingTemplateId, title: text(item.title, 'item.title', true),
+      description: text(item.description, 'item.description'), day_offset: dayOffset, sort_order: index, config };
+  });
   const templateIds = [...new Set(itemRows.map((item: any) => item.training_template_id).filter(Boolean))];
   if (templateIds.length) {
     const { data: ownedTemplates, error: templateError } = await client.from('training_templates').select('id').eq('owner_account_id', ownerAccountId).in('id', templateIds);
@@ -219,8 +259,7 @@ async function enroll(client: any, userId: string, body: Record<string, any>) {
   for (const playerId of playerIds) {
     const { data: enrollment, error } = await client.from('program_enrollments').insert({ owner_account_id: ownerAccountId, program_id: programId, program_version_id: version.id, player_id: playerId, source_team_id: teamId, start_date: startDate, enrolled_by: userId }).select('id').single();
     if (error) throw new AppError('VALIDATION_ERROR', error.message.includes('duplicate') ? 'This player is already enrolled for that start date.' : error.message, 409);
-    const base = new Date(`${startDate}T00:00:00Z`);
-    const rows = program.items.map((item: any) => { const date = new Date(base); date.setUTCDate(date.getUTCDate() + item.day_offset); return { owner_account_id: ownerAccountId, enrollment_id: enrollment.id, program_item_id: item.id, player_id: playerId, scheduled_date: date.toISOString().slice(0, 10), item_type: item.item_type, title: item.title, snapshot: item }; });
+    const rows = program.items.map((item: any) => { const schedule = getProgramItemSchedule(program, startDate, item); return { owner_account_id: ownerAccountId, enrollment_id: enrollment.id, program_item_id: item.id, player_id: playerId, scheduled_date: schedule.scheduledDate, item_type: item.item_type, title: item.title, snapshot: { ...item, resolvedSchedule: schedule } }; });
     if (rows.length) {
       const { data: inserted, error: itemError } = await client.from('program_enrollment_items').insert(rows).select('*');
       if (itemError) throw new AppError('INTERNAL_ERROR', itemError.message, 500);
