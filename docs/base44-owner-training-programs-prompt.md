@@ -42,6 +42,57 @@ Successful responses use `{ "success": true, "data": ... }`. Render API error me
 
 Use steps: details → phases/weeks → content → enrollment preview. Content selects existing #286 training templates. Show relative and calculated dates before enrollment. Require explicit confirmation for publish, team enrollment, cancellation and archive. Published programs are immutable; offer duplication as a new draft rather than editing history.
 
+### Phase-step UX — do not expose offsets
+
+The phase step must use human week numbers. Never show labels such as `wk off`,
+`week offset` or a zero-based start value to the user.
+
+Each phase row must show:
+
+- `Phase name`
+- `Starts in week` — a one-based week number, where `1` means the first week
+  of the program
+- `Duration (weeks)` — how many weeks the phase lasts
+- a live summary such as `Runs from week 3 to week 5`
+
+The API field is still zero-based. Convert only at the API boundary:
+
+```ts
+// UI -> API
+weekOffset = startsInWeek - 1;
+
+// API -> UI
+startsInWeek = weekOffset + 1;
+
+// Human-readable inclusive end week
+endsInWeek = startsInWeek + durationWeeks - 1;
+```
+
+When the user adds the first phase, default it to start in week `1`. When the
+user adds another phase, automatically suggest the first week after the latest
+existing phase ends. Example: if phase 1 runs in weeks 1–2, the next phase
+defaults to start in week 3. Users may change the suggestion and create
+overlapping phases intentionally.
+
+Validate inline that:
+
+- start week is at least `1`
+- duration is at least `1`
+- the calculated end week does not exceed the program duration
+
+Show the program duration above the phase rows, for example `8-week program`,
+and show an understandable error such as `This phase ends in week 9, but the
+program lasts 8 weeks.` Do not ask the user to calculate or enter offsets.
+
+Example for four sequential one-week phases:
+
+| Phase | Starts in week | Duration (weeks) | Summary |
+|---|---:|---:|---|
+| Phase 1 | 1 | 1 | Week 1 |
+| Phase 2 | 2 | 1 | Week 2 |
+| Phase 3 | 3 | 1 | Week 3 |
+| Phase 4 | 4 | 1 | Week 4 |
+
 Support empty, skeleton/loading, retry, validation, forbidden and partial-failure states. Derive permissions from all active roles on the owner account. `owner`, `admin`, `coach` and permitted `assistant_coach` users may manage programs. Players cannot use the admin builder.
 
 ## Shared platform contract

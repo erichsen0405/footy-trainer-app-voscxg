@@ -50,9 +50,16 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('setProgramEnrollmentStatus');
     expect(screen).toContain('Archive program?');
     expect(screen).not.toContain('Enroll first player');
+    expect(screen).toContain('Starts in week');
+    expect(screen).toContain('Duration (weeks)');
+    expect(screen).toContain('Runs from week');
+    expect(screen).not.toContain('wk off');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
     expect(prompt).toContain('do not create a parallel portal');
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');
     expect(prompt).toContain('Remote deployment status');
+    expect(prompt).toContain('Phase-step UX — do not expose offsets');
+    expect(prompt).toContain('weekOffset = startsInWeek - 1');
+    expect(prompt).toContain('automatically suggest the first week after');
   });
 });
