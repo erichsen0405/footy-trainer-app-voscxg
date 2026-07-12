@@ -246,8 +246,12 @@ Hiding the week control for a one-week phase must not remove
 ## Remote status verified 2026-07-12
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- `manageTrainingPrograms`: deployed, `ACTIVE`, version 7
+- `manageTrainingPrograms`: deployed, `ACTIVE`, version 9
 - Migration `20260712120000`: present locally and remotely
+- Atomic enrollment migrations `20260712213000` and `20260712213100`: present
+  locally and remotely
+- Safe complete-materialization migration `20260712221500`: present locally and
+  remotely
 - Unauthenticated endpoint smoke test: `401`, not `404`
 
 Do not report this complete from a successful Base44 build alone. Verify the

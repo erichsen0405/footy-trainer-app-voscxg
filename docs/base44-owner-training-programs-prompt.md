@@ -203,9 +203,21 @@ false `0 weeks` display.
 ## Remote deployment status (verified 2026-07-12)
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- `manageTrainingPrograms`: deployed and `ACTIVE` (version 7)
+- `manageTrainingPrograms`: deployed and `ACTIVE` (version 9)
 - Migration `20260712120000_owner_training_programs.sql`: present locally and remotely
+- Migrations `20260712213000_atomic_program_enrollment.sql` and
+  `20260712213100_atomic_program_enrollment_permissions.sql`: present locally
+  and remotely
+- Migration `20260712221500_safe_complete_program_enrollment.sql`: present
+  locally and remotely
 - `supabase db push --dry-run`: remote database is up to date
 - Unauthenticated endpoint smoke test: `401` (protected endpoint exists; it is not a `404`)
+
+Version 9 keeps the Base44 request contract unchanged. Enrollment now creates
+the enrollment, dated standalone tasks/exercises, session activities and their
+session tasks in one transaction, supplies the required activity time, and
+safely repairs only the proven legacy partial enrollment left by the earlier
+flow. Any enrollment with player progress is preserved and returns a conflict
+instead of being rebuilt.
 
 Base44 may connect to the endpoint contract above. Authenticated role and end-to-end UI QA must still be completed in the Base44 environment.

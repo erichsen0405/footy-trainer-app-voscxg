@@ -1,13 +1,15 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { requireAuthContext } from '../_shared/auth.ts';
 import { AppError, optionsResponse, readJsonBody, responseFromError, successResponse } from '../_shared/http.ts';
-import { buildProgramEnrollmentTimeline, getProgramItemSchedule, getUnassignedProgramItems } from '../_shared/programEnrollmentPreview.ts';
+import { buildProgramEnrollmentPlayerPlans, DEFAULT_PROGRAM_ACTIVITY_TIME, readProgramTemplates, serializeProgramTemplates, type ProgramTemplateMaterialization } from '../_shared/programEnrollmentMaterialization.ts';
+import { buildProgramEnrollmentTimeline, getUnassignedProgramItems } from '../_shared/programEnrollmentPreview.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = ['owner', 'admin', 'coach', 'assistant_coach'];
 const STATUSES = ['active', 'paused', 'completed', 'cancelled'];
 const PROGRAM_LEVELS = new Set(['all', 'beginner', 'intermediate', 'advanced', 'elite']);
 const PROGRAM_ITEM_TYPES = new Set(['task_template', 'exercise_template', 'session_template', 'week_template', 'note', 'focus', 'video', 'test']);
+const TEMPLATE_TYPE_BY_PROGRAM_ITEM: Record<string, string> = { task_template: 'task', exercise_template: 'exercise', session_template: 'session', week_template: 'week' };
 const WEEKDAY_INDEX: Record<string, number> = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
 
 function record(value: unknown): Record<string, any> {
@@ -123,9 +125,13 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   });
   const templateIds = [...new Set(itemRows.map((item: any) => item.training_template_id).filter(Boolean))];
   if (templateIds.length) {
-    const { data: ownedTemplates, error: templateError } = await client.from('training_templates').select('id').eq('owner_account_id', ownerAccountId).in('id', templateIds);
+    const { data: ownedTemplates, error: templateError } = await client.from('training_templates').select('id,template_type').eq('owner_account_id', ownerAccountId).in('id', templateIds);
     if (templateError) throw new AppError('INTERNAL_ERROR', templateError.message, 500);
     if ((ownedTemplates ?? []).length !== templateIds.length) throw new AppError('FORBIDDEN', 'Every selected template must belong to this owner.', 403);
+    const templateTypeById = new Map((ownedTemplates ?? []).map((template: any) => [template.id, template.template_type]));
+    if (itemRows.some((item: any) => item.training_template_id && templateTypeById.get(item.training_template_id) !== TEMPLATE_TYPE_BY_PROGRAM_ITEM[item.item_type])) {
+      throw new AppError('VALIDATION_ERROR', 'Every saved program item must match its selected task, exercise, session or week template type.', 400);
+    }
   }
   const { error } = await client.from('training_programs').upsert({
     id: programId, owner_account_id: ownerAccountId, title, description: text(body.description, 'description'),
@@ -153,30 +159,92 @@ async function publish(client: any, userId: string, ownerAccountId: string, prog
   if (!program.phases.length || !program.items.length) throw new AppError('VALIDATION_ERROR', 'Add at least one phase and one program item before publishing.', 400);
   if (getUnassignedProgramItems(program).length) throw new AppError('VALIDATION_ERROR', 'Every program item must be attached to a phase in this program before publishing.', 400);
   const version = program.published_version + 1;
-  const { error } = await client.from('program_versions').insert({ owner_account_id: ownerAccountId, program_id: programId, version_number: version, snapshot: program, created_by: userId });
+  const templates = await loadProgramTemplateMaterializations(client, ownerAccountId, program);
+  const versionSnapshot = {
+    ...program,
+    enrollmentMaterialization: {
+      activityTime: DEFAULT_PROGRAM_ACTIVITY_TIME,
+      templates: serializeProgramTemplates(templates),
+    },
+  };
+  const { error } = await client.from('program_versions').insert({ owner_account_id: ownerAccountId, program_id: programId, version_number: version, snapshot: versionSnapshot, created_by: userId });
   if (error) throw new AppError('INTERNAL_ERROR', error.message, 500);
   await client.from('training_programs').update({ status: 'published', published_version: version, published_at: new Date().toISOString(), updated_by: userId }).eq('id', programId);
   return payload(client, ownerAccountId);
 }
 
-async function materializeSessionTemplate(client: any, enrollmentItem: any, programItem: any, playerId: string, scheduledDate: string) {
-  if (programItem.item_type !== 'session_template' || !programItem.training_template_id) return;
-  const [{ data: template }, { data: templateItems }] = await Promise.all([
-    client.from('training_templates').select('id,title,default_activity_category_id').eq('id', programItem.training_template_id).eq('template_type', 'session').maybeSingle(),
-    client.from('training_template_items').select('*').eq('template_id', programItem.training_template_id).order('sort_order'),
+async function loadProgramTemplateMaterializations(client: any, ownerAccountId: string, program: Record<string, any>) {
+  const templateIds = [...new Set((program.items ?? [])
+    .filter((item: any) => TEMPLATE_TYPE_BY_PROGRAM_ITEM[item.item_type])
+    .map((item: any) => item.training_template_id)
+    .filter(Boolean)
+    .map(String))];
+  const result = new Map<string, ProgramTemplateMaterialization>();
+  if (!templateIds.length) return result;
+
+  const [templatesResult, itemsResult] = await Promise.all([
+    client.from('training_templates').select('id,title,description,default_activity_category_id,default_activity_category_name,template_type,source_task_template_id,metadata').eq('owner_account_id', ownerAccountId).in('id', templateIds),
+    client.from('training_template_items').select('id,template_id,item_type,title,description,source_task_template_id,linked_template_id,config,sort_order').eq('owner_account_id', ownerAccountId).in('template_id', templateIds).order('sort_order'),
   ]);
-  if (!template) return;
-  const { data: activity, error } = await client.from('activities').insert({
-    user_id: playerId, player_id: playerId, title: template.title, activity_date: scheduledDate,
-    category_id: template.default_activity_category_id, is_external: false,
-  }).select('id').single();
-  if (error) throw new AppError('INTERNAL_ERROR', `Could not materialize program activity: ${error.message}`, 500);
-  const tasks = (templateItems ?? []).filter((item: any) => item.item_type === 'task_template' || item.item_type === 'exercise').map((item: any) => {
-    const config = item.config?.task ?? {}; return { activity_id: activity.id, title: item.title, description: item.description ?? '', completed: false,
-      reminder_minutes: config.reminderMinutes ?? null, task_template_id: item.source_task_template_id ?? null, training_template_id: item.linked_template_id ?? null };
-  });
-  if (tasks.length) { const result = await client.from('activity_tasks').insert(tasks); if (result.error) throw new AppError('INTERNAL_ERROR', `Could not materialize program tasks: ${result.error.message}`, 500); }
-  await client.from('program_enrollment_items').update({ activity_id: activity.id }).eq('id', enrollmentItem.id);
+  if (templatesResult.error) throw new AppError('INTERNAL_ERROR', templatesResult.error.message, 500);
+  if (itemsResult.error) throw new AppError('INTERNAL_ERROR', itemsResult.error.message, 500);
+
+  const linkedTemplateIds = [...new Set((itemsResult.data ?? []).map((item: any) => item.linked_template_id).filter(Boolean).map(String))];
+  const linkedTemplatesResult = linkedTemplateIds.length
+    ? await client.from('training_templates').select('id,template_type,source_task_template_id,metadata').eq('owner_account_id', ownerAccountId).in('id', linkedTemplateIds)
+    : { data: [], error: null };
+  if (linkedTemplatesResult.error) throw new AppError('INTERNAL_ERROR', linkedTemplatesResult.error.message, 500);
+  const linkedTemplates = new Map((linkedTemplatesResult.data ?? []).map((template: any) => [template.id, template]));
+  const sourceTaskTemplateIds = [...new Set([
+    ...(templatesResult.data ?? []).map((template: any) => template.source_task_template_id),
+    ...(itemsResult.data ?? []).map((item: any) => item.source_task_template_id ?? linkedTemplates.get(item.linked_template_id)?.source_task_template_id),
+  ].filter(Boolean).map(String))];
+  const subtasksResult = sourceTaskTemplateIds.length
+    ? await client.from('task_template_subtasks').select('task_template_id,title,sort_order').in('task_template_id', sourceTaskTemplateIds).order('sort_order')
+    : { data: [], error: null };
+  if (subtasksResult.error) throw new AppError('INTERNAL_ERROR', subtasksResult.error.message, 500);
+  const subtasksFor = (taskTemplateId: string | null | undefined) => (subtasksResult.data ?? [])
+    .filter((subtask: any) => taskTemplateId && subtask.task_template_id === taskTemplateId)
+    .map((subtask: any) => ({ title: subtask.title, sortOrder: subtask.sort_order }));
+
+  for (const templateId of templateIds) {
+    const template = (templatesResult.data ?? []).find((candidate: any) => candidate.id === templateId);
+    const programItem = (program.items ?? []).find((item: any) => item.training_template_id === templateId);
+    const expectedType = TEMPLATE_TYPE_BY_PROGRAM_ITEM[programItem?.item_type];
+    if (!template || !expectedType || template.template_type !== expectedType) {
+      throw new AppError('VALIDATION_ERROR', 'A saved template used by this published program is unavailable or has the wrong type.', 409);
+    }
+    result.set(templateId, {
+      id: template.id,
+      templateType: template.template_type,
+      title: template.title,
+      description: template.description ?? null,
+      defaultActivityCategoryId: template.default_activity_category_id ?? null,
+      defaultActivityCategoryName: template.default_activity_category_name ?? null,
+      sourceTaskTemplateId: template.source_task_template_id ?? null,
+      metadata: template.metadata && typeof template.metadata === 'object' ? template.metadata : {},
+      subtasks: subtasksFor(template.source_task_template_id),
+      items: (itemsResult.data ?? []).filter((item: any) => item.template_id === templateId).map((item: any) => {
+        const linkedTemplate = linkedTemplates.get(item.linked_template_id);
+        const config = item.config && typeof item.config === 'object' ? { ...item.config } : {};
+        if ((!config.task || typeof config.task !== 'object') && linkedTemplate?.metadata?.task) config.task = linkedTemplate.metadata.task;
+        if ((!config.timer || typeof config.timer !== 'object') && linkedTemplate?.metadata?.timer) config.timer = linkedTemplate.metadata.timer;
+        const sourceTaskTemplateId = item.source_task_template_id ?? linkedTemplate?.source_task_template_id ?? null;
+        return {
+          id: item.id,
+          itemType: item.item_type,
+          title: item.title,
+          description: item.description ?? null,
+          sourceTaskTemplateId,
+          linkedTemplateId: item.linked_template_id ?? null,
+          config,
+          sortOrder: Number(item.sort_order ?? 0),
+          subtasks: subtasksFor(sourceTaskTemplateId),
+        };
+      }),
+    });
+  }
+  return result;
 }
 
 async function loadEnrollmentPreview(client: any, userId: string, body: Record<string, any>) {
@@ -264,18 +332,53 @@ async function enroll(client: any, userId: string, body: Record<string, any>) {
   if (!playerIds.length) throw new AppError('VALIDATION_ERROR', 'Select at least one player or team.', 400);
   const { data: allowed } = await client.from('owner_players').select('player_id').eq('owner_account_id', ownerAccountId).eq('status', 'active').in('player_id', playerIds);
   if ((allowed ?? []).length !== playerIds.length) throw new AppError('FORBIDDEN', 'Every selected player must be active in this owner.', 403);
-  const { data: version } = await client.from('program_versions').select('id,snapshot').eq('program_id', programId).eq('version_number', program.published_version).single();
-  for (const playerId of playerIds) {
-    const { data: enrollment, error } = await client.from('program_enrollments').insert({ owner_account_id: ownerAccountId, program_id: programId, program_version_id: version.id, player_id: playerId, source_team_id: teamId, start_date: startDate, enrolled_by: userId }).select('id').single();
-    if (error) throw new AppError('VALIDATION_ERROR', error.message.includes('duplicate') ? 'This player is already enrolled for that start date.' : error.message, 409);
-    const rows = program.items.map((item: any) => { const schedule = getProgramItemSchedule(program, startDate, item); return { owner_account_id: ownerAccountId, enrollment_id: enrollment.id, program_item_id: item.id, player_id: playerId, scheduled_date: schedule.scheduledDate, item_type: item.item_type, title: item.title, snapshot: { ...item, resolvedSchedule: schedule } }; });
-    if (rows.length) {
-      const { data: inserted, error: itemError } = await client.from('program_enrollment_items').insert(rows).select('*');
-      if (itemError) throw new AppError('INTERNAL_ERROR', itemError.message, 500);
-      for (let index = 0; index < (inserted ?? []).length; index += 1) {
-        await materializeSessionTemplate(client, inserted[index], program.items[index], playerId, inserted[index].scheduled_date);
-      }
+  const { data: version, error: versionError } = await client.from('program_versions').select('id,snapshot').eq('owner_account_id', ownerAccountId).eq('program_id', programId).eq('version_number', program.published_version).single();
+  if (versionError || !version?.id || !version?.snapshot || typeof version.snapshot !== 'object') {
+    throw new AppError('INTERNAL_ERROR', versionError?.message || 'Published program version is unavailable.', 500);
+  }
+  const snapshotProgram = version.snapshot as Record<string, any>;
+  if (snapshotProgram.id !== programId || !Array.isArray(snapshotProgram.phases) || !Array.isArray(snapshotProgram.items)) {
+    throw new AppError('INTERNAL_ERROR', 'Published program version is invalid.', 500);
+  }
+  // Versions published before atomic enrollment did not embed template
+  // materialization. Keep a legacy fallback so those immutable programs remain
+  // enrollable, while all newly published versions use their embedded snapshot.
+  const embeddedTemplates = readProgramTemplates(snapshotProgram);
+  const requiredTemplateIds = [...new Set(snapshotProgram.items
+    .filter((item: any) => TEMPLATE_TYPE_BY_PROGRAM_ITEM[item.item_type])
+    .map((item: any) => item.training_template_id)
+    .filter(Boolean)
+    .map(String))];
+  const missingEmbeddedTemplate = requiredTemplateIds.some((templateId) => !embeddedTemplates?.has(templateId));
+  let templates = embeddedTemplates;
+  if (!templates || missingEmbeddedTemplate) {
+    const compatibilityTemplates = await loadProgramTemplateMaterializations(client, ownerAccountId, snapshotProgram);
+    templates = new Map([...compatibilityTemplates, ...(embeddedTemplates ?? new Map())]);
+  }
+  let playerPlans;
+  try {
+    playerPlans = buildProgramEnrollmentPlayerPlans({ program: snapshotProgram, startDate, playerIds, templates });
+  } catch (cause) {
+    throw new AppError('VALIDATION_ERROR', cause instanceof Error ? cause.message : 'Program materialization plan is invalid.', 409);
+  }
+  const { error: enrollmentError } = await client.rpc('enroll_training_program_atomic', {
+    p_owner_account_id: ownerAccountId,
+    p_program_id: programId,
+    p_program_version_id: version.id,
+    p_source_team_id: teamId,
+    p_start_date: startDate,
+    p_enrolled_by: userId,
+    p_player_plans: playerPlans,
+  });
+  if (enrollmentError) {
+    const message = String(enrollmentError.message ?? 'Program enrollment failed.');
+    if (message.includes('PROGRAM_ENROLLMENT_EXISTS:')) {
+      throw new AppError('VALIDATION_ERROR', message.split('PROGRAM_ENROLLMENT_EXISTS:')[1]?.trim() || 'Enrollment already exists for this player and start date.', 409);
     }
+    if (message.includes('PROGRAM_ENROLLMENT_PLAN_INVALID:')) {
+      throw new AppError('VALIDATION_ERROR', message.split('PROGRAM_ENROLLMENT_PLAN_INVALID:')[1]?.trim() || 'Program enrollment plan is invalid.', 400);
+    }
+    throw new AppError('INTERNAL_ERROR', `Could not enroll program atomically: ${message}`, 500);
   }
   return payload(client, ownerAccountId);
 }

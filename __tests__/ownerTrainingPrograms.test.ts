@@ -8,6 +8,7 @@ const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), '
 describe('owner training programs contract', () => {
   const migration = read('supabase/migrations/20260712120000_owner_training_programs.sql');
   const edge = read('supabase/functions/manageTrainingPrograms/index.ts');
+  const materialization = read('supabase/functions/_shared/programEnrollmentMaterialization.ts');
   const service = read('services/trainingProgramService.ts');
   const screen = read('app/(tabs)/programs.tsx');
   const prompt = read('docs/base44-owner-training-programs-prompt.md');
@@ -34,10 +35,17 @@ describe('owner training programs contract', () => {
     expect(edge).toContain("action === 'enrollmentPreview'");
     expect(edge).toContain("get_owner_account_roles");
     expect(edge).toContain("from('program_versions').insert");
-    expect(edge).toContain("from('program_enrollment_items').insert");
-    expect(edge).toContain('materializeSessionTemplate');
-    expect(edge).toContain("from('activities').insert");
-    expect(edge).toContain("from('activity_tasks').insert");
+    expect(edge).toContain('buildProgramEnrollmentPlayerPlans');
+    expect(edge).toContain("client.rpc('enroll_training_program_atomic'");
+    expect(edge).toContain('Could not enroll program atomically');
+    expect(edge).toContain('const snapshotProgram = version.snapshot');
+    expect(edge).toContain('serializeProgramTemplates(templates)');
+    expect(edge).toContain('readProgramTemplates(snapshotProgram)');
+    expect(edge).toContain('TEMPLATE_TYPE_BY_PROGRAM_ITEM');
+    expect(edge).not.toContain('inserted[index]');
+    expect(materialization).toContain("DEFAULT_PROGRAM_ACTIVITY_TIME = '12:00:00'");
+    expect(materialization).toContain('programItemId: String(programItem.id)');
+    expect(materialization).toContain("programItem.item_type === 'task_template' || programItem.item_type === 'exercise_template'");
     expect(edge).toContain('The selected team does not belong to this owner.');
     expect(edge).toContain('Every selected template must belong to this owner.');
     expect(edge).toContain('Every phase must fit inside the program duration.');

@@ -318,8 +318,10 @@ the missing/mismatched item names.
 ## Remote deployment status
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- Function: `manageTrainingPrograms` version 7 is deployed and `ACTIVE`
+- Function: `manageTrainingPrograms` version 9 is deployed and `ACTIVE`
 - Required migration: `20260712120000_owner_training_programs.sql` is remote
+- Atomic enrollment migrations `20260712213000` and `20260712213100` are remote
+- Safe complete-materialization migration `20260712221500` is remote
 - An unauthenticated endpoint request returns `401`, not `404`
 
 Do not report this fix complete from a successful build alone. Exercise the
