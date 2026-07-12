@@ -12,6 +12,7 @@ describe('owner training programs contract', () => {
   const service = read('services/trainingProgramService.ts');
   const screen = read('app/(tabs)/programs.tsx');
   const prompt = read('docs/base44-owner-training-programs-prompt.md');
+  const enrollmentListPrompt = read('docs/base44-owner-training-program-enrollments-list-v6-prompt.md');
   const enrollmentFixPrompt = read('docs/base44-owner-training-program-enrollment-fix-prompt.md');
   const enrollmentPreviewV2Prompt = read('docs/base44-owner-training-program-enrollment-preview-v2-prompt.md');
   const builderScheduleV3Prompt = read('docs/base44-owner-training-program-builder-schedule-v3-prompt.md');
@@ -33,6 +34,15 @@ describe('owner training programs contract', () => {
     expect(edge).toContain("action === 'enroll'");
     expect(edge).toContain("action === 'delete'");
     expect(edge).toContain("action === 'enrollmentPreview'");
+    expect(edge).toContain("action === 'programEnrollments'");
+    expect(edge).toContain('loadProgramEnrollments');
+    expect(edge).toContain('programId: enrollment.program_id');
+    expect(edge).toContain('player: playerDirectory.get(enrollment.player_id)');
+    expect(edge).toContain('linkedActivityItemCount: items.filter');
+    expect(edge).toContain('allowedActions');
+    expect(edge).toContain('Enrollment cannot change from');
+    expect(edge).toContain("active: ['paused', 'completed', 'cancelled']");
+    expect(edge).toContain("cancelled: []");
     expect(edge).toContain("get_owner_account_roles");
     expect(edge).toContain("from('program_versions').insert");
     expect(edge).toContain('buildProgramEnrollmentPlayerPlans');
@@ -63,6 +73,7 @@ describe('owner training programs contract', () => {
     expect(edge).toContain('ownerRosterStatus: \'active\'');
     expect(edge).toContain('buildProgramEnrollmentTimeline');
     expect(service).toContain("supabase.functions.invoke('manageTrainingPrograms'");
+    expect(service).toContain('fetchTrainingProgramEnrollments');
     expect(service).toContain('deleteTrainingProgram');
   });
 
@@ -129,6 +140,11 @@ describe('owner training programs contract', () => {
     expect(prompt).toContain('Content-step template picker');
     expect(prompt).toContain('type filters: `All`, `Task`, `Exercise`, `Session`');
     expect(prompt).toContain('The server permits hard deletion only when the program has no enrollments');
+    expect(enrollmentListPrompt).toContain('"action": "programEnrollments"');
+    expect(enrollmentListPrompt).toContain('data.enrollments.length === 0');
+    expect(enrollmentListPrompt).toContain('Do not derive this modal from:');
+    expect(enrollmentListPrompt).toContain('list.enrollments');
+    expect(enrollmentListPrompt).toContain('enrollment.enrollmentId');
     expect(enrollmentFixPrompt).toContain('phase.week_offset');
     expect(enrollmentFixPrompt).toContain('item.phase_id');
     expect(enrollmentFixPrompt).toContain('item.item_type');

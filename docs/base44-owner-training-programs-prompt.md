@@ -33,6 +33,7 @@ Actions:
 - `{ "action":"upsert", "ownerAccountId":"<uuid>", "programId":null, "title":"8-week finishing", "description":"...", "audience":"U15", "level":"advanced", "durationWeeks":8, "phases":[{"id":"<stable client id>","title":"Foundation","startsInWeek":1,"durationWeeks":2}], "items":[{"phaseId":"<same client id>","itemType":"session_template","trainingTemplateId":"<uuid>","title":"Finishing session","weekInPhase":1,"weekday":"monday"}] }`
 - `{ "action":"publish", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 - `{ "action":"enroll", "ownerAccountId":"<uuid>", "programId":"<uuid>", "playerIds":["<uuid>"], "teamId":null, "startDate":"2026-07-20" }`
+- `{ "action":"programEnrollments", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 - `{ "action":"setEnrollmentStatus", "ownerAccountId":"<uuid>", "enrollmentId":"<uuid>", "status":"paused|active|completed|cancelled" }`
 - `{ "action":"archive", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 - `{ "action":"delete", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
@@ -200,10 +201,15 @@ redundant week control for one-week phases, labels multi-week choices with both
 phase week and program week, and prevents raw `duration_weeks` from becoming a
 false `0 weeks` display.
 
+For the authoritative `Enrollments` modal data source, lifecycle actions and
+post-enroll refresh, apply
+`docs/base44-owner-training-program-enrollments-list-v6-prompt.md`. Do not
+filter the raw snake_case `list.enrollments` array in Base44.
+
 ## Remote deployment status (verified 2026-07-12)
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- `manageTrainingPrograms`: deployed and `ACTIVE` (version 9)
+- `manageTrainingPrograms`: deployed and `ACTIVE` (version 12)
 - Migration `20260712120000_owner_training_programs.sql`: present locally and remotely
 - Migrations `20260712213000_atomic_program_enrollment.sql` and
   `20260712213100_atomic_program_enrollment_permissions.sql`: present locally
@@ -213,7 +219,8 @@ false `0 weeks` display.
 - `supabase db push --dry-run`: remote database is up to date
 - Unauthenticated endpoint smoke test: `401` (protected endpoint exists; it is not a `404`)
 
-Version 9 keeps the Base44 request contract unchanged. Enrollment now creates
+Version 12 retains all existing request contracts and adds the canonical
+`programEnrollments` read action for the Enrollments modal. Enrollment creates
 the enrollment, dated standalone tasks/exercises, session activities and their
 session tasks in one transaction, supplies the required activity time, and
 safely repairs only the proven legacy partial enrollment left by the earlier

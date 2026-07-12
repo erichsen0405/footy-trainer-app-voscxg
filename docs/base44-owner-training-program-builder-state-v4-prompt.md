@@ -42,7 +42,8 @@ Never expose a service-role key. Successful responses use
 `409` and `500`. Do not write program tables directly from Base44.
 
 The deployed endpoint supports `list`, `upsert`, `enrollmentPreview`,
-`publish`, `enroll`, `archive` and `delete`. `upsert` also returns these
+`programEnrollments`, `publish`, `enroll`, `setEnrollmentStatus`, `archive`
+and `delete`. `upsert` also returns these
 backward-compatible fields alongside the normal owner payload:
 
 ```ts
@@ -318,7 +319,7 @@ the missing/mismatched item names.
 ## Remote deployment status
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- Function: `manageTrainingPrograms` version 9 is deployed and `ACTIVE`
+- Function: `manageTrainingPrograms` version 12 is deployed and `ACTIVE`
 - Required migration: `20260712120000_owner_training_programs.sql` is remote
 - Atomic enrollment migrations `20260712213000` and `20260712213100` are remote
 - Safe complete-materialization migration `20260712221500` is remote

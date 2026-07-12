@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { requireAuthContext } from '../_shared/auth.ts';
 import { AppError, optionsResponse, readJsonBody, responseFromError, successResponse } from '../_shared/http.ts';
 import { buildProgramEnrollmentPlayerPlans, DEFAULT_PROGRAM_ACTIVITY_TIME, readProgramTemplates, serializeProgramTemplates, type ProgramTemplateMaterialization } from '../_shared/programEnrollmentMaterialization.ts';
-import { buildProgramEnrollmentTimeline, getUnassignedProgramItems } from '../_shared/programEnrollmentPreview.ts';
+import { addProgramIsoDays, buildProgramEnrollmentTimeline, getUnassignedProgramItems } from '../_shared/programEnrollmentPreview.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = ['owner', 'admin', 'coach', 'assistant_coach'];
@@ -247,6 +247,42 @@ async function loadProgramTemplateMaterializations(client: any, ownerAccountId: 
   return result;
 }
 
+async function loadPlayerDirectory(client: any, ownerAccountId: string, rawPlayerIds: string[]) {
+  const playerIds = [...new Set(rawPlayerIds.filter(Boolean))];
+  const [profilesResult, crmResult, rosterResult] = await Promise.all([
+    playerIds.length ? client.from('profiles').select('user_id,full_name').in('user_id', playerIds) : Promise.resolve({ data: [], error: null }),
+    playerIds.length ? client.from('owner_player_crm_profiles').select('player_id,email').eq('owner_account_id', ownerAccountId).in('player_id', playerIds) : Promise.resolve({ data: [], error: null }),
+    playerIds.length ? client.from('owner_players').select('player_id,status').eq('owner_account_id', ownerAccountId).in('player_id', playerIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (profilesResult.error) throw new AppError('INTERNAL_ERROR', profilesResult.error.message, 500);
+  if (crmResult.error) throw new AppError('INTERNAL_ERROR', crmResult.error.message, 500);
+  if (rosterResult.error) throw new AppError('INTERNAL_ERROR', rosterResult.error.message, 500);
+  const profiles = new Map((profilesResult.data ?? []).map((row: any) => [row.user_id, row]));
+  const crmProfiles = new Map((crmResult.data ?? []).map((row: any) => [row.player_id, row]));
+  const roster = new Map((rosterResult.data ?? []).map((row: any) => [row.player_id, row.status]));
+  const authUsers = new Map<string, any>();
+  await Promise.all(playerIds.map(async (playerId: string) => {
+    try {
+      const { data } = await client.auth.admin.getUserById(playerId);
+      if (data?.user) authUsers.set(playerId, data.user);
+    } catch {
+      // Preserve the player UUID even when optional auth metadata is unavailable.
+    }
+  }));
+  return new Map(playerIds.map((playerId) => {
+    const profile: any = profiles.get(playerId);
+    const crm: any = crmProfiles.get(playerId);
+    const authUser = authUsers.get(playerId);
+    const metadata = authUser?.user_metadata ?? {};
+    return [playerId, {
+      playerId,
+      displayName: profile?.full_name || metadata.full_name || metadata.name || crm?.email || authUser?.email || 'Unnamed player',
+      email: crm?.email || authUser?.email || null,
+      ownerRosterStatus: roster.get(playerId) ?? 'inactive',
+    }];
+  }));
+}
+
 async function loadEnrollmentPreview(client: any, userId: string, body: Record<string, any>) {
   const ownerAccountId = uuid(body.ownerAccountId, 'ownerAccountId');
   const programId = uuid(body.programId, 'programId');
@@ -262,37 +298,13 @@ async function loadEnrollmentPreview(client: any, userId: string, body: Record<s
     .eq('status', 'active');
   if (ownerPlayersError) throw new AppError('INTERNAL_ERROR', ownerPlayersError.message, 500);
   const playerIds = (ownerPlayers ?? []).map((row: any) => row.player_id);
-  const [profilesResult, crmResult, ownerResult] = await Promise.all([
-    playerIds.length ? client.from('profiles').select('user_id,full_name').in('user_id', playerIds) : Promise.resolve({ data: [], error: null }),
-    playerIds.length ? client.from('owner_player_crm_profiles').select('player_id,email').eq('owner_account_id', ownerAccountId).in('player_id', playerIds) : Promise.resolve({ data: [], error: null }),
+  const [playerDirectory, ownerResult] = await Promise.all([
+    loadPlayerDirectory(client, ownerAccountId, playerIds),
     client.from('owner_accounts').select('club_id').eq('id', ownerAccountId).single(),
   ]);
-  if (profilesResult.error) throw new AppError('INTERNAL_ERROR', profilesResult.error.message, 500);
-  if (crmResult.error) throw new AppError('INTERNAL_ERROR', crmResult.error.message, 500);
   if (ownerResult.error) throw new AppError('INTERNAL_ERROR', ownerResult.error.message, 500);
-  const profiles = new Map((profilesResult.data ?? []).map((row: any) => [row.user_id, row]));
-  const crmProfiles = new Map((crmResult.data ?? []).map((row: any) => [row.player_id, row]));
-  const authUsers = new Map<string, any>();
-  await Promise.all(playerIds.map(async (playerId: string) => {
-    try {
-      const { data } = await client.auth.admin.getUserById(playerId);
-      if (data?.user) authUsers.set(playerId, data.user);
-    } catch {
-      // The owner player remains selectable by UUID even if auth metadata lookup fails.
-    }
-  }));
-  const players = playerIds.map((playerId: string) => {
-    const profile: any = profiles.get(playerId);
-    const crm: any = crmProfiles.get(playerId);
-    const authUser = authUsers.get(playerId);
-    const metadata = authUser?.user_metadata ?? {};
-    return {
-      playerId,
-      displayName: profile?.full_name || metadata.full_name || metadata.name || crm?.email || authUser?.email || 'Unnamed player',
-      email: crm?.email || authUser?.email || null,
-      ownerRosterStatus: 'active',
-    };
-  }).sort((left: any, right: any) => left.displayName.localeCompare(right.displayName));
+  const players = playerIds.map((playerId: string) => ({ ...playerDirectory.get(playerId), ownerRosterStatus: 'active' }))
+    .sort((left: any, right: any) => left.displayName.localeCompare(right.displayName));
 
   let teams: any[] = [];
   if (ownerResult.data?.club_id) {
@@ -312,6 +324,127 @@ async function loadEnrollmentPreview(client: any, userId: string, body: Record<s
     players,
     teams,
   };
+}
+
+async function loadProgramEnrollments(client: any, userId: string, body: Record<string, any>) {
+  const ownerAccountId = uuid(body.ownerAccountId, 'ownerAccountId');
+  const programId = uuid(body.programId, 'programId');
+  await assertStaff(client, userId, ownerAccountId);
+  const program = await loadProgram(client, ownerAccountId, programId);
+  const { data: enrollmentRows, error: enrollmentError } = await client
+    .from('program_enrollments')
+    .select('id,program_id,program_version_id,player_id,source_team_id,start_date,status,paused_at,completed_at,created_at,updated_at')
+    .eq('owner_account_id', ownerAccountId)
+    .eq('program_id', programId)
+    .order('created_at', { ascending: false });
+  if (enrollmentError) throw new AppError('INTERNAL_ERROR', enrollmentError.message, 500);
+  const enrollments = enrollmentRows ?? [];
+  const enrollmentIds = enrollments.map((enrollment: any) => enrollment.id);
+  const playerIds = enrollments.map((enrollment: any) => enrollment.player_id);
+  const teamIds = [...new Set(enrollments.map((enrollment: any) => enrollment.source_team_id).filter(Boolean))];
+  const { data: owner, error: ownerError } = await client.from('owner_accounts').select('club_id').eq('id', ownerAccountId).single();
+  if (ownerError) throw new AppError('INTERNAL_ERROR', ownerError.message, 500);
+  const versionIds = [...new Set(enrollments.map((enrollment: any) => enrollment.program_version_id).filter(Boolean))];
+  const [itemsResult, versionsResult, playerDirectory, teamsResult] = await Promise.all([
+    enrollmentIds.length
+      ? client.from('program_enrollment_items').select('id,enrollment_id,program_item_id,player_id,scheduled_date,item_type,title,status,activity_id,task_id,created_at,updated_at').eq('owner_account_id', ownerAccountId).in('enrollment_id', enrollmentIds).order('scheduled_date').order('created_at')
+      : Promise.resolve({ data: [], error: null }),
+    versionIds.length
+      ? client.from('program_versions').select('id,version_number,snapshot').eq('owner_account_id', ownerAccountId).eq('program_id', programId).in('id', versionIds)
+      : Promise.resolve({ data: [], error: null }),
+    loadPlayerDirectory(client, ownerAccountId, playerIds),
+    teamIds.length && owner?.club_id
+      ? client.from('teams').select('id,name').eq('club_id', owner.club_id).in('id', teamIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (itemsResult.error) throw new AppError('INTERNAL_ERROR', itemsResult.error.message, 500);
+  if (versionsResult.error) throw new AppError('INTERNAL_ERROR', versionsResult.error.message, 500);
+  if (teamsResult.error) throw new AppError('INTERNAL_ERROR', teamsResult.error.message, 500);
+  const teams = new Map((teamsResult.data ?? []).map((team: any) => [team.id, team.name]));
+  const versions = new Map((versionsResult.data ?? []).map((version: any) => [version.id, version]));
+
+  return {
+    apiVersion: 1,
+    ownerAccountId,
+    program: { id: program.id, title: program.title, durationWeeks: Number(program.duration_weeks), status: program.status },
+    enrollments: enrollments.map((enrollment: any) => {
+      const items = (itemsResult.data ?? []).filter((item: any) => item.enrollment_id === enrollment.id).map((item: any) => ({
+        id: item.id,
+        programItemId: item.program_item_id,
+        scheduledDate: item.scheduled_date,
+        itemType: item.item_type,
+        title: item.title,
+        status: item.status,
+        activityId: item.activity_id,
+        taskId: item.task_id,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+      }));
+      const version: any = versions.get(enrollment.program_version_id);
+      const durationWeeks = Math.max(1, Number(version?.snapshot?.duration_weeks ?? program.duration_weeks ?? 1));
+      const allowedActions = enrollment.status === 'active'
+        ? ['pause', 'complete', 'cancel']
+        : enrollment.status === 'paused' ? ['resume', 'complete', 'cancel'] : [];
+      return {
+        enrollmentId: enrollment.id,
+        programId: enrollment.program_id,
+        programVersionId: enrollment.program_version_id,
+        versionNumber: Number(version?.version_number ?? 0),
+        player: playerDirectory.get(enrollment.player_id) ?? { playerId: enrollment.player_id, displayName: 'Unnamed player', email: null, ownerRosterStatus: 'inactive' },
+        sourceTeam: enrollment.source_team_id ? { teamId: enrollment.source_team_id, name: teams.get(enrollment.source_team_id) ?? null } : null,
+        startDate: enrollment.start_date,
+        endDate: addProgramIsoDays(enrollment.start_date, durationWeeks * 7 - 1),
+        durationWeeks,
+        status: enrollment.status,
+        pausedAt: enrollment.paused_at,
+        completedAt: enrollment.completed_at,
+        createdAt: enrollment.created_at,
+        updatedAt: enrollment.updated_at,
+        items,
+        scheduledItemCount: items.length,
+        linkedActivityItemCount: items.filter((item: any) => Boolean(item.activityId)).length,
+        linkedTaskItemCount: items.filter((item: any) => Boolean(item.taskId)).length,
+        allowedActions,
+      };
+    }),
+    summary: {
+      total: enrollments.length,
+      active: enrollments.filter((enrollment: any) => enrollment.status === 'active').length,
+      paused: enrollments.filter((enrollment: any) => enrollment.status === 'paused').length,
+      completed: enrollments.filter((enrollment: any) => enrollment.status === 'completed').length,
+      cancelled: enrollments.filter((enrollment: any) => enrollment.status === 'cancelled').length,
+    },
+  };
+}
+
+async function setEnrollmentStatus(client: any, userId: string, body: Record<string, any>) {
+  const ownerAccountId = uuid(body.ownerAccountId, 'ownerAccountId');
+  const enrollmentId = uuid(body.enrollmentId, 'enrollmentId');
+  const nextStatus = text(body.status, 'status', true)!;
+  if (!STATUSES.includes(nextStatus)) throw new AppError('VALIDATION_ERROR', 'Invalid enrollment status.', 400);
+  await assertStaff(client, userId, ownerAccountId);
+  const { data: enrollment, error: enrollmentError } = await client.from('program_enrollments')
+    .select('id,status').eq('owner_account_id', ownerAccountId).eq('id', enrollmentId).maybeSingle();
+  if (enrollmentError) throw new AppError('INTERNAL_ERROR', enrollmentError.message, 500);
+  if (!enrollment) throw new AppError('PROGRAM_ENROLLMENT_NOT_FOUND', 'Program enrollment not found.', 404);
+  const allowedTransitions: Record<string, string[]> = {
+    active: ['paused', 'completed', 'cancelled'],
+    paused: ['active', 'completed', 'cancelled'],
+    completed: [],
+    cancelled: [],
+  };
+  if (!allowedTransitions[enrollment.status]?.includes(nextStatus)) {
+    throw new AppError('VALIDATION_ERROR', `Enrollment cannot change from ${enrollment.status} to ${nextStatus}.`, 409);
+  }
+  const now = new Date().toISOString();
+  const { data: updated, error: updateError } = await client.from('program_enrollments').update({
+    status: nextStatus,
+    paused_at: nextStatus === 'paused' ? now : null,
+    completed_at: nextStatus === 'completed' ? now : null,
+  }).eq('owner_account_id', ownerAccountId).eq('id', enrollmentId).eq('status', enrollment.status).select('id').maybeSingle();
+  if (updateError) throw new AppError('INTERNAL_ERROR', updateError.message, 500);
+  if (!updated) throw new AppError('VALIDATION_ERROR', 'Enrollment changed while this action was being processed. Refresh and try again.', 409);
+  return payload(client, ownerAccountId);
 }
 async function enroll(client: any, userId: string, body: Record<string, any>) {
   const ownerAccountId = uuid(body.ownerAccountId, 'ownerAccountId'); const programId = uuid(body.programId, 'programId');
@@ -394,11 +527,11 @@ Deno.serve(async (req: Request) => {
     const ownerAccountId = uuid(body.ownerAccountId, 'ownerAccountId');
     if (action === 'list') { await assertStaff(client, userId, ownerAccountId); return successResponse(await payload(client, ownerAccountId)); }
     if (action === 'enrollmentPreview') return successResponse(await loadEnrollmentPreview(client, userId, body));
+    if (action === 'programEnrollments') return successResponse(await loadProgramEnrollments(client, userId, body));
     if (action === 'upsert') return successResponse(await upsert(client, userId, body));
     if (action === 'publish') return successResponse(await publish(client, userId, ownerAccountId, uuid(body.programId, 'programId')));
     if (action === 'enroll') return successResponse(await enroll(client, userId, body));
-    if (action === 'setEnrollmentStatus') { await assertStaff(client, userId, ownerAccountId); const status = text(body.status, 'status', true)!; if (!STATUSES.includes(status)) throw new AppError('VALIDATION_ERROR', 'Invalid enrollment status.', 400);
-      await client.from('program_enrollments').update({ status, paused_at: status === 'paused' ? new Date().toISOString() : null, completed_at: status === 'completed' ? new Date().toISOString() : null }).eq('owner_account_id', ownerAccountId).eq('id', uuid(body.enrollmentId, 'enrollmentId')); return successResponse(await payload(client, ownerAccountId)); }
+    if (action === 'setEnrollmentStatus') return successResponse(await setEnrollmentStatus(client, userId, body));
     if (action === 'archive') { await assertStaff(client, userId, ownerAccountId); await client.from('training_programs').update({ status: 'archived', archived_at: new Date().toISOString(), updated_by: userId }).eq('owner_account_id', ownerAccountId).eq('id', uuid(body.programId, 'programId')); return successResponse(await payload(client, ownerAccountId)); }
     if (action === 'delete') {
       await assertStaff(client, userId, ownerAccountId);

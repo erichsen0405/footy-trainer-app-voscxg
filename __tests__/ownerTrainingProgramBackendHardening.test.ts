@@ -52,12 +52,19 @@ describe('owner training program backend hardening', () => {
 
   it('keeps enrollment preview profile, CRM and owner lookups aligned', () => {
     const edge = read('supabase/functions/manageTrainingPrograms/index.ts');
+    const directoryStart = edge.indexOf('async function loadPlayerDirectory');
     const previewStart = edge.indexOf('async function loadEnrollmentPreview');
+    const directory = edge.slice(directoryStart, previewStart);
     const previewEnd = edge.indexOf('async function enroll', previewStart);
     const preview = edge.slice(previewStart, previewEnd);
 
-    expect(preview).toContain('const [profilesResult, crmResult, ownerResult] = await Promise.all([');
-    expect(preview.match(/owner_player_crm_profiles/g)).toHaveLength(1);
+    expect(directory).toContain('const [profilesResult, crmResult, rosterResult] = await Promise.all([');
+    expect(directory).toContain("client.from('profiles').select('user_id,full_name')");
+    expect(directory).toContain("client.from('owner_player_crm_profiles').select('player_id,email')");
+    expect(directory).toContain("client.from('owner_players').select('player_id,status')");
+    expect(directory).toContain(".eq('owner_account_id', ownerAccountId)");
+    expect(preview).toContain('const [playerDirectory, ownerResult] = await Promise.all([');
+    expect(preview).toContain('loadPlayerDirectory(client, ownerAccountId, playerIds)');
     expect(preview).toContain("client.from('owner_accounts').select('club_id')");
     expect(preview).toContain('if (ownerResult.data?.club_id)');
   });

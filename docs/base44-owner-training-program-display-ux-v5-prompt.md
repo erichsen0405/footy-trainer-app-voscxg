@@ -246,7 +246,7 @@ Hiding the week control for a one-week phase must not remove
 ## Remote status verified 2026-07-12
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- `manageTrainingPrograms`: deployed, `ACTIVE`, version 9
+- `manageTrainingPrograms`: deployed, `ACTIVE`, version 12
 - Migration `20260712120000`: present locally and remotely
 - Atomic enrollment migrations `20260712213000` and `20260712213100`: present
   locally and remotely
