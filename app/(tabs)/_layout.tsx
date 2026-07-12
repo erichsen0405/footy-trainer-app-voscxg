@@ -178,6 +178,10 @@ function FloatingTabsLayout({
       label: 'Plan',
     };
 
+    const programsTab: TabBarItem = {
+      name: 'programs', route: '/(tabs)/programs', icon: 'list.bullet.clipboard.fill', materialIcon: 'view_timeline', label: 'Programs',
+    };
+
     const profileTab: TabBarItem = {
       name: 'profile',
       route: '/(tabs)/profile',
@@ -194,6 +198,7 @@ function FloatingTabsLayout({
 
     if (isPlayer) {
       tabsForRole.push(performanceTab);
+      tabsForRole.push(programsTab);
     }
 
     if (!isPlayer) {
@@ -219,6 +224,7 @@ function FloatingTabsLayout({
         <Stack.Screen name="performance" />
         <Stack.Screen name="player-crm" />
         <Stack.Screen name="plan" />
+        <Stack.Screen name="programs" />
         <Stack.Screen name="library" />
         <Stack.Screen name="profile" />
       </Stack>

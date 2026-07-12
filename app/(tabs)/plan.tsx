@@ -1319,6 +1319,15 @@ export default function PlanScreen() {
           </View>
           <TouchableOpacity
             style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onPress={() => router.push('/(tabs)/programs' as any)}
+            activeOpacity={0.84}
+            accessibilityLabel="Open training programs"
+            testID="plan.programsButton"
+          >
+            <IconSymbol ios_icon_name="list.bullet.clipboard.fill" android_material_icon_name="view_timeline" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
             onPress={() => router.push('/(tabs)/profile' as any)}
             activeOpacity={0.84}
             accessibilityLabel="Open profile and settings"
