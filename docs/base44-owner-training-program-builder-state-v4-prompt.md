@@ -10,6 +10,10 @@ This prompt supersedes the builder-state and draft-loading instructions in all
 earlier #285 prompts. Keep the server-composed EnrollmentModal v2 flow from
 `base44-owner-training-program-enrollment-preview-v2-prompt.md`.
 
+After applying this state contract, apply the focused display corrections in
+`base44-owner-training-program-display-ux-v5-prompt.md` for unambiguous phase
+week labels and correct program-card duration.
+
 ## Bug being fixed
 
 The Content step can show valid sessions under the current phases while a red

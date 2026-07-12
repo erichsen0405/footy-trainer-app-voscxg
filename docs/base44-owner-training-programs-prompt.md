@@ -193,6 +193,13 @@ recovery, the authoritative builder contract is
 the v3 builder-state instructions and all client-side `weekOffset` and
 `dayOffset` calculations.
 
+For the authoritative presentation of phase-local weeks and normalization of
+program-card duration, also apply
+`docs/base44-owner-training-program-display-ux-v5-prompt.md`. It hides the
+redundant week control for one-week phases, labels multi-week choices with both
+phase week and program week, and prevents raw `duration_weeks` from becoming a
+false `0 weeks` display.
+
 ## Remote deployment status (verified 2026-07-12)
 
 - Project ref: `lhpczofddvwcyrgotzha`

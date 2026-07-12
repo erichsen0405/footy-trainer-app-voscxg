@@ -15,6 +15,7 @@ describe('owner training programs contract', () => {
   const enrollmentPreviewV2Prompt = read('docs/base44-owner-training-program-enrollment-preview-v2-prompt.md');
   const builderScheduleV3Prompt = read('docs/base44-owner-training-program-builder-schedule-v3-prompt.md');
   const builderStateV4Prompt = read('docs/base44-owner-training-program-builder-state-v4-prompt.md');
+  const displayUxV5Prompt = read('docs/base44-owner-training-program-display-ux-v5-prompt.md');
 
   it('stores owner-scoped immutable programs and dated enrollment snapshots', () => {
     for (const table of ['training_programs', 'program_phases', 'program_items', 'program_versions', 'program_enrollments', 'program_enrollment_items']) {
@@ -145,6 +146,14 @@ describe('owner training programs contract', () => {
     expect(builderStateV4Prompt).toContain('savedProgramId');
     expect(builderStateV4Prompt).toContain('phaseIdMap');
     expect(builderStateV4Prompt).toContain('Do not subtract one from `startsInWeek`');
+    expect(displayUxV5Prompt).toContain('Program Week Labels and Card Duration v5');
+    expect(displayUxV5Prompt).toContain('hide the week badge and week dropdown completely');
+    expect(displayUxV5Prompt).toContain('Phase week ${weekInPhase} · Program week ${programWeek}');
+    expect(displayUxV5Prompt).toContain('raw.durationWeeks ?? raw.duration_weeks');
+    expect(displayUxV5Prompt).toContain("return 'Duration unavailable'");
+    expect(displayUxV5Prompt).toContain('Never display');
+    expect(displayUxV5Prompt).toContain('`0 weeks`, because zero is not a valid program duration.');
+    expect(displayUxV5Prompt).toContain('Hiding the week control for a one-week phase must not remove');
     expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
   });
 
