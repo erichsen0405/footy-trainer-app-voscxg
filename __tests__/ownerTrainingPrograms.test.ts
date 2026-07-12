@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { filterProgramTemplates } from '@/utils/programTemplatePicker';
+import { buildProgramEnrollmentTimeline } from '../supabase/functions/_shared/programEnrollmentPreview';
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 
@@ -11,6 +12,7 @@ describe('owner training programs contract', () => {
   const screen = read('app/(tabs)/programs.tsx');
   const prompt = read('docs/base44-owner-training-programs-prompt.md');
   const enrollmentFixPrompt = read('docs/base44-owner-training-program-enrollment-fix-prompt.md');
+  const enrollmentPreviewV2Prompt = read('docs/base44-owner-training-program-enrollment-preview-v2-prompt.md');
 
   it('stores owner-scoped immutable programs and dated enrollment snapshots', () => {
     for (const table of ['training_programs', 'program_phases', 'program_items', 'program_versions', 'program_enrollments', 'program_enrollment_items']) {
@@ -26,6 +28,7 @@ describe('owner training programs contract', () => {
     expect(edge).toContain("action === 'publish'");
     expect(edge).toContain("action === 'enroll'");
     expect(edge).toContain("action === 'delete'");
+    expect(edge).toContain("action === 'enrollmentPreview'");
     expect(edge).toContain("get_owner_account_roles");
     expect(edge).toContain("from('program_versions').insert");
     expect(edge).toContain("from('program_enrollment_items').insert");
@@ -39,6 +42,9 @@ describe('owner training programs contract', () => {
     expect(edge).toContain('level must be all, beginner, intermediate, advanced or elite.');
     expect(edge).toContain('Programs with enrollments cannot be deleted. Archive this program to preserve player history.');
     expect(edge).toContain("from('training_programs').delete()");
+    expect(edge).toContain('loadEnrollmentPreview');
+    expect(edge).toContain('ownerRosterStatus: \'active\'');
+    expect(edge).toContain('buildProgramEnrollmentTimeline');
     expect(service).toContain("supabase.functions.invoke('manageTrainingPrograms'");
     expect(service).toContain('deleteTrainingProgram');
   });
@@ -97,6 +103,11 @@ describe('owner training programs contract', () => {
     expect(enrollmentFixPrompt).toContain('Never construct player choices from `owner_memberships`');
     expect(enrollmentFixPrompt).toContain('No content in this phase');
     expect(enrollmentFixPrompt).toContain('weekOffset * 7');
+    expect(enrollmentPreviewV2Prompt).toContain('There must be one modal data source');
+    expect(enrollmentPreviewV2Prompt).toContain('preview.program.phases.map');
+    expect(enrollmentPreviewV2Prompt).toContain('Render player choices exclusively from');
+    expect(enrollmentPreviewV2Prompt).toContain('preview.players');
+    expect(enrollmentPreviewV2Prompt).toContain('Do not normalize this response again');
     expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
   });
 
@@ -113,5 +124,26 @@ describe('owner training programs contract', () => {
     expect(filterProgramTemplates(templates, 'all', 'first TOUCH')).toEqual([templates[1]]);
     expect(filterProgramTemplates(templates, 'task', 'finishing')).toEqual([templates[0]]);
     expect(filterProgramTemplates(templates, 'exercise', 'finishing')).toEqual([]);
+  });
+
+  it('builds distinct phase weeks and nests persisted sessions by phase', () => {
+    const timeline = buildProgramEnrollmentTimeline({
+      id: 'program-1', title: 'Four weeks', description: null, audience: null, level: 'all', duration_weeks: 4, status: 'published',
+      phases: [
+        { id: 'phase-1', title: 'Foundation', description: null, week_offset: 0, duration_weeks: 1, sort_order: 0 },
+        { id: 'phase-2', title: 'Build', description: null, week_offset: 1, duration_weeks: 2, sort_order: 1 },
+      ],
+      items: [
+        { id: 'item-1', phase_id: 'phase-1', item_type: 'session_template', training_template_id: 'template-1', title: 'Session one', description: null, day_offset: 0, sort_order: 0, config: {} },
+        { id: 'item-2', phase_id: 'phase-2', item_type: 'session_template', training_template_id: 'template-2', title: 'Session two', description: null, day_offset: 9, sort_order: 0, config: {} },
+      ],
+    }, '2026-07-12');
+
+    expect(timeline.durationWeeks).toBe(4);
+    expect(timeline.phases[0]).toMatchObject({ startWeek: 1, endWeek: 1, startDate: '2026-07-12', endDate: '2026-07-18' });
+    expect(timeline.phases[1]).toMatchObject({ startWeek: 2, endWeek: 3, startDate: '2026-07-19', endDate: '2026-08-01' });
+    expect(timeline.phases[0].items.map((item: any) => item.title)).toEqual(['Session one']);
+    expect(timeline.phases[1].items.map((item: any) => item.title)).toEqual(['Session two']);
+    expect(timeline.phases[1].items[0]).toMatchObject({ programDay: 10, scheduledDate: '2026-07-21' });
   });
 });

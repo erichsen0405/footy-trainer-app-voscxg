@@ -177,6 +177,12 @@ never read raw `week_offset`, `phase_id`, `item_type` or `day_offset` as if they
 were camelCase, and never populate enrollment players from memberships or
 guardian/parent data.
 
+If the existing Base44 enrollment modal still uses the old data path, replace
+it entirely with the server-composed API v2 flow in
+`docs/base44-owner-training-program-enrollment-preview-v2-prompt.md`. This is
+the authoritative enrollment-modal contract: one endpoint returns calculated
+phase dates, nested persisted content, active players and teams.
+
 ## Remote deployment status (verified 2026-07-12)
 
 - Project ref: `lhpczofddvwcyrgotzha`
