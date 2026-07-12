@@ -37,7 +37,12 @@ Actions:
 - `{ "action":"archive", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 - `{ "action":"delete", "ownerAccountId":"<uuid>", "programId":"<uuid>" }`
 
-Successful responses use `{ "success": true, "data": ... }`. Render API error messages and handle `401`, `403`, `404`, `409` and `500`. A protected deployed endpoint returns `401` without auth; `404` means it has not been deployed.
+Successful responses use `{ "success": true, "data": ... }`. In addition to
+the normal owner payload, a successful `upsert` returns `savedProgramId`,
+`savedProgram` and `phaseIdMap`, so the builder can replace temporary phase IDs
+with the canonical saved state. Render API error messages and handle `400`,
+`401`, `403`, `404`, `409` and `500`. A protected deployed endpoint returns
+`401` without auth; `404` means it has not been deployed.
 
 ## Builder and safety
 
@@ -85,7 +90,7 @@ template must be saved with that phase's stable `phaseId`. Schedule it with a
 `Week` dropdown inside the phase and a Monday–Sunday `Weekday` dropdown. Never
 show or submit a numeric day from program start. Apply the authoritative
 builder contract in
-`docs/base44-owner-training-program-builder-schedule-v3-prompt.md`.
+`docs/base44-owner-training-program-builder-state-v4-prompt.md`.
 
 ### Delete program
 
@@ -118,18 +123,21 @@ Each phase row must show:
 - `Duration (weeks)` — how many weeks the phase lasts
 - a live summary such as `Runs from week 3 to week 5`
 
-The API field is still zero-based. Convert only at the API boundary:
+Base44 sends the human value directly. The Edge Function—not Base44—converts
+it to the zero-based database field:
 
 ```ts
-// UI -> API
-weekOffset = startsInWeek - 1;
+// UI -> Edge Function
+payload.startsInWeek = startsInWeek;
 
-// API -> UI
-startsInWeek = weekOffset + 1;
+// Only when loading a legacy raw database row instead of the canonical preview
+startsInWeek = week_offset + 1;
 
 // Human-readable inclusive end week
 endsInWeek = startsInWeek + durationWeeks - 1;
 ```
+
+Never send `weekOffset` or subtract one in Base44.
 
 When the user adds the first phase, default it to start in week `1`. When the
 user adds another phase, automatically suggest the first week after the latest
@@ -179,14 +187,16 @@ it entirely with the server-composed API v2 flow in
 the authoritative enrollment-modal contract: one endpoint returns calculated
 phase dates, nested persisted content, active players and teams.
 
-For all new saves and draft edits, the authoritative phase/item save contract
-is `docs/base44-owner-training-program-builder-schedule-v3-prompt.md`. It
-supersedes client-side `weekOffset` and `dayOffset` calculations.
+For all new saves, draft edits, draft hydration, duplication and orphan-content
+recovery, the authoritative builder contract is
+`docs/base44-owner-training-program-builder-state-v4-prompt.md`. It supersedes
+the v3 builder-state instructions and all client-side `weekOffset` and
+`dayOffset` calculations.
 
 ## Remote deployment status (verified 2026-07-12)
 
 - Project ref: `lhpczofddvwcyrgotzha`
-- `manageTrainingPrograms`: deployed and `ACTIVE`
+- `manageTrainingPrograms`: deployed and `ACTIVE` (version 7)
 - Migration `20260712120000_owner_training_programs.sql`: present locally and remotely
 - `supabase db push --dry-run`: remote database is up to date
 - Unauthenticated endpoint smoke test: `401` (protected endpoint exists; it is not a `404`)

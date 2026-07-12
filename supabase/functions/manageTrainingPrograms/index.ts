@@ -1,7 +1,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { requireAuthContext } from '../_shared/auth.ts';
 import { AppError, optionsResponse, readJsonBody, responseFromError, successResponse } from '../_shared/http.ts';
-import { buildProgramEnrollmentTimeline, getProgramItemSchedule } from '../_shared/programEnrollmentPreview.ts';
+import { buildProgramEnrollmentTimeline, getProgramItemSchedule, getUnassignedProgramItems } from '../_shared/programEnrollmentPreview.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = ['owner', 'admin', 'coach', 'assistant_coach'];
@@ -87,6 +87,7 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   const phaseRows = phases.map((raw: unknown, index: number) => {
     const p = record(raw);
     const clientId = text(p.id ?? p.clientId, 'phase.id') ?? `phase-${index}`;
+    if (phaseIdMap.has(clientId)) throw new AppError('VALIDATION_ERROR', 'Every phase ID must be unique in the save payload.', 400);
     const id = UUID.test(clientId) ? clientId : crypto.randomUUID();
     phaseIdMap.set(clientId, id);
     const weekOffset = p.startsInWeek !== undefined
@@ -136,13 +137,21 @@ async function upsert(client: any, userId: string, body: Record<string, any>) {
   await client.from('program_phases').delete().eq('owner_account_id', ownerAccountId).eq('program_id', programId);
   if (phaseRows.length) { const result = await client.from('program_phases').insert(phaseRows); if (result.error) throw new AppError('INTERNAL_ERROR', result.error.message, 500); }
   if (itemRows.length) { const result = await client.from('program_items').insert(itemRows); if (result.error) throw new AppError('INTERNAL_ERROR', result.error.message, 500); }
-  return payload(client, ownerAccountId);
+  const result = await payload(client, ownerAccountId);
+  const savedProgram = result.programs.find((program: any) => program.id === programId) ?? await loadProgram(client, ownerAccountId, programId);
+  return {
+    ...result,
+    savedProgramId: programId,
+    savedProgram,
+    phaseIdMap: Object.fromEntries(phaseIdMap),
+  };
 }
 async function publish(client: any, userId: string, ownerAccountId: string, programId: string) {
   await assertStaff(client, userId, ownerAccountId);
   const program = await loadProgram(client, ownerAccountId, programId);
   if (program.status !== 'draft') throw new AppError('VALIDATION_ERROR', 'Only draft programs can be published.', 409);
   if (!program.phases.length || !program.items.length) throw new AppError('VALIDATION_ERROR', 'Add at least one phase and one program item before publishing.', 400);
+  if (getUnassignedProgramItems(program).length) throw new AppError('VALIDATION_ERROR', 'Every program item must be attached to a phase in this program before publishing.', 400);
   const version = program.published_version + 1;
   const { error } = await client.from('program_versions').insert({ owner_account_id: ownerAccountId, program_id: programId, version_number: version, snapshot: program, created_by: userId });
   if (error) throw new AppError('INTERNAL_ERROR', error.message, 500);

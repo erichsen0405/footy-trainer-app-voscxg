@@ -39,7 +39,13 @@ export function getProgramItemSchedule(program: any, startDate: string, item: an
   };
 }
 
+export function getUnassignedProgramItems(program: any): any[] {
+  const phaseIds = new Set((program.phases ?? []).map((phase: any) => phase.id));
+  return (program.items ?? []).filter((item: any) => !item.phase_id || !phaseIds.has(item.phase_id));
+}
+
 export function buildProgramEnrollmentTimeline(program: any, startDate: string) {
+  const phaseIds = new Set((program.phases ?? []).map((phase: any) => phase.id));
   const normalizedItems = (program.items ?? []).map((item: any) => {
     const schedule = getProgramItemSchedule(program, startDate, item);
     return {
@@ -83,6 +89,6 @@ export function buildProgramEnrollmentTimeline(program: any, startDate: string) 
     durationWeeks: program.duration_weeks,
     status: program.status,
     phases,
-    unassignedItems: normalizedItems.filter((item: any) => !item.phaseId),
+    unassignedItems: normalizedItems.filter((item: any) => !item.phaseId || !phaseIds.has(item.phaseId)),
   };
 }

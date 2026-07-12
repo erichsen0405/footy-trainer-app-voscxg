@@ -14,6 +14,7 @@ describe('owner training programs contract', () => {
   const enrollmentFixPrompt = read('docs/base44-owner-training-program-enrollment-fix-prompt.md');
   const enrollmentPreviewV2Prompt = read('docs/base44-owner-training-program-enrollment-preview-v2-prompt.md');
   const builderScheduleV3Prompt = read('docs/base44-owner-training-program-builder-schedule-v3-prompt.md');
+  const builderStateV4Prompt = read('docs/base44-owner-training-program-builder-state-v4-prompt.md');
 
   it('stores owner-scoped immutable programs and dated enrollment snapshots', () => {
     for (const table of ['training_programs', 'program_phases', 'program_items', 'program_versions', 'program_enrollments', 'program_enrollment_items']) {
@@ -68,6 +69,12 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('fetchOwnerTrainingTemplates');
     expect(screen).toContain('Enrollment preview');
     expect(screen).toContain('Confirm enrollment');
+    expect(screen).toContain('fetchTrainingProgramEnrollmentPreview');
+    expect(screen).toContain('result.apiVersion !== 2');
+    expect(screen).toContain('result.ownerAccountId !== ownerAccountId');
+    expect(screen).toContain('preview.program.phases.map');
+    expect(screen).toContain('availablePlayers = preview?.players');
+    expect(screen).not.toContain('addDays(startDate');
     expect(screen).toContain('setProgramEnrollmentStatus');
     expect(screen).toContain('Archive program?');
     expect(screen).not.toContain('Enroll first player');
@@ -92,6 +99,11 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('PROGRAM_WEEKDAYS');
     expect(screen).toContain('testIDPrefix={`programs.item.${item.id}.weekday`}');
     expect(screen).toContain('testIDPrefix={`programs.item.${item.id}.week`}');
+    expect(screen).toContain('Needs phase');
+    expect(screen).toContain('repairPhase');
+    expect(screen).toContain('contentBlocked');
+    expect(screen).toContain('Remove phase and content?');
+    expect(screen).toContain('targetPhaseExists');
     expect(screen).toContain('startsInWeek: Number(phase.weekOffset) + 1');
     expect(screen).not.toContain('label="Program day"');
     expect(prompt).toContain('existing authenticated Base44/KlubAdmin webapp');
@@ -99,7 +111,8 @@ describe('owner training programs contract', () => {
     expect(prompt).toContain('https://lhpczofddvwcyrgotzha.supabase.co/functions/v1');
     expect(prompt).toContain('Remote deployment status');
     expect(prompt).toContain('Phase-step UX — do not expose offsets');
-    expect(prompt).toContain('weekOffset = startsInWeek - 1');
+    expect(prompt).toContain('payload.startsInWeek = startsInWeek');
+    expect(prompt).toContain('Never send `weekOffset` or subtract one in Base44.');
     expect(prompt).toContain('automatically suggest the first week after');
     expect(prompt).toContain('predefined single-select');
     expect(prompt).toContain('| All levels | `all` |');
@@ -125,6 +138,13 @@ describe('owner training programs contract', () => {
     expect(builderScheduleV3Prompt).toContain('"weekday": "monday"');
     expect(builderScheduleV3Prompt).toContain('temporary phase IDs');
     expect(builderScheduleV3Prompt).toContain('Mandatory server round-trip before Publish');
+    expect(builderScheduleV3Prompt).toContain('Superseded for Base44 implementation');
+    expect(builderStateV4Prompt).toContain('Program Builder State v4');
+    expect(builderStateV4Prompt).toContain('Content needing a phase');
+    expect(builderStateV4Prompt).toContain('Never merge or append incoming phases/items');
+    expect(builderStateV4Prompt).toContain('savedProgramId');
+    expect(builderStateV4Prompt).toContain('phaseIdMap');
+    expect(builderStateV4Prompt).toContain('Do not subtract one from `startsInWeek`');
     expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
   });
 

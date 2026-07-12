@@ -1,5 +1,11 @@
 # Base44 Replacement Prompt: Program Builder Schedule v3 (#285)
 
+> Superseded for Base44 implementation by
+> `base44-owner-training-program-builder-state-v4-prompt.md`. The v4 prompt
+> retains this semantic week/weekday contract and also fixes atomic hydration,
+> duplicate remapping, phase deletion and visible orphan-content recovery.
+> Apply v4 instead of applying this file again.
+
 Replace the save/load scheduling logic in the existing authenticated
 Base44/KlubAdmin Training Program builder. Keep the existing portal shell and
 visual style. Supabase remains source of truth.
@@ -228,4 +234,3 @@ program as a corrected draft.
    day, not Sunday.
 7. Edit the draft and verify week/weekday dropdowns restore correctly.
 8. Ensure failed validation or network errors never clear content.
-
