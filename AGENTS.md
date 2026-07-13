@@ -38,6 +38,8 @@
   - Opret separat feature branch for issue.
   - PR base er `feat/1.2.0-helper`, medmindre andet aftales.
   - Issue må først kaldes completed, når feature-branchen er merged i helper-branchen eller brugeren eksplicit beder om en anden proces.
+  - Når et issue er merged og lukket, skal den midlertidige feature branch slettes både remote og lokalt.
+  - Afslut altid med at skifte til `feat/1.2.0-helper`, fast-forwarde fra `origin/feat/1.2.0-helper` og verificere et rent worktree.
 
 ## Supabase Endpoint Verification Before Base44 Prompt Is "Ready"
 
