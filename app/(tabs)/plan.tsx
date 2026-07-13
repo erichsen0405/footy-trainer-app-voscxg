@@ -20,7 +20,6 @@ import SwipeVideoPlayer from '@/components/SwipeVideoPlayer';
 import { TaskMediaListEditor } from '@/components/TaskMediaListEditor';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useFootball } from '@/contexts/FootballContext';
-import { useUserRole } from '@/hooks/useUserRole';
 import { getColors } from '@/styles/commonStyles';
 import { TaskLibrarySection } from './tasks';
 import {
@@ -655,7 +654,6 @@ export default function PlanScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const footballData = useFootball() as any;
-  const { userRole, loading: roleLoading } = useUserRole();
   const [context, setContext] = useState<{ workspaces: OwnerPlayerCrmWorkspace[]; defaultOwnerAccountId: string | null } | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof fetchOwnerTrainingTemplates>> | null>(null);
@@ -686,9 +684,7 @@ export default function PlanScreen() {
   const [focusTagInput, setFocusTagInput] = useState('');
   const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
   const [uploadingItemMedia, setUploadingItemMedia] = useState(false);
-  const { user } = useAuthSession();
-
-  const canAccessPlan = userRole === 'admin' || userRole === 'trainer';
+  const { authReady, isAuthenticated, user } = useAuthSession();
   const contextCategories = footballData?.categories;
   const templateCategories = useMemo<TemplateCategoryOption[]>(() => {
     const seen = new Set<string>();
@@ -729,8 +725,8 @@ export default function PlanScreen() {
   }, []);
 
   useEffect(() => {
-    if (roleLoading) return;
-    if (!canAccessPlan) {
+    if (!authReady) return;
+    if (!isAuthenticated) {
       setLoading(false);
       return;
     }
@@ -750,14 +746,14 @@ export default function PlanScreen() {
     return () => {
       cancelled = true;
     };
-  }, [canAccessPlan, loadContext, roleLoading]);
+  }, [authReady, isAuthenticated, loadContext]);
 
   useEffect(() => {
-    if (!activeOwnerAccountId || !canAccessPlan) return;
+    if (!activeOwnerAccountId || !isAuthenticated) return;
     void loadTemplates(activeOwnerAccountId).catch((loadError) => {
       setError(loadError instanceof Error ? loadError.message : 'Could not load templates.');
     });
-  }, [activeOwnerAccountId, canAccessPlan, loadTemplates]);
+  }, [activeOwnerAccountId, isAuthenticated, loadTemplates]);
 
   const templates = useMemo(() => {
     const supportsArchive = selectedTemplateTypes.length === 1 && ['task', 'exercise'].includes(selectedTemplateTypes[0]);
@@ -1191,11 +1187,20 @@ export default function PlanScreen() {
   }, [activeOwnerAccountId]);
 
   const openAssignTemplate = useCallback((template: TrainingTemplateSummary) => {
-    Alert.alert(
-      'Assign template',
-      `The Assign button is ready on the card. The final assignment flow for "${template.title}" requires the backend link that materializes this ${templateTypeLabel(template.templateType).toLowerCase()} into the player calendar.`,
-    );
-  }, []);
+    if (!activeOwnerAccountId) {
+      Alert.alert('Owner workspace required', 'Choose an owner workspace before assigning content.');
+      return;
+    }
+    router.push({
+      pathname: '/bulk-assignment',
+      params: {
+        ownerAccountId: activeOwnerAccountId,
+        contentType: 'training_template',
+        contentId: template.id,
+        operation: 'assign',
+      },
+    } as any);
+  }, [activeOwnerAccountId, router]);
 
   const updateDraftTaskConfig = useCallback((update: TaskConfigUpdate) => {
     setDraft((current) => ({
@@ -1290,7 +1295,7 @@ export default function PlanScreen() {
         ? `${templateTypeLabel(selectedTemplateTypes[0])} templates`
         : 'All templates';
 
-  if (roleLoading || loading) {
+  if (!authReady || loading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <ActivityIndicator color={colors.primary} />
@@ -1298,11 +1303,21 @@ export default function PlanScreen() {
     );
   }
 
-  if (!canAccessPlan) {
+  if (!isAuthenticated || context?.workspaces.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={30} color={colors.textSecondary} />
-        <Text style={[styles.emptyTitle, { color: colors.text }]}>Coach access required</Text>
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>{isAuthenticated ? 'Coach access required' : 'Sign-in required'}</Text>
+      </View>
+    );
+  }
+
+  if (!context) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <IconSymbol ios_icon_name="exclamationmark.triangle" android_material_icon_name="warning" size={30} color={colors.error} />
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Plan unavailable</Text>
+        {error ? <Text style={[styles.noticeText, { color: colors.textSecondary }]}>{error}</Text> : null}
       </View>
     );
   }
@@ -1444,32 +1459,59 @@ export default function PlanScreen() {
           {renderPlanChrome()}
 
           {activeSection === 'templates' || activeSection === 'assignments' ? (
-            <PlanTemplateLibraryView
-              title={currentTemplateViewTitle}
-              detail={currentTemplateViewDetail}
-              templates={visiblePlanTemplates}
-              totalCount={currentPlanTemplates.length}
-              searchQuery={templateSearchQuery}
-              onSearchChange={setTemplateSearchQuery}
-              statusFilter={statusFilter}
-              onStatusFilterChange={setStatusFilter}
-              sourceOptions={templateSourceOptions}
-              sourceFilter={effectiveTemplateSourceFilter}
-              onSourceFilterChange={setTemplateSourceFilter}
-              focusTagOptions={templateFocusTagOptions}
-              selectedFocusTags={effectiveTemplateFocusTagFilter}
-              onToggleFocusTag={toggleTemplateFocusTagFilter}
-              onClearFocusTags={() => setTemplateFocusTagFilter([])}
-              actorUserId={actorUserId}
-              categories={templateCategories}
-              colors={colors}
-              onEdit={openEdit}
-              onDuplicate={duplicateTemplate}
-              onArchive={toggleArchive}
-              onAssign={openAssignTemplate}
-              showStatusControls={templateViewSupportsArchive}
-              busy={saving}
-            />
+            <>
+              {activeSection === 'assignments' ? (
+                <TouchableOpacity
+                  style={[styles.bulkAssignmentEntry, { backgroundColor: colors.card, borderColor: colors.primary }]}
+                  onPress={() => {
+                    if (!activeOwnerAccountId) return;
+                    router.push({
+                      pathname: '/bulk-assignment',
+                      params: { ownerAccountId: activeOwnerAccountId },
+                    } as any);
+                  }}
+                  disabled={!activeOwnerAccountId}
+                  activeOpacity={0.86}
+                  accessibilityLabel="Open bulk assignment"
+                  testID="plan.bulkAssignment.open"
+                >
+                  <View style={[styles.bulkAssignmentEntryIcon, { backgroundColor: `${colors.primary}18` }]}>
+                    <IconSymbol ios_icon_name="person.2.badge.plus" android_material_icon_name="group_add" size={23} color={colors.primary} />
+                  </View>
+                  <View style={styles.bulkAssignmentEntryCopy}>
+                    <Text style={[styles.bulkAssignmentEntryTitle, { color: colors.text }]}>Bulk assignment</Text>
+                    <Text style={[styles.bulkAssignmentEntryDetail, { color: colors.textSecondary }]}>Choose activities, exercises, templates, or programs. Filter, preview, and confirm safely.</Text>
+                  </View>
+                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+              <PlanTemplateLibraryView
+                title={currentTemplateViewTitle}
+                detail={currentTemplateViewDetail}
+                templates={visiblePlanTemplates}
+                totalCount={currentPlanTemplates.length}
+                searchQuery={templateSearchQuery}
+                onSearchChange={setTemplateSearchQuery}
+                statusFilter={statusFilter}
+                onStatusFilterChange={setStatusFilter}
+                sourceOptions={templateSourceOptions}
+                sourceFilter={effectiveTemplateSourceFilter}
+                onSourceFilterChange={setTemplateSourceFilter}
+                focusTagOptions={templateFocusTagOptions}
+                selectedFocusTags={effectiveTemplateFocusTagFilter}
+                onToggleFocusTag={toggleTemplateFocusTagFilter}
+                onClearFocusTags={() => setTemplateFocusTagFilter([])}
+                actorUserId={actorUserId}
+                categories={templateCategories}
+                colors={colors}
+                onEdit={openEdit}
+                onDuplicate={duplicateTemplate}
+                onArchive={toggleArchive}
+                onAssign={openAssignTemplate}
+                showStatusControls={templateViewSupportsArchive}
+                busy={saving}
+              />
+            </>
           ) : null}
       </ScrollView>
       )}
@@ -3330,6 +3372,36 @@ const styles = StyleSheet.create({
   },
   planLibraryView: {
     rowGap: 12,
+  },
+  bulkAssignmentEntry: {
+    minHeight: 82,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 11,
+  },
+  bulkAssignmentEntryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkAssignmentEntryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bulkAssignmentEntryTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  bulkAssignmentEntryDetail: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+    marginTop: 3,
   },
   planSearchBar: {
     minHeight: 54,

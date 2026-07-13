@@ -36,6 +36,7 @@ export type ProgramTaskMaterialization = {
 
 export type ProgramTemplateMaterialization = {
   id: string;
+  taskTemplateSubtasksCaptured?: boolean;
   templateType: string;
   title: string;
   description: string | null;
