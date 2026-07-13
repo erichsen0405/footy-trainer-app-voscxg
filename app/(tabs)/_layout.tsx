@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, useSegments, router as globalRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
@@ -7,6 +7,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { OnboardingGate } from '@/components/OnboardingGate';
 import { useSubscriptionFeatures } from '@/hooks/useSubscriptionFeatures';
 import { useAppleIAP } from '@/contexts/AppleIAPContext';
+import { fetchOwnerTrainingTemplatesContext } from '@/services/trainingTemplateService';
 import { resolveSubscriptionAccessState } from '@/utils/accessGate';
 
 /* ======================================================
@@ -27,6 +28,38 @@ export default function TabLayout() {
     subscriptionTier,
     isLoading: subscriptionFeaturesLoading,
   } = useSubscriptionFeatures();
+  const [hasOwnerStaffAccess, setHasOwnerStaffAccess] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setHasOwnerStaffAccess(false);
+      return;
+    }
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const loadOwnerAccess = async () => {
+      attempt += 1;
+      try {
+        const context = await fetchOwnerTrainingTemplatesContext();
+        if (!cancelled) setHasOwnerStaffAccess(context.workspaces.length > 0);
+      } catch {
+        if (cancelled) return;
+        if (attempt < 3) {
+          retryTimer = setTimeout(() => void loadOwnerAccess(), attempt * 750);
+        } else {
+          setHasOwnerStaffAccess(false);
+        }
+      }
+    };
+    void loadOwnerAccess();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [isAuthenticated]);
 
   const hasSubscription =
     Platform.OS === 'ios'
@@ -66,8 +99,8 @@ export default function TabLayout() {
 
   const navigationKey = useMemo(() => {
     const rolePart = effectiveRole ?? 'anon';
-    return `${rolePart}`;
-  }, [effectiveRole]);
+    return `${rolePart}:${hasOwnerStaffAccess ? 'owner-staff' : 'standard'}`;
+  }, [effectiveRole, hasOwnerStaffAccess]);
 
   useEffect(() => {
     if (Platform.OS === 'ios' && subscriptionFeaturesLoading) {
@@ -86,6 +119,7 @@ export default function TabLayout() {
     <OnboardingGate>
       <FloatingTabsLayout
         userRole={effectiveRole}
+        hasOwnerStaffAccess={hasOwnerStaffAccess}
         locked={locked}
         navigationKey={navigationKey}
       />
@@ -99,10 +133,12 @@ export default function TabLayout() {
 
 function FloatingTabsLayout({
   userRole,
+  hasOwnerStaffAccess,
   locked,
   navigationKey,
 }: {
   userRole: string | null;
+  hasOwnerStaffAccess: boolean;
   locked: boolean;
   navigationKey: string;
 }) {
@@ -120,7 +156,7 @@ function FloatingTabsLayout({
     }
 
     const isPlayer = userRole === 'player';
-    const isTrainer = userRole === 'admin' || userRole === 'trainer';
+    const isTrainer = userRole === 'admin' || userRole === 'trainer' || hasOwnerStaffAccess;
 
     const homeTab: TabBarItem = {
       name: '(home)',
@@ -207,7 +243,7 @@ function FloatingTabsLayout({
     tabsForRole.push(profileTab);
 
     return tabsForRole;
-  }, [locked, userRole]);
+  }, [hasOwnerStaffAccess, locked, userRole]);
 
   return (
     <>

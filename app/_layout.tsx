@@ -434,6 +434,14 @@ function RootLayoutContent() {
                       }}
                     />
 
+                    <Stack.Screen
+                      name="bulk-assignment"
+                      options={{
+                        presentation: 'modal',
+                        headerShown: false,
+                      }}
+                    />
+
                     {/* Not found */}
                     <Stack.Screen name="+not-found" options={{ headerShown: false }} />
 

@@ -1044,6 +1044,63 @@ async function loadTemplateItems(client: QueryClient, ownerAccountId: string, te
   return (data || []) as TemplateItemRow[];
 }
 
+async function loadVersionSnapshotSubtasks(
+  client: QueryClient,
+  sourceTaskTemplateIds: string[]
+): Promise<Map<string, Array<{ id: string | null; title: string; sortOrder: number }>>> {
+  const ids = Array.from(new Set(sourceTaskTemplateIds.filter(Boolean))).sort();
+  const output = new Map<string, Array<{ id: string | null; title: string; sortOrder: number }>>();
+  for (const id of ids) output.set(id, []);
+  if (!ids.length) return output;
+
+  const rows: unknown[] = [];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const { data, error } = await client
+      .from('task_template_subtasks')
+      .select('id,task_template_id,title,sort_order,created_at')
+      .in('task_template_id', ids.slice(offset, offset + 100))
+      .order('task_template_id', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (error) {
+      throw new AppError('INTERNAL_ERROR', error.message || 'Could not snapshot task subtasks.', 500);
+    }
+    rows.push(...(data || []));
+  }
+
+  for (const raw of rows) {
+    const row = raw as {
+      id?: string | null;
+      task_template_id?: string;
+      title?: string;
+      sort_order?: number | null;
+    };
+    if (!row.task_template_id || !output.has(row.task_template_id)) continue;
+    output.get(row.task_template_id)!.push({
+      id: row.id ?? null,
+      title: row.title ?? '',
+      sortOrder: Number(row.sort_order ?? output.get(row.task_template_id)!.length),
+    });
+  }
+  return output;
+}
+
+function configWithSnapshotSubtasks(
+  config: unknown,
+  subtasks: Array<{ id: string | null; title: string; sortOrder: number }>
+): Record<string, unknown> {
+  const normalized = normalizeJsonObject(config);
+  return {
+    ...normalized,
+    task: {
+      ...normalizeJsonObject(normalized.task),
+      subtasks,
+    },
+  };
+}
+
 async function createVersionSnapshot(
   client: QueryClient,
   actorUserId: string,
@@ -1065,9 +1122,34 @@ async function createVersionSnapshot(
   }
 
   const versionNumber = Number((latestVersion as { version_number?: number } | null)?.version_number ?? 0) + 1;
+  const sourceTaskTemplateIds = [
+    template.source_task_template_id,
+    ...items.map((item) => item.source_task_template_id),
+  ].filter((id): id is string => Boolean(id));
+  const subtasksByTemplateId = await loadVersionSnapshotSubtasks(client, sourceTaskTemplateIds);
+  const templateSnapshot = normalizeTemplatePayload(template, items, null, null);
+  if (template.source_task_template_id) {
+    templateSnapshot.metadata = configWithSnapshotSubtasks(
+      templateSnapshot.metadata,
+      subtasksByTemplateId.get(template.source_task_template_id) ?? []
+    );
+  }
+  const itemSnapshots = items.map((item) => {
+    const snapshot = normalizeItemPayload(item);
+    return item.source_task_template_id
+      ? {
+          ...snapshot,
+          config: configWithSnapshotSubtasks(
+            snapshot.config,
+            subtasksByTemplateId.get(item.source_task_template_id) ?? []
+          ),
+        }
+      : snapshot;
+  });
   const snapshot = {
-    template: normalizeTemplatePayload(template, items, null, null),
-    items: items.map(normalizeItemPayload),
+    taskTemplateSubtasksCaptured: true,
+    template: templateSnapshot,
+    items: itemSnapshots,
   };
 
   const { data, error } = await client
