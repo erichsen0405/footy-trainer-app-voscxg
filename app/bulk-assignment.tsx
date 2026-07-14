@@ -913,27 +913,6 @@ export default function BulkAssignmentScreen() {
 
       {!includeAllPlayers ? (
         <>
-          <SectionCard title="Specific players" detail="Direct players are added to the filter result. Exclusions still win." colors={colors}>
-            <SearchInput value={playerSearch} onChangeText={setPlayerSearch} placeholder="Search players…" colors={colors} testID="bulkAssignment.players.search" />
-            <View style={styles.listGap}>
-              {renderedPlayers.map((player) => (
-                <SelectableRow
-                  key={player.playerId}
-                  title={player.name}
-                  detail={[cleanLabel(player.crmStatus), player.playingLevel, player.teams.map((team) => team.name).join(', ')].filter(Boolean).join(' · ')}
-                  selected={explicitPlayerIds.includes(player.playerId)}
-                  onPress={() => setExplicitPlayerIds((current) => toggleSelection(current, player.playerId))}
-                  colors={colors}
-                  compact
-                  testID={`bulkAssignment.player.${player.playerId}`}
-                />
-              ))}
-              {visiblePlayers.length > renderedPlayers.length ? (
-                <Text style={[styles.listLimitHint, { color: colors.textSecondary }]}>Showing the first {PLAYER_RENDER_LIMIT} of {visiblePlayers.length} players. Search to narrow the list.</Text>
-              ) : null}
-            </View>
-          </SectionCard>
-
           <Text style={[styles.logicNote, { color: colors.textSecondary }]}>Filter groups use AND. Multiple choices inside one group use OR.</Text>
           <ChoiceSection title="Teams" options={teamOptions} selected={teamFilterIds} onToggle={(id) => setTeamFilterIds((current) => toggleSelection(current, id))} colors={colors} />
           <ChoiceSection title="Tags" options={tagOptions} selected={tagFilterIds} onToggle={(id) => setTagFilterIds((current) => toggleSelection(current, id))} colors={colors} />
@@ -956,14 +935,57 @@ export default function BulkAssignmentScreen() {
             <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Program</Text>
             <View style={styles.chipWrap}>
               {programOptions.map((option) => (
-                <ChoiceChip key={option.id} label={option.label} selected={enrollmentProgramId === option.id} onPress={() => setEnrollmentProgramId(enrollmentProgramId === option.id ? null : option.id)} colors={colors} />
+                <ChoiceChip
+                  key={option.id}
+                  label={option.label}
+                  selected={enrollmentProgramId === option.id}
+                  onPress={() => {
+                    setEnrollmentProgramId(enrollmentProgramId === option.id ? null : option.id);
+                    setEnrollmentStatuses([]);
+                  }}
+                  colors={colors}
+                />
               ))}
             </View>
-            <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Enrollment status</Text>
-            <View style={styles.chipWrap}>
-              {enrollmentStatusOptions.map((option) => (
-                <ChoiceChip key={option.id} label={option.label} selected={enrollmentStatuses.includes(option.id)} onPress={() => setEnrollmentStatuses((current) => toggleSelection(current, option.id))} colors={colors} />
+            {enrollmentProgramId ? (
+              <>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Enrollment status</Text>
+                <View style={styles.chipWrap}>
+                  {enrollmentStatusOptions.map((option) => (
+                    <ChoiceChip key={option.id} label={option.label} selected={enrollmentStatuses.includes(option.id)} onPress={() => setEnrollmentStatuses((current) => toggleSelection(current, option.id))} colors={colors} />
+                  ))}
+                </View>
+              </>
+            ) : (
+              <Text style={[styles.rowDetail, { color: colors.textSecondary }]}>Choose a program to select enrollment statuses.</Text>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Add individual players"
+            detail={`${explicitPlayerIds.length} selected directly. Direct players are added to filter matches; exclusions still win.`}
+            colors={colors}
+          >
+            <SearchInput value={playerSearch} onChangeText={setPlayerSearch} placeholder="Search players…" colors={colors} testID="bulkAssignment.players.search" />
+            <View style={styles.listGap}>
+              {renderedPlayers.map((player) => (
+                <SelectableRow
+                  key={player.playerId}
+                  title={player.name}
+                  detail={[cleanLabel(player.crmStatus), player.playingLevel, player.teams.map((team) => team.name).join(', ')].filter(Boolean).join(' · ')}
+                  selected={explicitPlayerIds.includes(player.playerId)}
+                  onPress={() => setExplicitPlayerIds((current) => toggleSelection(current, player.playerId))}
+                  colors={colors}
+                  compact
+                  testID={`bulkAssignment.player.${player.playerId}`}
+                />
               ))}
+              {!visiblePlayers.length ? (
+                <Text style={[styles.listLimitHint, { color: colors.textSecondary }]}>No players match your search.</Text>
+              ) : null}
+              {visiblePlayers.length > renderedPlayers.length ? (
+                <Text style={[styles.listLimitHint, { color: colors.textSecondary }]}>Showing the first {PLAYER_RENDER_LIMIT} of {visiblePlayers.length} players. Search to narrow the list.</Text>
+              ) : null}
             </View>
           </SectionCard>
         </>

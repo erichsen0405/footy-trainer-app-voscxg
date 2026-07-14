@@ -341,6 +341,28 @@ describe('owner bulk assignment service contract', () => {
   });
 });
 
+describe('owner bulk assignment mobile audience layout', () => {
+  const mobileScreen = read('app/bulk-assignment.tsx');
+
+  it('shows recipient filters before the individual player list', () => {
+    const includeAllAt = mobileScreen.indexOf('title="All eligible players"');
+    const teamFiltersAt = mobileScreen.indexOf('title="Teams"');
+    const programEnrollmentAt = mobileScreen.indexOf('title="Program enrollment"');
+    const individualPlayersAt = mobileScreen.indexOf('title="Add individual players"');
+
+    expect(includeAllAt).toBeGreaterThan(-1);
+    expect(teamFiltersAt).toBeGreaterThan(includeAllAt);
+    expect(programEnrollmentAt).toBeGreaterThan(teamFiltersAt);
+    expect(individualPlayersAt).toBeGreaterThan(programEnrollmentAt);
+  });
+
+  it('only exposes enrollment statuses after a program is selected', () => {
+    expect(mobileScreen).toContain('{enrollmentProgramId ? (');
+    expect(mobileScreen).toContain('Choose a program to select enrollment statuses.');
+    expect(mobileScreen).toContain('setEnrollmentStatuses([]);');
+  });
+});
+
 describe('owner bulk assignment production recipient resolver', () => {
   const roster: OwnerBulkRosterPlayer[] = [
     {
