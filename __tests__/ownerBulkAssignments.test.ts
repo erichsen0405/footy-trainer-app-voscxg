@@ -38,6 +38,7 @@ const batchId = '44444444-4444-4444-8444-444444444444';
 
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+const bulkScreen = read('app/bulk-assignment.tsx');
 const sqlStatements = (sql: string) =>
   sql
     .split(';')
@@ -145,6 +146,11 @@ describe('owner bulk assignment service contract', () => {
 
     now.mockRestore();
     random.mockRestore();
+  });
+
+  it('opens contextual card assignments directly on the audience step', () => {
+    expect(bulkScreen).toContain('isContentType(routeContentType) && routeContentId ? 1 : 0');
+    expect(bulkScreen).toContain('if (!routeContentExists) setStep(0)');
   });
 
   it('invokes context with an optional OwnerAccount selection', async () => {

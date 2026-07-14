@@ -683,7 +683,7 @@ export const TaskCard = React.memo(
             testID={`tasks.task.assign.${sanitizeTestIdSegment(taskId)}`}
           >
             <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
-            <Text style={styles.taskAssignButtonText}>Assign</Text>
+            <Text style={styles.taskAssignButtonText}>Bulk assign</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -913,9 +913,10 @@ function TaskFocusTagEditor({
 type TaskLibrarySectionProps = {
   embedded?: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  onBulkAssignTask?: (task: Task) => void;
 };
 
-export function TaskLibrarySection({ embedded = false, contentContainerStyle }: TaskLibrarySectionProps = {}) {
+export function TaskLibrarySection({ embedded = false, contentContainerStyle, onBulkAssignTask }: TaskLibrarySectionProps = {}) {
   const footballData = useFootball() as any;
   const adminData = useAdmin() as any;
   const { user } = useAuthSession();
@@ -1642,11 +1643,15 @@ export function TaskLibrarySection({ embedded = false, contentContainerStyle }: 
   // Memoized render functions for FlatList
   const canAssignTemplates = userRole === 'trainer' || userRole === 'admin';
   const handleAssignTask = useCallback((task: Task) => {
+    if (onBulkAssignTask) {
+      onBulkAssignTask(task);
+      return;
+    }
     Alert.alert(
-      'Assign task',
-      `The Assign button is ready on the card. The final assignment flow for "${String((task as any)?.title ?? 'the task')}" requires the backend link to Plan templates.`,
+      'Bulk assignment unavailable',
+      'Open this task from the owner Plan workspace to bulk assign it.',
     );
-  }, []);
+  }, [onBulkAssignTask]);
 
   const renderTaskCard = useCallback(
     (task: Task) => (

@@ -185,7 +185,9 @@ export default function BulkAssignmentScreen() {
   const routeOperation = firstParam(params.operation);
   const routeTargetBatchId = firstParam(params.targetBatchId);
 
-  const [step, setStep] = useState<WizardStep>(0);
+  const [step, setStep] = useState<WizardStep>(
+    isContentType(routeContentType) && routeContentId ? 1 : 0,
+  );
   const [context, setContext] = useState<OwnerBulkAssignmentContext | null>(null);
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(routeOwnerAccountId);
   const [targetBatchId, setTargetBatchId] = useState<string | null>(routeTargetBatchId);
@@ -246,6 +248,11 @@ export default function BulkAssignmentScreen() {
     () => choices.find((item) => item.id === selectedContentId) ?? null,
     [choices, selectedContentId],
   );
+  useEffect(() => {
+    if (!context || !routeContentId || !isContentType(routeContentType)) return;
+    const routeContentExists = contentChoices(context, routeContentType).some((item) => item.id === routeContentId);
+    if (!routeContentExists) setStep(0);
+  }, [context, routeContentId, routeContentType]);
   const visibleContent = useMemo(() => {
     const query = contentSearch.trim().toLowerCase();
     if (!query) return choices;

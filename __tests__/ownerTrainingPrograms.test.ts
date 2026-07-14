@@ -11,6 +11,8 @@ describe('owner training programs contract', () => {
   const materialization = read('supabase/functions/_shared/programEnrollmentMaterialization.ts');
   const service = read('services/trainingProgramService.ts');
   const screen = read('app/(tabs)/programs.tsx');
+  const dashboard = read('components/trainingPrograms/TrainingProgramsDashboard.tsx');
+  const plan = read('app/(tabs)/plan.tsx');
   const prompt = read('docs/base44-owner-training-programs-prompt.md');
   const enrollmentListPrompt = read('docs/base44-owner-training-program-enrollments-list-v6-prompt.md');
   const enrollmentFixPrompt = read('docs/base44-owner-training-program-enrollment-fix-prompt.md');
@@ -96,6 +98,20 @@ describe('owner training programs contract', () => {
     expect(screen).toContain('availablePlayers = preview?.players');
     expect(screen).not.toContain('addDays(startDate');
     expect(screen).toContain('setProgramEnrollmentStatus');
+    expect(screen).toContain('TrainingProgramsDashboard');
+    expect(screen).toContain("router.replace('/(tabs)/plan'");
+    expect(dashboard).toContain('testID="programs.back"');
+    expect(dashboard).toContain("'Training programs' : 'Enrollments'");
+    expect(dashboard).toContain('People by program');
+    expect(dashboard).toContain('View enrollments');
+    expect(dashboard).toContain('label="Bulk assign"');
+    expect(dashboard).toContain('Search player or program…');
+    expect(dashboard).toContain('embeddedContent');
+    expect(dashboard).not.toContain('embeddedHeader');
+    expect(dashboard).not.toContain('accessibilityLabel="Create training program"');
+    expect(dashboard).not.toContain('function SegmentButton');
+    expect(dashboard).not.toContain('segmentedControl');
+    expect(screen).toContain("contentType: 'program'");
     expect(screen).toContain('Archive program?');
     expect(screen).not.toContain('Enroll first player');
     expect(screen).toContain('Starts in week');
@@ -178,7 +194,20 @@ describe('owner training programs contract', () => {
     expect(displayUxV5Prompt).toContain('Never display');
     expect(displayUxV5Prompt).toContain('`0 weeks`, because zero is not a valid program duration.');
     expect(displayUxV5Prompt).toContain('Hiding the week control for a one-week phase must not remove');
-    expect(screen).toContain("crm.players.filter((player) => player.ownerRosterStatus === 'active')");
+    expect(screen).toContain('setPlayers(crm.players)');
+    expect(plan).toContain("value: 'programs', label: 'Programs'");
+    expect(plan).toContain("value: 'enrollments', label: 'Enrollments'");
+    expect(plan).toContain('ProgramsWorkspace');
+    expect(plan).toContain('embeddedView={activeSection}');
+    expect(plan).toContain('createRequest={programCreateRequest}');
+    expect(plan).toContain('onCreateRequestHandled={() => setProgramCreateRequest(0)}');
+    expect(plan).toContain("value: 'program'");
+    expect(screen).toContain('if (!embedded || createRequest === 0) return');
+    expect(screen).toContain('onCreateRequestHandled?.()');
+    expect(screen).not.toContain('handledCreateRequest');
+    expect(plan).toContain('setActiveSection(target.value)');
+    expect(plan).not.toContain("pathname: '/(tabs)/programs'");
+    expect(plan).not.toContain('testID="plan.programsButton"');
   });
 
   it('combines template type filters and search while excluding week templates', () => {

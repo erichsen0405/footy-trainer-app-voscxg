@@ -22,6 +22,8 @@ import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useFootball } from '@/contexts/FootballContext';
 import { getColors } from '@/styles/commonStyles';
 import { TaskLibrarySection } from './tasks';
+import { ProgramsWorkspace } from './programs';
+import type { Task } from '@/types';
 import {
   TrainingTemplateExerciseTimer,
   TrainingTemplateItemInput,
@@ -51,13 +53,14 @@ import {
   replaceTaskMediaName,
 } from '@/utils/taskVideos';
 
-type PlanSection = 'templates' | 'tasks' | 'assignments';
+type PlanSection = 'templates' | 'tasks' | 'programs' | 'enrollments';
 type TemplateStatusFilter = 'active' | 'archived';
 type PlanFilterPicker = 'view' | null;
 type TemplateSourceFilter = 'all' | 'mine' | 'workspace';
 type ItemSourceMode = 'new' | 'saved' | 'library';
 type ItemPickerMode = Extract<ItemSourceMode, 'saved' | 'library'> | null;
-type PlanViewTarget = 'tasks' | 'exercise' | 'session' | 'week' | 'assignments';
+type PlanViewTarget = 'tasks' | 'exercise' | 'session' | 'week' | 'programs' | 'enrollments';
+type PlanCreateType = TrainingTemplateType | 'program';
 
 type PlanSourceFilterOption = {
   value: TemplateSourceFilter;
@@ -129,7 +132,7 @@ const TEMPLATE_TYPES: {
 ];
 
 const CREATE_TEMPLATE_OPTIONS: {
-  value: TrainingTemplateType;
+  value: PlanCreateType;
   title: string;
   detail: string;
   icon: string;
@@ -163,6 +166,13 @@ const CREATE_TEMPLATE_OPTIONS: {
     icon: 'calendar.badge.clock',
     materialIcon: 'event_note',
   },
+  {
+    value: 'program',
+    title: 'Program',
+    detail: 'A structured multi-week player journey built from saved content.',
+    icon: 'list.bullet.clipboard.fill',
+    materialIcon: 'view_timeline',
+  },
 ];
 
 const PLAN_VIEW_TARGETS: {
@@ -177,7 +187,8 @@ const PLAN_VIEW_TARGETS: {
   { value: 'exercise', label: 'Exercise', detail: 'Exercise templates with timers', icon: 'timer', materialIcon: 'timer', templateType: 'exercise' },
   { value: 'session', label: 'Session', detail: 'Session templates', icon: 'calendar', materialIcon: 'event', templateType: 'session' },
   { value: 'week', label: 'Week', detail: 'Weekly plans built from sessions', icon: 'calendar.badge.clock', materialIcon: 'event_note', templateType: 'week' },
-  { value: 'assignments', label: 'Assignments', detail: 'A complete overview of assignments', icon: 'person.2.fill', materialIcon: 'groups' },
+  { value: 'programs', label: 'Programs', detail: 'Build and publish structured training programs', icon: 'list.bullet.clipboard.fill', materialIcon: 'view_timeline' },
+  { value: 'enrollments', label: 'Enrollments', detail: 'See players enrolled across programs', icon: 'person.crop.circle.badge.checkmark', materialIcon: 'how_to_reg' },
 ];
 
 const ITEM_TYPES: {
@@ -658,6 +669,8 @@ export default function PlanScreen() {
   const [activeOwnerAccountId, setActiveOwnerAccountId] = useState<string | null>(null);
   const [payload, setPayload] = useState<Awaited<ReturnType<typeof fetchOwnerTrainingTemplates>> | null>(null);
   const [activeSection, setActiveSection] = useState<PlanSection>('tasks');
+  const [programEnrollmentFilterId, setProgramEnrollmentFilterId] = useState<string | null>(null);
+  const [programCreateRequest, setProgramCreateRequest] = useState(0);
   const [statusFilter, setStatusFilter] = useState<TemplateStatusFilter>('active');
   const [selectedTemplateTypes, setSelectedTemplateTypes] = useState<TrainingTemplateType[]>([]);
   const [planFilterPicker, setPlanFilterPicker] = useState<PlanFilterPicker>(null);
@@ -771,11 +784,7 @@ export default function PlanScreen() {
   const selectedTypeLabel = selectedTemplateTypes.length
     ? selectedTemplateTypes.map((value) => templateTypeLabel(value)).join(', ')
     : 'All types';
-  const assignmentTemplates = useMemo(
-    () => (payload?.templates ?? []).filter((template) => template.status === 'active'),
-    [payload?.templates]
-  );
-  const currentPlanTemplates = activeSection === 'assignments' ? assignmentTemplates : templates;
+  const currentPlanTemplates = templates;
   const actorUserId = payload?.actor.userId ?? user?.id ?? null;
   const searchedPlanTemplates = useMemo(() => {
     const q = templateSearchQuery.trim().toLowerCase();
@@ -891,8 +900,15 @@ export default function PlanScreen() {
     setDraftVisible(true);
   }, [resetItemDraft]);
 
-  const openCreateFromPicker = useCallback((type: TrainingTemplateType) => {
+  const openCreateFromPicker = useCallback((type: PlanCreateType) => {
     setCreatePickerVisible(false);
+    if (type === 'program') {
+      setProgramEnrollmentFilterId(null);
+      setActiveSection('programs');
+      setSelectedTemplateTypes([]);
+      setProgramCreateRequest((current) => current + 1);
+      return;
+    }
     openCreate(type);
   }, [openCreate]);
 
@@ -900,13 +916,14 @@ export default function PlanScreen() {
     setPlanFilterPicker(null);
     setTemplateSourceFilter('all');
     setTemplateFocusTagFilter([]);
-    if (target.value === 'tasks') {
-      setActiveSection('tasks');
+    if (target.value === 'programs' || target.value === 'enrollments') {
+      setProgramEnrollmentFilterId(null);
+      setActiveSection(target.value);
       setSelectedTemplateTypes([]);
       return;
     }
-    if (target.value === 'assignments') {
-      setActiveSection('assignments');
+    if (target.value === 'tasks') {
+      setActiveSection('tasks');
       setSelectedTemplateTypes([]);
       return;
     }
@@ -1202,6 +1219,35 @@ export default function PlanScreen() {
     } as any);
   }, [activeOwnerAccountId, router]);
 
+  const openAssignTask = useCallback((task: Task) => {
+    if (!activeOwnerAccountId) {
+      Alert.alert('Owner workspace required', 'Choose an owner workspace before assigning content.');
+      return;
+    }
+    const linkedTemplateId = task.trainingTemplateId ?? task.training_template_id;
+    const exactIdMatch = payload?.templates.find(
+      (template) => template.templateType === 'task' && template.id === task.id,
+    );
+    const normalizedTitle = task.title.trim().toLowerCase();
+    const titleMatches = (payload?.templates ?? []).filter(
+      (template) => template.templateType === 'task' && template.title.trim().toLowerCase() === normalizedTitle,
+    );
+    const contentId = linkedTemplateId ?? exactIdMatch?.id ?? (titleMatches.length === 1 ? titleMatches[0].id : null);
+    if (!contentId) {
+      Alert.alert('Bulk assignment unavailable', 'Save this task as an owner training template before assigning it.');
+      return;
+    }
+    router.push({
+      pathname: '/bulk-assignment',
+      params: {
+        ownerAccountId: activeOwnerAccountId,
+        contentType: 'training_template',
+        contentId,
+        operation: 'assign',
+      },
+    } as any);
+  }, [activeOwnerAccountId, payload?.templates, router]);
+
   const updateDraftTaskConfig = useCallback((update: TaskConfigUpdate) => {
     setDraft((current) => ({
       ...current,
@@ -1277,23 +1323,19 @@ export default function PlanScreen() {
   const activePlanViewLabel =
     activeSection === 'tasks'
       ? 'Tasks'
-      : activeSection === 'assignments'
-        ? 'Assignments'
-        : selectedTemplateTypes.length
-          ? selectedTypeLabel
-          : 'All types';
-  const currentTemplateViewTitle =
-    activeSection === 'assignments'
-      ? 'Assignments'
-      : selectedTemplateTypes.length === 1
-        ? templateTypeLabel(selectedTemplateTypes[0])
-        : 'Templates';
-  const currentTemplateViewDetail =
-    activeSection === 'assignments'
-      ? 'Templates ready to assign'
-      : selectedTemplateTypes.length === 1
-        ? `${templateTypeLabel(selectedTemplateTypes[0])} templates`
-        : 'All templates';
+      : activeSection === 'programs'
+        ? 'Programs'
+        : activeSection === 'enrollments'
+          ? 'Enrollments'
+          : selectedTemplateTypes.length
+            ? selectedTypeLabel
+            : 'All types';
+  const currentTemplateViewTitle = selectedTemplateTypes.length === 1
+    ? templateTypeLabel(selectedTemplateTypes[0])
+    : 'Templates';
+  const currentTemplateViewDetail = selectedTemplateTypes.length === 1
+    ? `${templateTypeLabel(selectedTemplateTypes[0])} templates`
+    : 'All templates';
 
   if (!authReady || loading) {
     return (
@@ -1334,12 +1376,12 @@ export default function PlanScreen() {
           </View>
           <TouchableOpacity
             style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
-            onPress={() => router.push('/(tabs)/programs' as any)}
+            onPress={() => setCreatePickerVisible(true)}
             activeOpacity={0.84}
-            accessibilityLabel="Open training programs"
-            testID="plan.programsButton"
+            accessibilityLabel="Create task, exercise, session, or week"
+            testID="plan.create.open"
           >
-            <IconSymbol ios_icon_name="list.bullet.clipboard.fill" android_material_icon_name="view_timeline" size={22} color={colors.text} />
+            <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={22} color={colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.headerIconButton, { borderColor: colors.border, backgroundColor: colors.card }]}
@@ -1379,22 +1421,6 @@ export default function PlanScreen() {
         </ScrollView>
       ) : null}
 
-      <TouchableOpacity
-        style={[styles.primaryCreateCard, { backgroundColor: colors.primary }]}
-        onPress={() => setCreatePickerVisible(true)}
-        activeOpacity={0.86}
-        accessibilityLabel="Create template"
-        testID="plan.create.open"
-      >
-        <View style={styles.primaryCreateCopy}>
-          <Text style={styles.primaryCreateTitle}>Create</Text>
-          <Text style={styles.primaryCreateDetail}>Task, exercise, session, or week</Text>
-        </View>
-        <View style={styles.primaryCreateIcon}>
-          <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={22} color={colors.primary} />
-        </View>
-      </TouchableOpacity>
-
       <View style={styles.sectionBlock}>
         <PlanFilterSelect
           label="View"
@@ -1412,11 +1438,11 @@ export default function PlanScreen() {
               const active =
                 section.value === 'tasks'
                   ? activeSection === 'tasks'
-                  : section.value === 'assignments'
-                    ? activeSection === 'assignments'
-                    : activeSection === 'templates' &&
-                      selectedTemplateTypes.length === 1 &&
-                      selectedTemplateTypes[0] === section.templateType;
+                  : section.value === 'programs' || section.value === 'enrollments'
+                    ? activeSection === section.value
+                  : activeSection === 'templates' &&
+                    selectedTemplateTypes.length === 1 &&
+                    selectedTemplateTypes[0] === section.templateType;
               return (
                 <PlanFilterOption
                   key={section.value}
@@ -1447,7 +1473,7 @@ export default function PlanScreen() {
           <View style={[styles.embeddedPlanChrome, { paddingTop: Math.max(insets.top, 16) + 10 }]}>
             {renderPlanChrome()}
           </View>
-          <TaskLibrarySection embedded />
+          <TaskLibrarySection embedded onBulkAssignTask={openAssignTask} />
         </>
       ) : (
         <ScrollView
@@ -1458,33 +1484,8 @@ export default function PlanScreen() {
         >
           {renderPlanChrome()}
 
-          {activeSection === 'templates' || activeSection === 'assignments' ? (
+          {activeSection === 'templates' ? (
             <>
-              {activeSection === 'assignments' ? (
-                <TouchableOpacity
-                  style={[styles.bulkAssignmentEntry, { backgroundColor: colors.card, borderColor: colors.primary }]}
-                  onPress={() => {
-                    if (!activeOwnerAccountId) return;
-                    router.push({
-                      pathname: '/bulk-assignment',
-                      params: { ownerAccountId: activeOwnerAccountId },
-                    } as any);
-                  }}
-                  disabled={!activeOwnerAccountId}
-                  activeOpacity={0.86}
-                  accessibilityLabel="Open bulk assignment"
-                  testID="plan.bulkAssignment.open"
-                >
-                  <View style={[styles.bulkAssignmentEntryIcon, { backgroundColor: `${colors.primary}18` }]}>
-                    <IconSymbol ios_icon_name="person.2.badge.plus" android_material_icon_name="group_add" size={23} color={colors.primary} />
-                  </View>
-                  <View style={styles.bulkAssignmentEntryCopy}>
-                    <Text style={[styles.bulkAssignmentEntryTitle, { color: colors.text }]}>Bulk assignment</Text>
-                    <Text style={[styles.bulkAssignmentEntryDetail, { color: colors.textSecondary }]}>Choose activities, exercises, templates, or programs. Filter, preview, and confirm safely.</Text>
-                  </View>
-                  <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              ) : null}
               <PlanTemplateLibraryView
                 title={currentTemplateViewTitle}
                 detail={currentTemplateViewDetail}
@@ -1512,6 +1513,20 @@ export default function PlanScreen() {
                 busy={saving}
               />
             </>
+          ) : null}
+          {activeSection === 'programs' || activeSection === 'enrollments' ? (
+            <ProgramsWorkspace
+              embeddedView={activeSection}
+              ownerAccountId={activeOwnerAccountId}
+              selectedProgramId={programEnrollmentFilterId}
+              createRequest={programCreateRequest}
+              onCreateRequestHandled={() => setProgramCreateRequest(0)}
+              onViewChange={(view, programId) => {
+                setProgramEnrollmentFilterId(programId ?? null);
+                setActiveSection(view);
+                setPlanFilterPicker(null);
+              }}
+            />
           ) : null}
       </ScrollView>
       )}
@@ -2153,7 +2168,7 @@ function CreateTemplatePickerModal({
   visible: boolean;
   colors: ReturnType<typeof getColors>;
   onClose: () => void;
-  onSelect: (type: TrainingTemplateType) => void;
+  onSelect: (type: PlanCreateType) => void;
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -2176,7 +2191,7 @@ function CreateTemplatePickerModal({
 
           <View style={styles.createOptionList}>
             {CREATE_TEMPLATE_OPTIONS.map((option) => {
-              const tone = getTemplateTone(option.value, colors);
+              const tone = option.value === 'program' ? colors.primary : getTemplateTone(option.value, colors);
               return (
                 <TouchableOpacity
                   key={option.value}
@@ -2863,7 +2878,7 @@ function TemplateCard({
         testID={`plan.template.assign.${template.templateType}`}
       >
         <IconSymbol ios_icon_name="person.badge.plus" android_material_icon_name="assignment_ind" size={17} color="#FFFFFF" />
-        <Text style={styles.templateAssignButtonText}>Assign</Text>
+        <Text style={styles.templateAssignButtonText}>Bulk assign</Text>
       </TouchableOpacity>
     </View>
   );
@@ -3333,75 +3348,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  primaryCreateCard: {
-    minHeight: 68,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    columnGap: 12,
-  },
-  primaryCreateCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  primaryCreateTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  primaryCreateDetail: {
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-  primaryCreateIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   sectionBlock: {
     marginBottom: 14,
   },
   planLibraryView: {
     rowGap: 12,
-  },
-  bulkAssignmentEntry: {
-    minHeight: 82,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 11,
-  },
-  bulkAssignmentEntryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bulkAssignmentEntryCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  bulkAssignmentEntryTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  bulkAssignmentEntryDetail: {
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 17,
-    marginTop: 3,
   },
   planSearchBar: {
     minHeight: 54,
