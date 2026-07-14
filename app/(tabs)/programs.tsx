@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getColors } from '@/styles/commonStyles';
+import { TrainingProgramsDashboard, TrainingProgramsView } from '@/components/trainingPrograms/TrainingProgramsDashboard';
 import { DropdownSelect } from '@/components/ui/DropdownSelect';
 import { filterProgramTemplates, ProgramTemplatePickerFilter } from '@/utils/programTemplatePicker';
 import { partitionProgramDraftItems, reassignProgramDraftItem, removeProgramDraftItem, removeProgramDraftPhase } from '@/utils/programDraftItems';
@@ -43,8 +45,23 @@ const emptyDraft = (): ProgramDraft => ({ title: '', description: '', audience: 
 const fromProgram = (program: TrainingProgram): ProgramDraft => ({ programId: program.id, title: program.title, description: program.description ?? '', audience: program.audience ?? '', level: normalizeProgramLevel(program.level), durationWeeks: String(program.duration_weeks), phases: program.phases.map((phase) => ({ id: phase.id, title: phase.title, weekOffset: String(phase.week_offset), durationWeeks: String(phase.duration_weeks) })), items: program.items.map((item) => { const phase = program.phases.find((candidate) => candidate.id === item.phase_id); const relativeDay = Math.max(0, item.day_offset - Number(phase?.week_offset ?? 0) * 7); const scheduling = item.config?.scheduling as { weekday?: string; weekInPhase?: number } | undefined; return { id: item.id, phaseId: item.phase_id ?? '', itemType: item.item_type, trainingTemplateId: item.training_template_id ?? undefined, title: item.title, weekday: scheduling?.weekday ?? PROGRAM_WEEKDAYS[item.day_offset % 7]?.value ?? 'monday', weekInPhase: String(scheduling?.weekInPhase ?? Math.floor(relativeDay / 7) + 1) }; }) });
 const templateItemType = (template: TrainingTemplateSummary) => `${template.templateType}_template`;
 
-export default function ProgramsScreen() {
-  const colors = getColors(useColorScheme()); const insets = useSafeAreaInsets(); const { userRole } = useUserRole(); const isCoach = userRole === 'admin' || userRole === 'trainer';
+type ProgramsWorkspaceProps = {
+  embeddedView?: TrainingProgramsView;
+  ownerAccountId?: string | null;
+  selectedProgramId?: string | null;
+  createRequest?: number;
+  onCreateRequestHandled?: () => void;
+  onViewChange?: (view: TrainingProgramsView, programId?: string | null) => void;
+};
+
+export function ProgramsWorkspace({ embeddedView, ownerAccountId, selectedProgramId, createRequest = 0, onCreateRequestHandled, onViewChange }: ProgramsWorkspaceProps = {}) {
+  const colors = getColors(useColorScheme()); const insets = useSafeAreaInsets(); const router = useRouter(); const params = useLocalSearchParams<{ view?: string | string[] }>(); const { userRole } = useUserRole(); const isCoach = userRole === 'admin' || userRole === 'trainer';
+  const requestedView = Array.isArray(params.view) ? params.view[0] : params.view;
+  const routeView: TrainingProgramsView = requestedView === 'enrollments' ? 'enrollments' : 'programs';
+  const activeView = embeddedView ?? routeView;
+  const embedded = embeddedView !== undefined;
+  const [routeSelectedProgramId, setRouteSelectedProgramId] = useState<string | null>(null);
+  const activeSelectedProgramId = selectedProgramId === undefined ? routeSelectedProgramId : selectedProgramId;
   const [payload, setPayload] = useState<TrainingProgramsPayload | null>(null); const [mine, setMine] = useState<PlayerProgramEnrollment[]>([]); const [templates, setTemplates] = useState<TrainingTemplateSummary[]>([]);
   const [players, setPlayers] = useState<OwnerPlayerCrmPlayer[]>([]); const [ownerId, setOwnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true); const [refreshing, setRefreshing] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
@@ -53,13 +70,20 @@ export default function ProgramsScreen() {
 
   const load = useCallback(async () => { setError(null); try {
     if (!isCoach) { setMine((await fetchMyTrainingPrograms()).enrollments); return; }
-    const context = await fetchOwnerTrainingTemplatesContext(); const nextOwner = ownerId ?? context.defaultOwnerAccountId ?? context.workspaces[0]?.ownerAccountId ?? null; setOwnerId(nextOwner); if (!nextOwner) return;
+    const context = await fetchOwnerTrainingTemplatesContext(); const nextOwner = ownerAccountId ?? ownerId ?? context.defaultOwnerAccountId ?? context.workspaces[0]?.ownerAccountId ?? null; setOwnerId(nextOwner); if (!nextOwner) return;
     const [programData, templateData, crm] = await Promise.all([fetchTrainingPrograms(nextOwner), fetchOwnerTrainingTemplates(nextOwner), fetchOwnerPlayerCrmList(nextOwner)]);
-    setPayload(programData); setTemplates(templateData.templates.filter((template) => template.status === 'active')); setPlayers(crm.players.filter((player) => player.ownerRosterStatus === 'active'));
-  } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load programs.'); } finally { setLoading(false); setRefreshing(false); } }, [isCoach, ownerId]);
+    setPayload(programData); setTemplates(templateData.templates.filter((template) => template.status === 'active')); setPlayers(crm.players);
+  } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load programs.'); } finally { setLoading(false); setRefreshing(false); } }, [isCoach, ownerAccountId, ownerId]);
   useEffect(() => { void load(); }, [load]);
 
   const openBuilder = (program?: TrainingProgram) => { setDraft(program ? fromProgram(program) : emptyDraft()); setBuilderStep(1); setBuilderOpen(true); };
+  useEffect(() => {
+    if (!embedded || createRequest === 0) return;
+    setDraft(emptyDraft());
+    setBuilderStep(1);
+    setBuilderOpen(true);
+    onCreateRequestHandled?.();
+  }, [createRequest, embedded, onCreateRequestHandled]);
   const updateDraft = (patch: Partial<ProgramDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const addPhase = () => { const offset = draft.phases.reduce((max, phase) => Math.max(max, Number(phase.weekOffset) + Number(phase.durationWeeks)), 0); updateDraft({ phases: [...draft.phases, { id: createProgramDraftId(), title: `Phase ${draft.phases.length + 1}`, weekOffset: String(offset), durationWeeks: '1' }] }); };
   const updatePhase = (id: string, patch: Partial<PhaseDraft>) => updateDraft({ phases: draft.phases.map((phase) => phase.id === id ? { ...phase, ...patch } : phase) });
@@ -87,8 +111,54 @@ export default function ProgramsScreen() {
   const openEnrollment = (program: TrainingProgram) => { setEnrollProgram(program); setSelectedPlayers([]); setSelectedTeam(null); setStartDate(new Date().toISOString().slice(0, 10)); };
   const submitEnrollment = async () => { if (!ownerId || !enrollProgram || (!selectedPlayers.length && !selectedTeam)) return; setBusy(true); try { setPayload(await enrollTrainingProgram({ ownerAccountId: ownerId, programId: enrollProgram.id, playerIds: selectedTeam ? undefined : selectedPlayers, teamId: selectedTeam ?? undefined, startDate })); setEnrollProgram(null); } catch (cause) { Alert.alert('Could not enroll', cause instanceof Error ? cause.message : 'Try again.'); } finally { setBusy(false); } };
   const changeEnrollment = async (id: string, status: ProgramEnrollmentStatus) => { if (!ownerId) return; setBusy(true); try { setPayload(await setProgramEnrollmentStatus(ownerId, id, status)); } catch (cause) { Alert.alert('Could not update enrollment', cause instanceof Error ? cause.message : 'Try again.'); } finally { setBusy(false); } };
+  const openBulkAssignment = (program: TrainingProgram) => {
+    if (!ownerId) return;
+    router.push({
+      pathname: '/bulk-assignment',
+      params: {
+        ownerAccountId: ownerId,
+        contentType: 'program',
+        contentId: program.id,
+        operation: 'assign',
+      },
+    } as any);
+  };
+  const changeView = (view: TrainingProgramsView, programId: string | null = null) => {
+    if (onViewChange) {
+      onViewChange(view, programId);
+      return;
+    }
+    setRouteSelectedProgramId(programId);
+    router.replace({ pathname: '/(tabs)/programs', params: { view } } as any);
+  };
+  const goBack = () => { if (router.canGoBack()) { router.back(); return; } router.replace('/(tabs)/plan' as any); };
 
   if (loading && !payload && !mine.length) return <View style={[styles.center, { backgroundColor: colors.background }]}><ActivityIndicator /></View>;
+  if (isCoach && payload) return <>
+    <TrainingProgramsDashboard
+      payload={payload}
+      players={players}
+      colors={colors}
+      topInset={insets.top}
+      view={activeView}
+      embedded={embedded}
+      selectedProgramId={activeSelectedProgramId}
+      refreshing={refreshing}
+      busy={busy}
+      error={error}
+      onBack={goBack}
+      onRefresh={() => { setRefreshing(true); void load(); }}
+      onEdit={openBuilder}
+      onPublish={confirmPublish}
+      onBulkAssign={openBulkAssignment}
+      onArchive={confirmArchive}
+      onDelete={confirmDelete}
+      onEnrollmentStatus={(id, status) => { void changeEnrollment(id, status); }}
+      onViewChange={changeView}
+    />
+    <BuilderModal visible={builderOpen} step={builderStep} setStep={setBuilderStep} draft={draft} templates={templates} colors={colors} validation={validation} busy={busy} onClose={() => setBuilderOpen(false)} updateDraft={updateDraft} addPhase={addPhase} updatePhase={updatePhase} removePhase={removePhase} addTemplate={addTemplate} addCustomItem={addCustomItem} updateItem={updateItem} reassignItemPhase={reassignItemPhase} removeItem={removeItem} save={saveDraft} />
+    <EnrollmentModal ownerAccountId={ownerId} program={enrollProgram} selectedPlayers={selectedPlayers} selectedTeam={selectedTeam} startDate={startDate} colors={colors} busy={busy} setPlayers={setSelectedPlayers} setTeam={setSelectedTeam} setStartDate={setStartDate} close={() => setEnrollProgram(null)} submit={submitEnrollment} />
+  </>;
   return <>
     <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={[styles.content, { paddingTop: insets.top + 18 }]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}>
       <View style={styles.row}><View style={styles.grow}><Text style={[styles.heading, { color: colors.text }]}>{isCoach ? 'Training programs' : 'My program'}</Text><Text style={{ color: colors.textSecondary }}>{isCoach ? 'Build, publish and enroll structured player journeys.' : 'Your weeks, upcoming work and progression.'}</Text></View>{isCoach ? <TouchableOpacity testID="programs.create" style={styles.primaryCompact} onPress={() => openBuilder()}><Text style={styles.primaryText}>New</Text></TouchableOpacity> : null}</View>
@@ -99,6 +169,10 @@ export default function ProgramsScreen() {
     <BuilderModal visible={builderOpen} step={builderStep} setStep={setBuilderStep} draft={draft} templates={templates} colors={colors} validation={validation} busy={busy} onClose={() => setBuilderOpen(false)} updateDraft={updateDraft} addPhase={addPhase} updatePhase={updatePhase} removePhase={removePhase} addTemplate={addTemplate} addCustomItem={addCustomItem} updateItem={updateItem} reassignItemPhase={reassignItemPhase} removeItem={removeItem} save={saveDraft} />
     <EnrollmentModal ownerAccountId={ownerId} program={enrollProgram} selectedPlayers={selectedPlayers} selectedTeam={selectedTeam} startDate={startDate} colors={colors} busy={busy} setPlayers={setSelectedPlayers} setTeam={setSelectedTeam} setStartDate={setStartDate} close={() => setEnrollProgram(null)} submit={submitEnrollment} />
   </>;
+}
+
+export default function ProgramsScreen() {
+  return <ProgramsWorkspace />;
 }
 
 function ProgramCard({ program, enrollments, colors, players, onEdit, onPublish, onEnroll, onArchive, onDelete, onEnrollmentStatus }: any) { const playerName = (id: string) => players.find((player: OwnerPlayerCrmPlayer) => player.playerId === id)?.displayName ?? 'Player'; const confirmStatus = (id: string, status: ProgramEnrollmentStatus) => { if (status === 'active' || status === 'paused') { void onEnrollmentStatus(id, status); return; } Alert.alert(`${status === 'completed' ? 'Complete' : 'Cancel'} enrollment?`, 'The player history is preserved.', [{ text: 'Back', style: 'cancel' }, { text: status === 'completed' ? 'Complete' : 'Cancel enrollment', style: status === 'cancelled' ? 'destructive' : 'default', onPress: () => void onEnrollmentStatus(id, status) }]); }; return <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={styles.row}><Text style={[styles.cardTitle, styles.grow, { color: colors.text }]}>{program.title}</Text><Pill label={program.status} active={program.status === 'published'} /></View><Text style={{ color: colors.textSecondary }}>{program.duration_weeks} weeks · {program.phases.length} phases · {program.items.length} items</Text>{program.description ? <Text style={{ color: colors.text }}>{program.description}</Text> : null}<View style={styles.actionRow}>{program.status === 'draft' ? <><Action label="Edit" onPress={onEdit} /><Action label="Publish" onPress={onPublish} /></> : null}{program.status === 'published' ? <><Action label="Enroll" onPress={onEnroll} /><Action label="Archive" onPress={onArchive} danger /></> : null}<Action label="Delete" onPress={onDelete} danger /></View>{enrollments.map((enrollment: any) => <View key={enrollment.id} style={[styles.enrollment, { borderColor: colors.border }]}><View style={styles.row}><Text style={{ color: colors.text, fontWeight: '700' }}>{playerName(enrollment.player_id)}</Text><Pill label={enrollment.status} active={enrollment.status === 'active'} /></View><Text style={{ color: colors.textSecondary }}>Starts {enrollment.start_date}</Text><View style={styles.actionRow}>{enrollment.status === 'active' ? <Action label="Pause" onPress={() => confirmStatus(enrollment.id, 'paused')} /> : null}{enrollment.status === 'paused' ? <Action label="Resume" onPress={() => confirmStatus(enrollment.id, 'active')} /> : null}{!['completed', 'cancelled'].includes(enrollment.status) ? <><Action label="Complete" onPress={() => confirmStatus(enrollment.id, 'completed')} /><Action label="Cancel" danger onPress={() => confirmStatus(enrollment.id, 'cancelled')} /></> : null}</View></View>)}</View>; }

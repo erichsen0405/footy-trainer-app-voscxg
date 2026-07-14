@@ -381,12 +381,20 @@ describe('owner training templates contract', () => {
     expect(plan).toContain("value: 'session', label: 'Session'");
     expect(plan).toContain("value: 'week', label: 'Week'");
     expect(plan).toContain('plan.create.open');
+    expect(plan).toContain('accessibilityLabel="Create task, exercise, session, or week"');
+    expect(plan).toContain('ios_icon_name="plus" android_material_icon_name="add"');
+    expect(plan).not.toContain('primaryCreateCard');
     expect(plan).toContain('CreateTemplatePickerModal');
     expect(plan).toContain('CREATE_TEMPLATE_OPTIONS');
+    expect(plan).toContain("value: 'program'");
+    expect(plan).toContain('plan.create.type.${option.value}');
     expect(plan).toContain('plan.create.type.${option.value}');
     expect(plan).toContain("ios_icon_name=\"info.circle\"");
     expect(plan).not.toContain("value: 'templates'");
-    expect(plan).not.toContain("value: 'programs'");
+    expect(plan).toContain("value: 'programs', label: 'Programs'");
+    expect(plan).toContain("value: 'enrollments', label: 'Enrollments'");
+    expect(plan).not.toContain("value: 'assignments'");
+    expect(plan).not.toContain('plan.bulkAssignment.open');
     expect(plan).toContain('fetchOwnerTrainingTemplates');
     expect(plan).toContain('saveOwnerTrainingTemplate');
     expect(plan).toContain('duplicateOwnerTrainingTemplate');
@@ -448,7 +456,7 @@ describe('owner training templates contract', () => {
     expect(plan).not.toContain('Subtasks');
     expect(plan).not.toContain('Task time');
     expect(plan).not.toContain("value: 'activity', label: 'Activity'");
-    expect(plan).toContain('TaskLibrarySection');
+    expect(plan).toContain('TaskLibrarySection embedded onBulkAssignTask={openAssignTask}');
     expect(plan).not.toContain('plan.assignments.shortcuts');
     expect(plan).not.toContain('SummaryTile');
     expect(plan).not.toContain('PlanShortcutCard');
@@ -460,6 +468,8 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('SwipeVideoPlayer');
     expect(plan).toContain('plan.template.mediaPlayer');
     expect(plan).toContain('plan.template.assign.${template.templateType}');
+    expect(plan).toContain('<Text style={styles.templateAssignButtonText}>Bulk assign</Text>');
+    expect(plan).toContain("contentType: 'training_template'");
     expect(plan).toContain('plan.template.duplicate.${template.templateType}');
     expect(plan).toContain('plan.template.edit.${template.templateType}');
     expect(plan).toContain('plan.template.source.${template.templateType}');
@@ -487,6 +497,8 @@ describe('owner training templates contract', () => {
     expect(plan).toContain('hintVariant="counter"');
     expect(plan).toContain('surfaceColor={colors.background}');
     expect(tasks).toContain("const isPlayerPlan = userRole === 'player' && !embedded");
+    expect(tasks).toContain('<Text style={styles.taskAssignButtonText}>Bulk assign</Text>');
+    expect(tasks).toContain('onBulkAssignTask(task)');
     expect(tasks).toContain("const screenTitleText = isPlayerPlan ? 'Plan' : embedded ? 'Tasks' : 'Tasks'");
     expect(tasks).toContain('isTrainerProfile && !embedded');
     expect(tasks).toContain('{!embedded ? (');
