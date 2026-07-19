@@ -3,6 +3,7 @@ import { requireAuthContext } from '../_shared/auth.ts';
 import { AppError, optionsResponse, readJsonBody, responseFromError, successResponse } from '../_shared/http.ts';
 import { buildProgramEnrollmentPlayerPlans, DEFAULT_PROGRAM_ACTIVITY_TIME, readProgramTemplates, serializeProgramTemplates, type ProgramTemplateMaterialization } from '../_shared/programEnrollmentMaterialization.ts';
 import { addProgramIsoDays, buildProgramEnrollmentTimeline, getUnassignedProgramItems } from '../_shared/programEnrollmentPreview.ts';
+import { buildPlayerProgramExperience } from '../_shared/playerProgramExperience.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STAFF_ROLES = ['owner', 'admin', 'coach', 'assistant_coach'];
@@ -72,6 +73,103 @@ async function payload(client: any, ownerAccountId: string) {
   ]);
   const details = await Promise.all((programs ?? []).map((p: any) => loadProgram(client, ownerAccountId, p.id)));
   return { owner, programs: details, enrollments: enrollments ?? [], players: players ?? [], teams: teamsResult.data ?? [] };
+}
+
+async function loadPlayerProgramExperience(client: any, userId: string) {
+  const { data: enrollmentRows, error: enrollmentError } = await client
+    .from('program_enrollments')
+    .select('id,owner_account_id,program_id,program_version_id,start_date,status,training_programs(title,description,duration_weeks),program_enrollment_items(id,program_item_id,scheduled_date,item_type,title,status,activity_id,task_id)')
+    .eq('player_id', userId)
+    .order('start_date', { ascending: false });
+  if (enrollmentError) throw new AppError('INTERNAL_ERROR', enrollmentError.message, 500);
+
+  const enrollments = enrollmentRows ?? [];
+  const ownerIds = [...new Set(enrollments.map((enrollment: any) => enrollment.owner_account_id).filter(Boolean))];
+  const items = enrollments.flatMap((enrollment: any) => Array.isArray(enrollment.program_enrollment_items) ? enrollment.program_enrollment_items : []);
+  const taskIds = [...new Set(items.map((item: any) => item.task_id).filter(Boolean))];
+  const activityIds = [...new Set(items.map((item: any) => item.activity_id).filter(Boolean))];
+  const versionIds = [...new Set(enrollments.map((enrollment: any) => enrollment.program_version_id).filter(Boolean))];
+
+  const [ownersResult, brandsResult, tasksResult, activityTasksResult, versionsResult] = await Promise.all([
+    ownerIds.length
+      ? client.from('owner_accounts').select('id,name,owner_type').in('id', ownerIds).eq('status', 'active')
+      : Promise.resolve({ data: [], error: null }),
+    ownerIds.length
+      ? client.from('owner_brand_profiles').select('owner_account_id,display_name,brand_colors,logo_url').in('owner_account_id', ownerIds)
+      : Promise.resolve({ data: [], error: null }),
+    taskIds.length
+      ? client.from('tasks').select('id,completed').eq('user_id', userId).in('id', taskIds)
+      : Promise.resolve({ data: [], error: null }),
+    activityIds.length
+      ? client.from('activity_tasks').select('activity_id,completed').in('activity_id', activityIds)
+      : Promise.resolve({ data: [], error: null }),
+    versionIds.length
+      ? client.from('program_versions').select('id,snapshot').in('id', versionIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  for (const result of [ownersResult, brandsResult, tasksResult, activityTasksResult, versionsResult]) {
+    if (result.error) throw new AppError('INTERNAL_ERROR', result.error.message, 500);
+  }
+
+  const activityCompletion = new Map<string, boolean[]>();
+  for (const task of activityTasksResult.data ?? []) {
+    const rows = activityCompletion.get(task.activity_id) ?? [];
+    rows.push(task.completed === true);
+    activityCompletion.set(task.activity_id, rows);
+  }
+  const completedActivityIds = new Set(
+    [...activityCompletion.entries()]
+      .filter(([, completed]) => completed.length > 0 && completed.every(Boolean))
+      .map(([activityId]) => activityId),
+  );
+  const now = new Date();
+  const versionById = new Map((versionsResult.data ?? []).map((version: any) => [version.id, version]));
+
+  return buildPlayerProgramExperience({
+    enrollments: enrollments.map((enrollment: any) => ({
+      ...enrollment,
+      program_version: versionById.get(enrollment.program_version_id) ?? null,
+    })),
+    owners: ownersResult.data ?? [],
+    brandProfiles: brandsResult.data ?? [],
+    completedTaskIds: new Set((tasksResult.data ?? []).filter((task: any) => task.completed === true).map((task: any) => task.id)),
+    completedActivityIds,
+    today: now.toISOString().slice(0, 10),
+    generatedAt: now.toISOString(),
+  });
+}
+
+async function setPlayerProgramItemCompletion(client: any, userId: string, body: Record<string, any>) {
+  const itemId = uuid(body.itemId, 'itemId');
+  if (typeof body.completed !== 'boolean') throw new AppError('VALIDATION_ERROR', 'completed must be a boolean.', 400);
+  const { data: item, error: itemError } = await client
+    .from('program_enrollment_items')
+    .select('id,player_id,scheduled_date,task_id,activity_id')
+    .eq('id', itemId)
+    .eq('player_id', userId)
+    .maybeSingle();
+  if (itemError) throw new AppError('INTERNAL_ERROR', itemError.message, 500);
+  if (!item) throw new AppError('TRAINING_PROGRAM_ITEM_NOT_FOUND', 'Program item not found.', 404);
+  if (!item.task_id || item.activity_id) throw new AppError('VALIDATION_ERROR', 'Only standalone player tasks can be completed here.', 409);
+
+  const { data: task, error: taskError } = await client
+    .from('tasks')
+    .update({ completed: body.completed, updated_at: new Date().toISOString() })
+    .eq('id', item.task_id)
+    .eq('user_id', userId)
+    .select('id')
+    .maybeSingle();
+  if (taskError) throw new AppError('INTERNAL_ERROR', taskError.message, 500);
+  if (!task) throw new AppError('TRAINING_PROGRAM_ITEM_NOT_FOUND', 'Linked player task not found.', 404);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { error: statusError } = await client
+    .from('program_enrollment_items')
+    .update({ status: body.completed ? 'completed' : item.scheduled_date <= today ? 'available' : 'upcoming' })
+    .eq('id', item.id)
+    .eq('player_id', userId);
+  if (statusError) throw new AppError('INTERNAL_ERROR', statusError.message, 500);
+  return loadPlayerProgramExperience(client, userId);
 }
 async function upsert(client: any, userId: string, body: Record<string, any>) {
   const ownerAccountId = uuid(body.ownerAccountId, 'ownerAccountId');
@@ -520,6 +618,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse();
   try {
     const { serviceClient: client, userId } = await requireAuthContext(req); const body = record(await readJsonBody(req)); const action = text(body.action, 'action', true);
+    if (action === 'playerExperience') return successResponse(await loadPlayerProgramExperience(client, userId));
+    if (action === 'setPlayerItemCompletion') return successResponse(await setPlayerProgramItemCompletion(client, userId, body));
     if (action === 'playerMine') {
       const { data, error } = await client.from('program_enrollments').select('*, training_programs(title,description,duration_weeks), program_enrollment_items(*)').eq('player_id', userId).order('start_date', { ascending: false });
       if (error) throw new AppError('INTERNAL_ERROR', error.message, 500); return successResponse({ enrollments: data ?? [] });

@@ -177,6 +177,40 @@ describe('notification deeplink mapping', () => {
     });
   });
 
+  it('maps player program notifications to the requested enrollment and item', () => {
+    const route = buildNotificationRouteFromData({
+      target: 'program_item',
+      enrollment_id: 'enrollment-306',
+      enrollment_item_id: 'item-306',
+    });
+
+    expect(route).toEqual({
+      pathname: '/(tabs)/programs',
+      params: {
+        enrollmentId: 'enrollment-306',
+        itemId: 'item-306',
+      },
+    });
+  });
+
+  it('prefers a materialized activity destination for program notifications', () => {
+    const route = buildNotificationRouteFromData({
+      target: 'program_item',
+      enrollment_id: 'enrollment-306',
+      activity_id: 'activity-306',
+      task_id: 'task-306',
+    });
+
+    expect(route).toEqual({
+      pathname: '/activity-details',
+      params: {
+        id: 'activity-306',
+        activityId: 'activity-306',
+        openTaskId: 'task-306',
+      },
+    });
+  });
+
   it('returns null when activity context is missing for task navigation', () => {
     expect(
       buildNotificationRouteFromData({

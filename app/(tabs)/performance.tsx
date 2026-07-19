@@ -23,6 +23,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { ProgressionSection } from '@/components/ProgressionSection';
 import { TrainerScopeFilter } from '@/components/TrainerScopeFilter';
 import { WeeklySummaryCard } from '@/components/WeeklySummaryCard';
+import { PlayerProgramProgressCard } from '@/components/playerPrograms/PlayerProgramExperience';
 import { useAdmin } from '@/contexts/AdminContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useFootball } from '@/contexts/FootballContext';
@@ -876,8 +877,10 @@ export default function PerformanceScreen() {
     >
       <View style={styles.header} testID="performance.result">
         <Text style={[styles.headerTitle, { color: textColor }]}>🏆 Performance</Text>
-        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>View your players' performance over time</Text>
+        <Text style={[styles.headerSubtitle, { color: textSecondaryColor }]}>{userRole === 'player' ? 'Follow your training and development over time' : "View your players' performance over time"}</Text>
       </View>
+
+      {userRole === 'player' ? <PlayerProgramProgressCard /> : null}
 
       {isTrainerProfile ? (
         <View style={styles.scopeSelector}>

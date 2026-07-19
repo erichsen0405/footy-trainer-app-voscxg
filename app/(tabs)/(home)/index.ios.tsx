@@ -74,6 +74,7 @@ import ActivityCard from '@/components/ActivityCard';
 import CreateActivityModal from '@/components/CreateActivityModal';
 import HomeSkeleton from '@/components/HomeSkeleton';
 import { HomeBrandHeader } from '@/components/HomeBrandHeader';
+import { PlayerProgramHomeCard } from '@/components/playerPrograms/PlayerProgramExperience';
 import { IconSymbol } from '@/components/IconSymbol';
 import { AdminContextWrapper } from '@/components/AdminContextWrapper';
 import * as CommonStyles from '@/styles/commonStyles';
@@ -3090,9 +3091,10 @@ export default function HomeScreen() {
     return (
       <>
         <HomeBrandHeader paddingTop={headerPaddingTop} paddingBottom={headerPaddingBottom} />
+        {userRole === 'player' ? <PlayerProgramHomeCard /> : null}
       </>
     );
-  }, []);
+  }, [userRole]);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (

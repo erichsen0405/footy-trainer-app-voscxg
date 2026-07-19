@@ -1,7 +1,7 @@
 import type * as Notifications from 'expo-notifications';
 
 export type NotificationRoute = {
-  pathname: '/activity-details' | '/(tabs)/profile' | '/(tabs)/(home)';
+  pathname: '/activity-details' | '/(tabs)/profile' | '/(tabs)/(home)' | '/(tabs)/programs';
   params: Record<string, string>;
 };
 
@@ -168,6 +168,17 @@ export function buildNotificationRouteFromData(rawData: Record<string, unknown>)
   }
 
   const activityId = normalizeActivityId(sources, queryParams);
+  const enrollmentId = getFirstString(sources, ['enrollmentId', 'enrollment_id', 'programEnrollmentId', 'program_enrollment_id']);
+  const programItemId = getFirstString(sources, ['programItemId', 'program_item_id', 'enrollmentItemId', 'enrollment_item_id']);
+  if (
+    !activityId &&
+    ['program', 'player_program', 'program_enrollment', 'program_item'].includes(target)
+  ) {
+    const params: Record<string, string> = {};
+    if (enrollmentId) params.enrollmentId = enrollmentId;
+    if (programItemId) params.itemId = programItemId;
+    return { pathname: '/(tabs)/programs', params };
+  }
   if (!activityId) return null;
 
   const params: Record<string, string> = {

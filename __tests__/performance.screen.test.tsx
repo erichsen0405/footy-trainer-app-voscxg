@@ -150,6 +150,14 @@ jest.mock('@/components/WeeklySummaryCard', () => {
   };
 });
 
+jest.mock('@/components/playerPrograms/PlayerProgramExperience', () => {
+  const React = jest.requireActual('react');
+  const { View } = jest.requireActual('react-native');
+  return {
+    PlayerProgramProgressCard: () => <View testID="mock.playerProgramProgress" />,
+  };
+});
+
 describe('PerformanceScreen', () => {
   beforeAll(() => {
     jest.useFakeTimers();
