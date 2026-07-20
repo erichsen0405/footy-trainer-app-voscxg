@@ -61,6 +61,10 @@ jest.mock('@/components/ActivityCard', () => {
   };
 });
 
+jest.mock('@/components/playerPrograms/PlayerProgramExperience', () => ({
+  PlayerProgramHomeCard: () => null,
+}));
+
 jest.mock('@/components/CreateActivityModal', () => {
   const React = jest.requireActual('react');
   const { View } = jest.requireActual('react-native');

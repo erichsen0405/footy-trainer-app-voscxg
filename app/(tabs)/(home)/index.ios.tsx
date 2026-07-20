@@ -2213,6 +2213,10 @@ export default function HomeScreen() {
         key: `summary:${section}:${summary.weekKey}`,
       });
 
+      if (section === 'currentWeek' && userRole === 'player') {
+        data.push({ type: 'playerProgramWeek', key: `programs:${summary.weekKey}` });
+      }
+
       if (!expandedUpcomingWeeks[summary.weekKey]) return;
 
       const rawWeekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
@@ -2341,6 +2345,7 @@ export default function HomeScreen() {
     buildUpcomingDayToggleKey,
     expandedUpcomingDays,
     expandedUpcomingWeeks,
+    userRole,
   ]);
 
   const previousWeeksModalData = useMemo(() => {
@@ -2465,6 +2470,9 @@ export default function HomeScreen() {
     if (!item || !item.type) return null;
 
     switch (item.type) {
+      case 'playerProgramWeek':
+        return <PlayerProgramHomeCard />;
+
       case 'upcomingWeekSummary':
         if (!item.weekGroup || !item.weekGroup.weekStart || !item.weekKey) return null;
 
@@ -3088,13 +3096,8 @@ export default function HomeScreen() {
     const headerPaddingTop = 12;
     const headerPaddingBottom = 12;
 
-    return (
-      <>
-        <HomeBrandHeader paddingTop={headerPaddingTop} paddingBottom={headerPaddingBottom} />
-        {userRole === 'player' ? <PlayerProgramHomeCard /> : null}
-      </>
-    );
-  }, [userRole]);
+    return <HomeBrandHeader paddingTop={headerPaddingTop} paddingBottom={headerPaddingBottom} />;
+  }, []);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (

@@ -98,7 +98,7 @@ async function loadPlayerProgramExperience(client: any, userId: string) {
       ? client.from('owner_brand_profiles').select('owner_account_id,display_name,brand_colors,logo_url').in('owner_account_id', ownerIds)
       : Promise.resolve({ data: [], error: null }),
     taskIds.length
-      ? client.from('tasks').select('id,completed').eq('user_id', userId).in('id', taskIds)
+      ? client.from('tasks').select('id,title,description,reminder_minutes,category_ids,completed').eq('user_id', userId).in('id', taskIds)
       : Promise.resolve({ data: [], error: null }),
     activityIds.length
       ? client.from('activity_tasks').select('activity_id,completed').in('activity_id', activityIds)
@@ -132,6 +132,7 @@ async function loadPlayerProgramExperience(client: any, userId: string) {
     })),
     owners: ownersResult.data ?? [],
     brandProfiles: brandsResult.data ?? [],
+    taskDetails: tasksResult.data ?? [],
     completedTaskIds: new Set((tasksResult.data ?? []).filter((task: any) => task.completed === true).map((task: any) => task.id)),
     completedActivityIds,
     today: now.toISOString().slice(0, 10),

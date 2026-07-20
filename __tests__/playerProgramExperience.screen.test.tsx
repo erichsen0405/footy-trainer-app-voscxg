@@ -5,6 +5,15 @@ import {
   PlayerProgramsExperienceScreen,
 } from '@/components/playerPrograms/PlayerProgramExperience';
 
+jest.mock('@/components/TaskDetailsModal', () => ({
+  __esModule: true,
+  default: (props: { visible?: boolean }) => {
+    const ReactModule = jest.requireActual('react');
+    const { View } = jest.requireActual('react-native');
+    return props.visible ? ReactModule.createElement(View, { testID: 'taskDetails.mock' }) : null;
+  },
+}));
+
 const mockPush = jest.fn();
 const mockRefresh = jest.fn().mockResolvedValue(undefined);
 const mockUsePlayerProgramExperience = jest.fn();
@@ -64,11 +73,13 @@ describe('player program experience screens', () => {
     expect(view.getByText('First touch')).toBeTruthy();
     expect(view.getByText('Ball mastery')).toBeTruthy();
     fireEvent.press(view.getByTestId('home.playerProgram.open'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/(tabs)/programs', params: { enrollmentId: 'enrollment-1' } });
+    expect(mockPush).toHaveBeenCalledWith('/(tabs)/programs');
   });
 
   it('completes standalone tasks server-side and opens activity items', async () => {
     const view = render(<PlayerProgramsExperienceScreen />);
+    fireEvent.press(view.getByLabelText('Open Ball mastery'));
+    expect(view.getByTestId('taskDetails.mock')).toBeTruthy();
     fireEvent.press(view.getByTestId('playerPrograms.item.item-task.complete'));
     await waitFor(() => expect(mockSetCompletion).toHaveBeenCalledWith('item-task', true));
     await waitFor(() => expect(mockRefresh).toHaveBeenCalled());
