@@ -76,6 +76,34 @@ describe('player program experience screens', () => {
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/programs');
   });
 
+  it('shows current-week progress on Home instead of whole-program progress', () => {
+    mockUsePlayerProgramExperience.mockReturnValue({
+      experience: {
+        ...experience,
+        today: '2026-07-20',
+        enrollments: [{
+          ...experience.enrollments[0],
+          progress: { completedItems: 3, totalItems: 4, percent: 75 },
+          items: [
+            { id: 'previous-task', scheduledDate: '2026-07-15', itemType: 'task_template', title: 'Previous task', phaseTitle: 'Foundation', weekNumber: 1, status: 'overdue', activityId: null, taskId: 'task-previous' },
+            { id: 'current-task', scheduledDate: '2026-07-21', itemType: 'task_template', title: 'Current task', phaseTitle: 'Foundation', weekNumber: 2, status: 'completed', activityId: null, taskId: 'task-current' },
+            { id: 'current-activity', scheduledDate: '2026-07-23', itemType: 'session_template', title: 'Current activity', phaseTitle: 'Foundation', weekNumber: 2, status: 'completed', activityId: 'activity-current', taskId: null },
+            { id: 'future-task', scheduledDate: '2026-07-28', itemType: 'task_template', title: 'Future task', phaseTitle: 'Foundation', weekNumber: 3, status: 'upcoming', activityId: null, taskId: 'task-future' },
+          ],
+        }],
+      },
+      loading: false,
+      refreshing: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+
+    const view = render(<PlayerProgramHomeCard />);
+    expect(view.getByText('100%')).toBeTruthy();
+    expect(view.getByText(/2\/2 tasks and activities completed/)).toBeTruthy();
+    expect(view.queryByText('75%')).toBeNull();
+  });
+
   it('completes standalone tasks server-side and opens activity items', async () => {
     const view = render(<PlayerProgramsExperienceScreen />);
     fireEvent.press(view.getByLabelText('Open Ball mastery'));

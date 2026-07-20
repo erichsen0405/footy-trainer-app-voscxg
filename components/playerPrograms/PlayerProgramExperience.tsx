@@ -50,6 +50,20 @@ function isCompletable(item: PlayerProgramExperienceItem) {
   return Boolean(item.taskId || item.activityId);
 }
 
+function progressForItems(items: PlayerProgramExperienceItem[]) {
+  const countableItems = items.filter(isCompletable);
+  const completedItems = countableItems.filter(
+    (item) => item.status === "completed",
+  ).length;
+  const totalItems = countableItems.length;
+  return {
+    completedItems,
+    totalItems,
+    percent:
+      totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,
+  };
+}
+
 function itemKind(item: PlayerProgramExperienceItem) {
   if (item.activityId) return "Activity";
   if (item.taskId) return "Task";
@@ -355,9 +369,11 @@ function ProgramDays({
 function EnrollmentHeader({
   enrollment,
   compact = false,
+  progress = enrollment.progress,
 }: {
   enrollment: PlayerProgramExperienceEnrollment;
   compact?: boolean;
+  progress?: PlayerProgramExperienceEnrollment["progress"];
 }) {
   const colors = getColors(useColorScheme());
   const accent = enrollment.owner.brandColors.accent || colors.primary;
@@ -379,17 +395,17 @@ function EnrollmentHeader({
           </Text>
         </View>
         <Text style={[styles.percent, { color: accent }]}>
-          {enrollment.progress.percent}%
+          {progress.percent}%
         </Text>
       </View>
       <ProgressBar
-        percent={enrollment.progress.percent}
+        percent={progress.percent}
         color={accent}
         track={colors.border}
       />
       <Text style={{ color: colors.textSecondary }}>
-        {enrollment.progress.completedItems}/{enrollment.progress.totalItems}{" "}
-        tasks and activities completed
+        {progress.completedItems}/{progress.totalItems} tasks and activities
+        completed
       </Text>
     </View>
   );
@@ -561,7 +577,11 @@ export function PlayerProgramHomeCard() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <EnrollmentHeader enrollment={enrollment} compact />
+          <EnrollmentHeader
+            enrollment={enrollment}
+            compact
+            progress={progressForItems(items)}
+          />
           {items.length ? (
             <ProgramDays
               enrollment={enrollment}
