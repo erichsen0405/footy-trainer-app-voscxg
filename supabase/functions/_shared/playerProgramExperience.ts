@@ -4,6 +4,7 @@ export type PlayerProgramExperienceInput = {
   enrollments: Row[];
   owners: Row[];
   brandProfiles: Row[];
+  taskDetails?: Row[];
   completedTaskIds: Set<string>;
   completedActivityIds: Set<string>;
   today: string;
@@ -45,6 +46,7 @@ function effectiveItemStatus(
 export function buildPlayerProgramExperience(input: PlayerProgramExperienceInput) {
   const ownerById = new Map(input.owners.map((owner) => [owner.id, owner]));
   const brandByOwnerId = new Map(input.brandProfiles.map((profile) => [profile.owner_account_id, profile]));
+  const taskById = new Map((input.taskDetails ?? []).map((task) => [task.id, task]));
 
   const enrollments = input.enrollments.map((enrollment) => {
     const program = enrollment.training_programs ?? {};
@@ -59,6 +61,7 @@ export function buildPlayerProgramExperience(input: PlayerProgramExperienceInput
       .map((item: Row) => {
         const snapshotItem = snapshotItems.find((candidate: Row) => candidate.id === item.program_item_id) ?? {};
         const phase = snapshotPhases.find((candidate: Row) => candidate.id === snapshotItem.phase_id) ?? {};
+        const task = item.task_id ? taskById.get(item.task_id) ?? {} : {};
         const scheduledMs = new Date(`${item.scheduled_date}T00:00:00.000Z`).getTime();
         const startMs = new Date(`${enrollment.start_date}T00:00:00.000Z`).getTime();
         return {
@@ -66,6 +69,9 @@ export function buildPlayerProgramExperience(input: PlayerProgramExperienceInput
           scheduledDate: item.scheduled_date,
           itemType: item.item_type,
           title: item.title,
+          description: task.description ?? snapshotItem.description ?? null,
+          reminderMinutes: task.reminder_minutes ?? null,
+          categoryIds: Array.isArray(task.category_ids) ? task.category_ids : [],
           phaseTitle: phase.title ?? null,
           weekNumber: Math.max(1, Math.floor((scheduledMs - startMs) / 604800000) + 1),
           status: effectiveItemStatus(
@@ -79,12 +85,14 @@ export function buildPlayerProgramExperience(input: PlayerProgramExperienceInput
         };
       })
       .sort((a: Row, b: Row) => a.scheduledDate.localeCompare(b.scheduledDate));
-    const completedItems = items.filter((item: Row) => item.status === 'completed').length;
-    const actionableItems = items.filter((item: Row) => !['completed', 'skipped'].includes(item.status));
+    // Context-only focus/note rows are not completable work and must not inflate progress.
+    const progressItems = items.filter((item: Row) => Boolean(item.taskId || item.activityId));
+    const completedItems = progressItems.filter((item: Row) => item.status === 'completed').length;
+    const actionableItems = progressItems.filter((item: Row) => !['completed', 'skipped'].includes(item.status));
     const nextItem = actionableItems.find((item: Row) => item.scheduledDate <= input.today)
       ?? actionableItems[0]
       ?? null;
-    const totalItems = items.length;
+    const totalItems = progressItems.length;
 
     return {
       id: enrollment.id,
@@ -120,7 +128,14 @@ export function buildPlayerProgramExperience(input: PlayerProgramExperienceInput
     (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
       || b.startDate.localeCompare(a.startDate)
   );
-  const activeEnrollment = enrollments.find((enrollment) => enrollment.status === 'active') ?? null;
+  const activeEnrollments = enrollments.filter((enrollment) => enrollment.status === 'active');
+  const activeEnrollment = activeEnrollments.find((enrollment) =>
+    enrollment.startDate <= input.today && enrollment.endDate >= input.today
+  ) ?? activeEnrollments
+    .filter((enrollment) => enrollment.startDate > input.today)
+    .sort((left, right) => left.startDate.localeCompare(right.startDate))[0]
+    ?? activeEnrollments[0]
+    ?? null;
 
   return {
     apiVersion: 2,

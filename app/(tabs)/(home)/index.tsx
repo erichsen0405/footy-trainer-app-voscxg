@@ -2443,6 +2443,10 @@ export default function HomeScreen() {
         key: `summary:${section}:${summary.weekKey}`,
       });
 
+      if (section === 'currentWeek' && userRole === 'player') {
+        data.push({ type: 'playerProgramWeek', key: `programs:${summary.weekKey}` });
+      }
+
       if (!expandedUpcomingWeeks[summary.weekKey]) return;
 
       const rawWeekActivities = Array.isArray(summary.weekGroup.activities) ? summary.weekGroup.activities : [];
@@ -2561,6 +2565,7 @@ export default function HomeScreen() {
     buildUpcomingDayToggleKey,
     expandedUpcomingDays,
     expandedUpcomingWeeks,
+    userRole,
   ]);
 
   const previousWeeksModalData = useMemo(() => {
@@ -2682,6 +2687,9 @@ export default function HomeScreen() {
     if (!item || !item.type) return null;
 
     switch (item.type) {
+      case 'playerProgramWeek':
+        return <PlayerProgramHomeCard />;
+
       case 'upcomingWeekSummary':
         if (!item.weekGroup || !item.weekGroup.weekStart || !item.weekKey) return null;
 
@@ -3183,11 +3191,8 @@ export default function HomeScreen() {
 
   // List header component
   const ListHeaderComponent = useCallback(() => (
-    <>
-      <HomeBrandHeader />
-      {userRole === 'player' ? <PlayerProgramHomeCard /> : null}
-    </>
-  ), [userRole]);
+    <HomeBrandHeader />
+  ), []);
 
   // List footer component
   const ListFooterComponent = useCallback(() => (

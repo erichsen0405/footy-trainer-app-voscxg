@@ -11,7 +11,7 @@ export interface TrainingProgramsPayload { owner: { id: string; name: string; ow
 export interface PlayerProgramItem { id: string; scheduled_date: string; item_type: string; title: string; status: string }
 export interface PlayerProgramEnrollment extends ProgramEnrollment { training_programs: { title: string; description: string | null; duration_weeks: number }; program_enrollment_items: PlayerProgramItem[] }
 export type PlayerProgramItemStatus = 'completed' | 'skipped' | 'overdue' | 'today' | 'upcoming';
-export interface PlayerProgramExperienceItem { id: string; scheduledDate: string; itemType: string; title: string; phaseTitle: string | null; weekNumber: number; status: PlayerProgramItemStatus; activityId: string | null; taskId: string | null }
+export interface PlayerProgramExperienceItem { id: string; scheduledDate: string; itemType: string; title: string; description: string | null; reminderMinutes: number | null; categoryIds: string[]; phaseTitle: string | null; weekNumber: number; status: PlayerProgramItemStatus; activityId: string | null; taskId: string | null }
 export interface PlayerProgramExperienceEnrollment {
   id: string;
   owner: { id: string; ownerType: 'club' | 'private_coach_business'; name: string; displayName: string; logoUrl: string | null; brandColors: { primary: string; accent: string } };
