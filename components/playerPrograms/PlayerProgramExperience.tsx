@@ -18,6 +18,7 @@ import { IconSymbol } from "@/components/IconSymbol";
 import TaskDetailsModal from "@/components/TaskDetailsModal";
 import { usePlayerProgramExperience } from "@/hooks/usePlayerProgramExperience";
 import type {
+  PlayerProgramExperience,
   PlayerProgramExperienceEnrollment,
   PlayerProgramExperienceItem,
 } from "@/services/trainingProgramService";
@@ -48,20 +49,6 @@ function itemStatusLabel(status: PlayerProgramExperienceItem["status"]) {
 
 function isCompletable(item: PlayerProgramExperienceItem) {
   return Boolean(item.taskId || item.activityId);
-}
-
-function progressForItems(items: PlayerProgramExperienceItem[]) {
-  const countableItems = items.filter(isCompletable);
-  const completedItems = countableItems.filter(
-    (item) => item.status === "completed",
-  ).length;
-  const totalItems = countableItems.length;
-  return {
-    completedItems,
-    totalItems,
-    percent:
-      totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0,
-  };
 }
 
 function itemKind(item: PlayerProgramExperienceItem) {
@@ -369,11 +356,9 @@ function ProgramDays({
 function EnrollmentHeader({
   enrollment,
   compact = false,
-  progress = enrollment.progress,
 }: {
   enrollment: PlayerProgramExperienceEnrollment;
   compact?: boolean;
-  progress?: PlayerProgramExperienceEnrollment["progress"];
 }) {
   const colors = getColors(useColorScheme());
   const accent = enrollment.owner.brandColors.accent || colors.primary;
@@ -395,17 +380,17 @@ function EnrollmentHeader({
           </Text>
         </View>
         <Text style={[styles.percent, { color: accent }]}>
-          {progress.percent}%
+          {enrollment.progress.percent}%
         </Text>
       </View>
       <ProgressBar
-        percent={progress.percent}
+        percent={enrollment.progress.percent}
         color={accent}
         track={colors.border}
       />
       <Text style={{ color: colors.textSecondary }}>
-        {progress.completedItems}/{progress.totalItems} tasks and activities
-        completed
+        {enrollment.progress.completedItems}/{enrollment.progress.totalItems}{" "}
+        tasks and activities completed
       </Text>
     </View>
   );
@@ -482,11 +467,21 @@ function ProgramTaskModal({
   );
 }
 
-export function PlayerProgramHomeCard() {
+type PlayerProgramHomeCardProps = {
+  state?: {
+    experience: PlayerProgramExperience | null;
+    loading: boolean;
+    error: string | null;
+    refresh: () => Promise<void>;
+  };
+};
+
+export function PlayerProgramHomeCard({ state }: PlayerProgramHomeCardProps = {}) {
   const router = useRouter();
   const isDark = useColorScheme() === "dark";
   const colors = getColors(isDark ? "dark" : "light");
-  const { experience, loading, error, refresh } = usePlayerProgramExperience();
+  const localState = usePlayerProgramExperience(!state);
+  const { experience, loading, error, refresh } = state ?? localState;
   const actions = useProgramItemActions(refresh);
   const currentWeek = useMemo(() => {
     const today =
@@ -577,11 +572,7 @@ export function PlayerProgramHomeCard() {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <EnrollmentHeader
-            enrollment={enrollment}
-            compact
-            progress={progressForItems(items)}
-          />
+          <EnrollmentHeader enrollment={enrollment} compact />
           {items.length ? (
             <ProgramDays
               enrollment={enrollment}

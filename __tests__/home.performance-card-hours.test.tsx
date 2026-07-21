@@ -11,6 +11,7 @@ const mockUseUserRole = jest.fn();
 const mockUseAdmin = jest.fn();
 const mockUseTeamPlayer = jest.fn();
 const mockUseAuthSession = jest.fn();
+const mockUsePlayerProgramExperience = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -26,6 +27,10 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('@/hooks/useHomeActivities', () => ({
   useHomeActivities: () => mockUseHomeActivities(),
+}));
+
+jest.mock('@/hooks/usePlayerProgramExperience', () => ({
+  usePlayerProgramExperience: () => mockUsePlayerProgramExperience(),
 }));
 
 jest.mock('@/contexts/FootballContext', () => ({
@@ -135,6 +140,13 @@ describe('Home performance card hour sums', () => {
       user: { id: 'user-1' },
       session: { user: { id: 'user-1' } },
       refreshSession: jest.fn().mockResolvedValue({ user: { id: 'user-1' } }),
+    });
+    mockUsePlayerProgramExperience.mockReturnValue({
+      experience: null,
+      loading: false,
+      refreshing: false,
+      error: null,
+      refresh: jest.fn().mockResolvedValue(undefined),
     });
 
     const now = new Date();
@@ -253,6 +265,52 @@ describe('Home performance card hour sums', () => {
     expect(getByTestId('home.thisWeekPremiumCard.badge.today')).toBeTruthy();
     expect(getByTestId('home.thisWeekPremiumCard.trophy')).toBeTruthy();
     expect(mockPush).toHaveBeenCalledTimes(0);
+  });
+
+  it('includes standalone program tasks in the existing weekly counter', () => {
+    const todayIso = format(new Date(), 'yyyy-MM-dd');
+    mockUseUserRole.mockReturnValue({ userRole: 'player' });
+    mockUseFootball.mockReturnValue({
+      ...mockUseFootball(),
+      isLoading: false,
+      hasCurrentWeekStatsLoaded: true,
+      currentWeekStats: {
+        percentage: 100,
+        completedTasks: 1,
+        totalTasks: 1,
+        completedTasksForWeek: 1,
+        totalTasksForWeek: 1,
+        weekActivities: [],
+      },
+    });
+    mockUsePlayerProgramExperience.mockReturnValue({
+      experience: {
+        apiVersion: 2,
+        generatedAt: `${todayIso}T10:00:00.000Z`,
+        today: todayIso,
+        activeEnrollmentId: 'enrollment',
+        nextAction: null,
+        enrollments: [{
+          id: 'enrollment',
+          owner: { id: 'owner', ownerType: 'club', name: 'Club', displayName: 'Club', logoUrl: null, brandColors: { primary: '#000', accent: '#000' } },
+          program: { id: 'program', title: 'Program', description: null, durationWeeks: 2 },
+          startDate: todayIso,
+          endDate: todayIso,
+          status: 'active',
+          progress: { completedItems: 1, totalItems: 1, percent: 100 },
+          nextItem: null,
+          items: [{ id: 'program-task', scheduledDate: todayIso, itemType: 'task_template', title: 'Program task', description: null, reminderMinutes: null, categoryIds: [], phaseTitle: null, weekNumber: 1, status: 'completed', activityId: null, taskId: 'standalone-task' }],
+        }],
+      },
+      loading: false,
+      refreshing: false,
+      error: null,
+      refresh: jest.fn().mockResolvedValue(undefined),
+    });
+
+    const { getByText } = render(<HomeScreen />);
+    expect(getByText('100%')).toBeTruthy();
+    expect(getByText('Tasks 2/2')).toBeTruthy();
   });
 
   it('renders upcoming week summary collapsed and expands to show upcoming activities', () => {

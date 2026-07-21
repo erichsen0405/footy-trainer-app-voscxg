@@ -65,6 +65,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useHomeActivities } from '@/hooks/useHomeActivities';
+import { usePlayerProgramExperience } from '@/hooks/usePlayerProgramExperience';
 import { useFootball } from '@/contexts/FootballContext';
 import { useAuthSession } from '@/contexts/AuthSessionContext';
 import { useAdmin } from '@/contexts/AdminContext';
@@ -88,6 +89,10 @@ import { formatHoursDa, getActivityEffectiveDurationMinutes } from '@/utils/acti
 import { markHomeScreenReady } from '@/utils/startupLoader';
 import { trackStartupTelemetry } from '@/utils/startupTelemetry';
 import { TimeoutError, withTimeout } from '@/utils/withTimeout';
+import {
+  EMPTY_PLAYER_PROGRAM_WEEK_TASK_METRICS,
+  getPlayerProgramWeekTaskMetrics,
+} from '@/utils/playerProgramWeekMetrics';
 import type { TaskTemplateSelfFeedback } from '@/types';
 
 type HomeRouteParams = {
@@ -1082,6 +1087,8 @@ export default function HomeScreen() {
   const params = readLocalSearchParams<HomeRouteParams>();
   const { user } = useAuthSession();
   const { userRole } = useUserRole();
+  const playerProgramState = usePlayerProgramExperience(userRole === 'player');
+  const refreshPlayerProgram = playerProgramState.refresh;
   const {
     activities,
     loading,
@@ -1557,6 +1564,10 @@ export default function HomeScreen() {
       console.error('[Home] refreshData is not a function');
     }
 
+    if (userRole === 'player') {
+      refreshPromises.push(refreshPlayerProgram());
+    }
+
     try {
       if (!refreshPromises.length) {
         return;
@@ -1573,7 +1584,14 @@ export default function HomeScreen() {
     } finally {
       triggerFeedbackRefresh();
     }
-  }, [refreshActivities, refreshData, trackHomeRefreshFailure, triggerFeedbackRefresh]);
+  }, [
+    refreshActivities,
+    refreshData,
+    refreshPlayerProgram,
+    trackHomeRefreshFailure,
+    triggerFeedbackRefresh,
+    userRole,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1830,6 +1848,19 @@ export default function HomeScreen() {
     };
   }, [currentWeekGroup]);
 
+  const playerProgramWeekTaskMetrics = useMemo(() => {
+    const weekStart = currentWeekGroup?.weekStart;
+    if (!(weekStart instanceof Date) || isNaN(weekStart.getTime())) {
+      return EMPTY_PLAYER_PROGRAM_WEEK_TASK_METRICS;
+    }
+    return getPlayerProgramWeekTaskMetrics(
+      playerProgramState.experience,
+      format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      format(endOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      format(new Date(), 'yyyy-MM-dd'),
+    );
+  }, [currentWeekGroup?.weekStart, playerProgramState.experience]);
+
   // LINT FIX: Include currentWeekStats in dependency array
   const performanceMetrics = useMemo(() => {
     // STEP H: Guard against null/undefined currentWeekStats
@@ -1838,12 +1869,25 @@ export default function HomeScreen() {
         ? fallbackCurrentWeekStats
         : currentWeekStats || fallbackCurrentWeekStats;
 
-    const percentageUpToToday = typeof safeStats.percentage === 'number' ? safeStats.percentage : 0;
-    const totalTasksForWeek = typeof safeStats.totalTasksForWeek === 'number' ? safeStats.totalTasksForWeek : 0;
-    const completedTasksForWeek = typeof safeStats.completedTasksForWeek === 'number' ? safeStats.completedTasksForWeek : 0;
+    const totalTasksForWeek =
+      (typeof safeStats.totalTasksForWeek === 'number' ? safeStats.totalTasksForWeek : 0) +
+      playerProgramWeekTaskMetrics.totalTasksForWeek;
+    const completedTasksForWeek =
+      (typeof safeStats.completedTasksForWeek === 'number' ? safeStats.completedTasksForWeek : 0) +
+      playerProgramWeekTaskMetrics.completedTasksForWeek;
 
     const weekPercentage = totalTasksForWeek > 0
       ? Math.round((completedTasksForWeek / totalTasksForWeek) * 100)
+      : 0;
+
+    const completedTasks =
+      (typeof safeStats.completedTasks === 'number' ? safeStats.completedTasks : 0) +
+      playerProgramWeekTaskMetrics.completedTasksUpToToday;
+    const totalTasks =
+      (typeof safeStats.totalTasks === 'number' ? safeStats.totalTasks : 0) +
+      playerProgramWeekTaskMetrics.totalTasksUpToToday;
+    const percentageUpToToday = totalTasks > 0
+      ? Math.round((completedTasks / totalTasks) * 100)
       : 0;
 
     // Determine trophy emoji based on percentage up to today (same thresholds as performance screen)
@@ -1855,9 +1899,6 @@ export default function HomeScreen() {
     }
 
     // Calculate remaining tasks
-    const completedTasks = typeof safeStats.completedTasks === 'number' ? safeStats.completedTasks : 0;
-    const totalTasks = typeof safeStats.totalTasks === 'number' ? safeStats.totalTasks : 0;
-
     const remainingTasksToday = totalTasks - completedTasks;
     const remainingTasksWeek = totalTasksForWeek - completedTasksForWeek;
 
@@ -1887,7 +1928,13 @@ export default function HomeScreen() {
       totalTasksWeek: totalTasksForWeek,
       gradientColors,
     };
-  }, [currentWeekStats, fallbackCurrentWeekStats, footballLoading, hasCurrentWeekStatsLoaded]);
+  }, [
+    currentWeekStats,
+    fallbackCurrentWeekStats,
+    footballLoading,
+    hasCurrentWeekStatsLoaded,
+    playerProgramWeekTaskMetrics,
+  ]);
 
   const handleCreateActivity = useCallback(async (activityData: any) => {
     try {
@@ -2471,7 +2518,7 @@ export default function HomeScreen() {
 
     switch (item.type) {
       case 'playerProgramWeek':
-        return <PlayerProgramHomeCard />;
+        return <PlayerProgramHomeCard state={playerProgramState} />;
 
       case 'upcomingWeekSummary':
         if (!item.weekGroup || !item.weekGroup.weekStart || !item.weekKey) return null;
@@ -3068,6 +3115,7 @@ export default function HomeScreen() {
     getFeedbackActivityCandidates,
     isPreviousWeeksModalVisible,
     previousWeekSummaries,
+    playerProgramState,
   ]);
 
   // Key extractor for FlatList

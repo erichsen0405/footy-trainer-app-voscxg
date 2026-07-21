@@ -76,7 +76,7 @@ describe('player program experience screens', () => {
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/programs');
   });
 
-  it('shows current-week progress on Home instead of whole-program progress', () => {
+  it('keeps whole-program progress on Home while showing current-week items', () => {
     mockUsePlayerProgramExperience.mockReturnValue({
       experience: {
         ...experience,
@@ -99,9 +99,9 @@ describe('player program experience screens', () => {
     });
 
     const view = render(<PlayerProgramHomeCard />);
-    expect(view.getByText('100%')).toBeTruthy();
-    expect(view.getByText(/2\/2 tasks and activities completed/)).toBeTruthy();
-    expect(view.queryByText('75%')).toBeNull();
+    expect(view.getByText('75%')).toBeTruthy();
+    expect(view.getByText(/3\/4 tasks and activities completed/)).toBeTruthy();
+    expect(view.queryByText('100%')).toBeNull();
   });
 
   it('completes standalone tasks server-side and opens activity items', async () => {
