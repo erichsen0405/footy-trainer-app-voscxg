@@ -35,11 +35,13 @@ export function usePlayerProgramExperience(enabled = true) {
     void load();
   }, [load]));
 
+  const refresh = useCallback(() => load(true), [load]);
+
   return {
     experience,
     loading,
     refreshing,
     error,
-    refresh: () => load(true),
+    refresh,
   };
 }
